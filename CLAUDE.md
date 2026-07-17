@@ -64,6 +64,24 @@ nobody can click. Verified working instead (2026-07-17, M0):
 
 Plugin reinstall (not auto-reload) is needed after each rebuild.
 
+## Margin protocol (LIVE — follow this when the operator's IDE is up)
+
+The plugin this project builds is also our working channel. When the host
+IDE is running (check: `curl -s http://127.0.0.1:63342/api/marginalis/ping`):
+
+- **Start every turn** with
+  `curl -s 'http://127.0.0.1:63342/api/marginalis/comment_list?unread_only=true'`
+  — the operator leaves margin comments (⌃⌥M in their editor) and replies
+  there, born unread. This is the entire inbound channel; reading marks seen.
+- **Before editing any file**, check
+  `comment_list?file=<path>&status=open` — the §3.1 invariant: never edit a
+  file with open threads; resolve them first (conclusion → code change, or
+  explicitly moot).
+- Reply with `comment_reply {thread_id, body}`; resolve with
+  `comment_resolve {thread_id}`. A human Resolve with no counter-reply on an
+  agent proposal means "do it".
+- Threads are in-memory until M2: an IDE restart clears them.
+
 ## Project conventions
 
 - API `line` parameters are 1-based (as agents read files); internal
