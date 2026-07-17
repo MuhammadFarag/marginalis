@@ -78,8 +78,13 @@ IDE is running (check: `curl -s http://127.0.0.1:63342/api/marginalis/ping`):
   file with open threads; resolve them first (conclusion → code change, or
   explicitly moot).
 - Reply with `comment_reply {thread_id, body}`; resolve with
-  `comment_resolve {thread_id}`. A human Resolve with no counter-reply on an
-  agent proposal means "do it".
+  `comment_resolve {thread_id}`.
+- **Resolution etiquette — the resolver is the completer.** RESOLVED means
+  "the outcome is in the code (or decided moot)", and the gutter marker drops
+  at that moment. So: approval is a *reply* ("do it"); the party who then
+  consolidates the conclusion into code performs the resolve *after* editing.
+  Never treat an early human Resolve as a work request — if it happens, ask.
+  No-action threads: either party resolves immediately.
 - Threads are in-memory until M2: an IDE restart clears them.
 
 ## Project conventions
