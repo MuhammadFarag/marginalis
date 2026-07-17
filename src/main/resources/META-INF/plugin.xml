@@ -9,6 +9,16 @@
 
     <depends>com.intellij.modules.platform</depends>
 
+    <actions>
+        <action id="marginalis.addComment"
+                class="dev.marginalis.plugin.actions.AddCommentAction"
+                text="Add Marginalis Comment"
+                description="Start a margin thread on the current line for the agent to pick up">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt M"/>
+        </action>
+    </actions>
+
     <extensions defaultExtensionNs="com.intellij">
         <!-- Transport: Option B (built-in HTTP server, handover §6). -->
         <httpRequestHandler implementation="dev.marginalis.plugin.transport.MarginalisRestService"/>

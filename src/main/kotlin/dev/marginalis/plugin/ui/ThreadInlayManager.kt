@@ -4,7 +4,9 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
+import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
@@ -24,20 +26,46 @@ object ThreadInlayManager {
 
     /** Toggle the inlay for [thread] in [editor]. EDT only (gutter clicks arrive there). */
     fun toggle(project: Project, editor: Editor, thread: CommentThread) {
-        val open = editor.getUserData(OPEN_INLAYS) ?: mutableMapOf<String, Pair<Inlay<*>, ThreadPanel>>()
-            .also { editor.putUserData(OPEN_INLAYS, it) }
-
+        val open = openInlays(editor)
         open.remove(thread.id)?.let { (inlay, _) ->
             Disposer.dispose(inlay)
             return
         }
+        openPanel(project, editor, thread, ensureStored = {})
+    }
+
+    /**
+     * Open a panel for a thread that doesn't exist yet (human-initiated,
+     * AddCommentAction). Nothing is stored or marked until the first message
+     * is sent; closing an unsent draft leaves no trace.
+     */
+    fun openDraft(project: Project, editor: Editor, thread: CommentThread) {
+        openPanel(project, editor, thread) {
+            val store = MarginalisStore.getInstance(project)
+            if (store.byId(thread.id) == null) {
+                val markup = DocumentMarkupModel.forDocument(editor.document, project, true)
+                val highlighter = markup.addLineHighlighter(thread.line, HighlighterLayer.LAST, null)
+                highlighter.gutterIconRenderer = ThreadGutterIconRenderer(project, thread)
+                thread.highlighter = highlighter
+                store.add(thread)
+            }
+        }
+    }
+
+    private fun openInlays(editor: Editor): MutableMap<String, Pair<Inlay<*>, ThreadPanel>> =
+        editor.getUserData(OPEN_INLAYS) ?: mutableMapOf<String, Pair<Inlay<*>, ThreadPanel>>()
+            .also { editor.putUserData(OPEN_INLAYS, it) }
+
+    private fun openPanel(project: Project, editor: Editor, thread: CommentThread, ensureStored: () -> Unit) {
+        val open = openInlays(editor)
+        if (open.containsKey(thread.id)) return
 
         // Fit within what the editor can actually show: visible width minus
         // room for the gutter/inlay x-offset, clamped to something readable.
         val visibleWidth = editor.scrollingModel.visibleArea.width
         val panelWidth = (visibleWidth - JBUI.scale(120))
             .coerceIn(JBUI.scale(360), JBUI.scale(800))
-        val panel = ThreadPanel(project, thread, panelWidth) { close(editor, thread.id) }
+        val panel = ThreadPanel(project, thread, panelWidth, ensureStored) { close(editor, thread.id) }
         val line = thread.currentLine().coerceAtMost(editor.document.lineCount - 1)
         val offset = editor.document.getLineEndOffset(line.coerceAtLeast(0))
         val inlay = EditorEmbeddedComponentManager.getInstance().addComponent(
@@ -54,6 +82,7 @@ object ThreadInlayManager {
         ) ?: return
         open[thread.id] = inlay to panel
         installStoreListener(project, editor)
+        ApplicationManager.getApplication().invokeLater { panel.focusReply() }
     }
 
     private fun close(editor: Editor, threadId: String) {

@@ -34,12 +34,14 @@ class ThreadPanel(
     private val project: Project,
     private val thread: CommentThread,
     private val panelWidth: Int,
+    private val ensureStored: () -> Unit,
     private val onClose: () -> Unit,
 ) : JPanel(BorderLayout()) {
 
     private val messagesBox = Box.createVerticalBox()
     private val statusLabel = JBLabel()
     private val resolveButton = JButton()
+    private val sendButton = JButton()
     private val replyArea = JBTextArea(3, 40)
 
     init {
@@ -109,7 +111,6 @@ class ThreadPanel(
         }
         replyArea.lineWrap = true
         replyArea.wrapStyleWord = true
-        replyArea.emptyText.text = "Reply… (⌘⏎ to send)"
         replyArea.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode == KeyEvent.VK_ENTER && (e.isMetaDown || e.isControlDown)) {
@@ -118,10 +119,8 @@ class ThreadPanel(
                 }
             }
         })
-        val sendButton = JButton("Reply").apply {
-            font = JBUI.Fonts.smallFont()
-            addActionListener { sendReply() }
-        }
+        sendButton.font = JBUI.Fonts.smallFont()
+        sendButton.addActionListener { sendReply() }
         row.add(JBScrollPane(replyArea), BorderLayout.CENTER)
         row.add(sendButton, BorderLayout.EAST)
         return row
@@ -130,19 +129,32 @@ class ThreadPanel(
     private fun sendReply() {
         val body = replyArea.text.trim()
         if (body.isEmpty()) return
+        ensureStored() // draft threads materialize on first send
         thread.addMessage(Message(Author.HUMAN, body))
         replyArea.text = ""
         MarginalisStore.getInstance(project).notifyChanged(thread)
     }
 
+    fun focusReply() {
+        replyArea.requestFocusInWindow()
+    }
+
     /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
-        statusLabel.text = when (thread.status) {
-            ThreadStatus.OPEN -> "open"
-            ThreadStatus.RESOLVED -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
-            ThreadStatus.ORPHANED -> "orphaned (anchor deleted)"
+        val isDraft = MarginalisStore.getInstance(project).byId(thread.id) == null
+        statusLabel.text = when {
+            isDraft -> "new comment — unsent"
+            thread.status == ThreadStatus.OPEN -> "open"
+            thread.status == ThreadStatus.RESOLVED -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
+            else -> "orphaned (anchor deleted)"
         }
         resolveButton.text = if (thread.status == ThreadStatus.OPEN) "Resolve" else "Reopen"
+        resolveButton.isVisible = !isDraft // nothing to resolve before the first send
+
+        // "Reply" is wrong when starting a thread — the affordance follows state.
+        sendButton.text = if (thread.messages.isEmpty()) "Send" else "Reply"
+        replyArea.emptyText.text =
+            if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to send)" else "Reply… (⌘⏎ to send)"
 
         messagesBox.removeAll()
         val timeFormat = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())

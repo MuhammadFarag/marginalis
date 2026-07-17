@@ -15,7 +15,6 @@ def fib(n: int) -> int:
 
 
 def fib_sequence(count: int) -> list[int]:
-    """Return the first `count` Fibonacci numbers."""
     return [fib(i) for i in range(count)]
 
 
