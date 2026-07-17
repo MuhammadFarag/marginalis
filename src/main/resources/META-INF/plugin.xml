@@ -10,7 +10,9 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- M0 transport: Option B (built-in HTTP server, handover §6). -->
+        <!-- Transport: Option B (built-in HTTP server, handover §6). -->
         <httpRequestHandler implementation="dev.marginalis.plugin.transport.MarginalisRestService"/>
+        <!-- Keeps gutter icons in sync with thread status/unread changes. -->
+        <postStartupActivity implementation="dev.marginalis.plugin.MarginalisStartup"/>
     </extensions>
 </idea-plugin>
