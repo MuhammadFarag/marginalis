@@ -1,7 +1,6 @@
 package dev.marginalis.plugin.ui
 
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -34,6 +33,7 @@ import javax.swing.JPanel
 class ThreadPanel(
     private val project: Project,
     private val thread: CommentThread,
+    private val panelWidth: Int,
     private val onClose: () -> Unit,
 ) : JPanel(BorderLayout()) {
 
@@ -55,12 +55,12 @@ class ThreadPanel(
         refresh()
     }
 
-    // Fixed width, computed height. Never set preferredSize directly — an
-    // explicit value freezes the height at construction time and the inlay
-    // squashes to a single line.
+    // Width adapted to the editor at open time, height computed. Never set
+    // preferredSize directly — an explicit value freezes the height at
+    // construction time and the inlay squashes to a single line.
     override fun getPreferredSize(): Dimension {
         val computed = super.getPreferredSize()
-        return Dimension(JBUI.scale(560), computed.height)
+        return Dimension(panelWidth, computed.height)
     }
 
     private fun buildHeader(): JComponent {
@@ -164,9 +164,19 @@ class ThreadPanel(
             font = JBUI.Fonts.smallFont().asBold()
             foreground = authorColor
         }
-        val bodyHtml = StringUtil.escapeXmlEntities(message.body).replace("\n", "<br/>")
-        val body = JBLabel("<html><div style='width:${JBUI.scale(480)}px'>$bodyHtml</div></html>").apply {
+        // Deliberately NOT an HTML label: css 'width:px' doesn't reliably match
+        // layout pixels (font scaling skews it), which clipped text on the
+        // right. A wrapping text area wraps at its *actual* width, always.
+        val body = JBTextArea(message.body).apply {
+            isEditable = false
+            isOpaque = false
+            lineWrap = true
+            wrapStyleWord = true
             font = JBUI.Fonts.label()
+            border = JBUI.Borders.empty()
+            // Measure at a slightly conservative width so the computed
+            // preferred height can only overestimate, never clip the bottom.
+            setSize(panelWidth - JBUI.scale(64), Int.MAX_VALUE)
         }
         panel.add(meta, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)

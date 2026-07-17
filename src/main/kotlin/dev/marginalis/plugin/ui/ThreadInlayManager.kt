@@ -8,6 +8,7 @@ import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
+import com.intellij.util.ui.JBUI
 import dev.marginalis.plugin.store.CommentThread
 import dev.marginalis.plugin.store.MarginalisStore
 
@@ -31,7 +32,12 @@ object ThreadInlayManager {
             return
         }
 
-        val panel = ThreadPanel(project, thread) { close(editor, thread.id) }
+        // Fit within what the editor can actually show: visible width minus
+        // room for the gutter/inlay x-offset, clamped to something readable.
+        val visibleWidth = editor.scrollingModel.visibleArea.width
+        val panelWidth = (visibleWidth - JBUI.scale(120))
+            .coerceIn(JBUI.scale(360), JBUI.scale(800))
+        val panel = ThreadPanel(project, thread, panelWidth) { close(editor, thread.id) }
         val line = thread.currentLine().coerceAtMost(editor.document.lineCount - 1)
         val offset = editor.document.getLineEndOffset(line.coerceAtLeast(0))
         val inlay = EditorEmbeddedComponentManager.getInstance().addComponent(
