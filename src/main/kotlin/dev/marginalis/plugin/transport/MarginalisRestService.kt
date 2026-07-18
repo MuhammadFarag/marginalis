@@ -3,6 +3,7 @@ package dev.marginalis.plugin.transport
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
@@ -75,7 +76,7 @@ class MarginalisRestService : RestService() {
     ): String? {
         val endpoint = urlDecoder.path().removePrefix("/api/${getServiceName()}").trim('/')
         when (endpoint) {
-            "ping" -> sendJson(JsonObject().apply { addProperty("status", "ok") }, request, context)
+            "ping" -> sendJson(pingInfo(), request, context)
             "comment_add" -> post(request, context) { handleCommentAdd(it, request, context) }
             "comment_reply" -> post(request, context) { handleCommentReply(it, request, context) }
             "comment_resolve" -> post(request, context) { handleStatusChange(it, request, context, resolve = true) }
@@ -84,6 +85,33 @@ class MarginalisRestService : RestService() {
             else -> sendError(HttpResponseStatus.NOT_FOUND, "unknown endpoint '$endpoint'", request, context)
         }
         return null
+    }
+
+    /**
+     * Self-describing ping: with several IDE processes running, the built-in
+     * servers stack up on ports 63342, 63343, … and an agent must be able to
+     * ask "which projects do YOU have open?" to find the right one.
+     */
+    private fun pingInfo(): JsonObject = JsonObject().apply {
+        addProperty("status", "ok")
+        val appInfo = ApplicationInfo.getInstance()
+        addProperty("ide", "${appInfo.versionName} ${appInfo.fullVersion}")
+        add(
+            "projects",
+            JsonArray().apply {
+                ApplicationManager.getApplication().runReadAction {
+                    for (project in ProjectManager.getInstance().openProjects) {
+                        if (project.isDisposed) continue
+                        add(
+                            JsonObject().apply {
+                                addProperty("name", project.name)
+                                addProperty("path", project.guessProjectDir()?.path ?: project.basePath)
+                            },
+                        )
+                    }
+                }
+            },
+        )
     }
 
     /** Shared POST plumbing: method check + JSON body parse. */
