@@ -1,0 +1,50 @@
+# CI: build + verify on every push/PR.
+#
+# CI is deliberately the *honest* environment: unrestricted network means it
+# compiles against the real ideaIC-2025.2 floor (the tenant dev sandbox
+# can't reach the JetBrains CDN and uses a local IDE via the
+# `marginalis.localIde` property instead) and runs the Plugin Verifier
+# against JetBrains' recommended IDE set for our since-build range.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build plugin
+        run: ./gradlew build --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marginalis-plugin
+          path: build/distributions/*.zip
+          if-no-files-found: error
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run IntelliJ Plugin Verifier
+        run: ./gradlew verifyPlugin --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin-verifier-reports
+          path: build/reports/pluginVerifier
+          if-no-files-found: ignore

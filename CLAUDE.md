@@ -13,6 +13,14 @@ ports, so every Gradle process must run fully in-process:
 - JDK: read-only share at `~/jdks/25.0.3-ms` (Java 25 → requires Gradle 9.1+,
   Kotlin 2.3+; we compile to target 21, no toolchain — auto-provisioning is
   network-blocked).
+- Platform dependency is property-switched: default (and CI) compiles against
+  `ideaIC-2025.2` from the CDN; the sandbox sets `marginalis.localIde` in
+  `~/.gradle/gradle.properties` to use the local IDE share instead. If local
+  builds fail resolving `idea:ideaIC`, that property went missing.
+- CI (GitHub Actions, `.github/workflows/`) is the honest environment: real
+  2025.2 floor + Plugin Verifier (`recommended()` IDE set). Tag `v*` →
+  release zip. Local sandbox builds compile against a newer local IDE, so
+  floor violations surface in CI, not locally.
 - `org.gradle.daemon=false` alone is NOT enough. The client JVM must pass
   Gradle's `DaemonCompatibilitySpec` or a single-use daemon is forked anyway:
   - `gradle.properties` sets `org.gradle.jvmargs=-Xms256m -Xmx2g

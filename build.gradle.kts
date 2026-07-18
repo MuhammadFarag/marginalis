@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "dev.marginalis"
-version = "0.0.1"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
@@ -19,12 +19,17 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Local IDE share (IU 2026.1.4, build 261) — the JetBrains CDN hosts
-        // that serve platform artifacts are currently unreachable from the
-        // tenant sandbox (see CLAUDE.md). Once the operator unblocks them,
-        // switch back to the oldest supported target for honest compatibility:
-        //     intellijIdeaCommunity("2025.2")
-        local("/Users/Shared/ides/IntelliJ IDEA.app")
+        // Default: compile against the oldest supported target (the honest
+        // floor; CI uses this). Environments that can't reach the JetBrains
+        // CDN — like the tenant sandbox — set `marginalis.localIde` in their
+        // machine-local ~/.gradle/gradle.properties to point at an installed
+        // IDE instead (see CLAUDE.md).
+        val localIde = providers.gradleProperty("marginalis.localIde").orNull
+        if (localIde != null) {
+            local(localIde)
+        } else {
+            intellijIdeaCommunity("2025.2")
+        }
     }
 }
 
@@ -45,6 +50,14 @@ intellijPlatform {
             // Omit until-build entirely: the host IDE that installs the zip may
             // be any version ≥ 2025.2, and JetBrains discourages upper bounds.
             untilBuild = provider { null }
+        }
+    }
+
+    pluginVerification {
+        // CI runs this against JetBrains' recommended IDE set for our
+        // since-build range — the proof behind the declared 2025.2+ support.
+        ides {
+            recommended()
         }
     }
 }
