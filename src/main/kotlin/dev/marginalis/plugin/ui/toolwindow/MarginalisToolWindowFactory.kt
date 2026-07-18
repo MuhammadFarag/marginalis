@@ -1,0 +1,246 @@
+package dev.marginalis.plugin.ui.toolwindow
+
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.DataSink
+import com.intellij.openapi.actionSystem.UiDataProvider
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.guessProjectDir
+import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.pom.Navigatable
+import com.intellij.ui.ColoredTreeCellRenderer
+import com.intellij.ui.JBColor
+import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.content.ContentFactory
+import com.intellij.ui.treeStructure.Tree
+import dev.marginalis.plugin.store.AuthorKind
+import dev.marginalis.plugin.store.CommentThread
+import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.store.ThreadStatus
+import dev.marginalis.plugin.ui.ThreadInlayManager
+import java.awt.BorderLayout
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import java.util.SortedMap
+import java.util.TreeMap
+import javax.swing.JPanel
+import javax.swing.JTree
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.DefaultTreeModel
+import javax.swing.tree.TreePath
+
+/**
+ * The cross-file answer to "which files have notes?" (handover §8): every
+ * thread in the project — Open as a directory tree (expanded), Orphaned, and
+ * Resolved (folded; doubles as the decision log, §10). Double-click or F4
+ * (Jump to Source) navigates to the anchor line and opens the thread panel.
+ */
+class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
+    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        val panel = MarginalisToolWindowPanel(project)
+        val content = ContentFactory.getInstance().createContent(panel, "", false)
+        toolWindow.contentManager.addContent(content)
+    }
+}
+
+private sealed class NodeData {
+    class Section(val title: String, val count: Int) : NodeData()
+    class DirNode(val name: String, val count: Int) : NodeData()
+    class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
+    class ThreadNode(val thread: CommentThread) : NodeData()
+}
+
+/** Whose turn is it in this thread? Claude spoke last → the human's. */
+private fun awaitsHuman(thread: CommentThread): Boolean =
+    thread.messages.lastOrNull()?.author?.kind == AuthorKind.AGENT
+
+/** Path trie for the Open section's directory tree. */
+private class PathTrie {
+    val dirs: SortedMap<String, PathTrie> = TreeMap()
+    val files: SortedMap<String, MutableList<CommentThread>> = TreeMap()
+
+    fun insert(thread: CommentThread) {
+        val parts = thread.file.split('/')
+        var node = this
+        for (dir in parts.dropLast(1)) node = node.dirs.getOrPut(dir) { PathTrie() }
+        node.files.getOrPut(parts.last()) { mutableListOf() }.add(thread)
+    }
+
+    fun threadCount(): Int = files.values.sumOf { it.size } + dirs.values.sumOf { it.threadCount() }
+}
+
+private class MarginalisToolWindowPanel(private val project: Project) : JPanel(BorderLayout()), UiDataProvider {
+
+    private val tree = Tree()
+
+    init {
+        tree.isRootVisible = false
+        tree.showsRootHandles = true
+        tree.cellRenderer = MarginalisTreeRenderer()
+        tree.emptyText.text = "No margin threads yet"
+        tree.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount == 2) selectedThread()?.let { navigateTo(it) }
+            }
+        })
+        add(JBScrollPane(tree), BorderLayout.CENTER)
+
+        MarginalisStore.getInstance(project).addListener {
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) rebuild()
+            }
+        }
+        rebuild()
+    }
+
+    /** F4 / Jump to Source: hand the platform a navigatable for the selection. */
+    override fun uiDataSnapshot(sink: DataSink) {
+        val thread = selectedThread() ?: return
+        sink[CommonDataKeys.NAVIGATABLE] = object : Navigatable {
+            override fun navigate(requestFocus: Boolean) = navigateTo(thread)
+            override fun canNavigate(): Boolean = true
+            override fun canNavigateToSource(): Boolean = true
+        }
+    }
+
+    private fun selectedThread(): CommentThread? {
+        val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return null
+        return (node.userObject as? NodeData.ThreadNode)?.thread
+    }
+
+    private fun rebuild() {
+        val threads = MarginalisStore.getInstance(project).all()
+        threads.forEach { it.currentLine() } // refresh live lines + orphan status
+
+        val root = DefaultMutableTreeNode()
+        addOpenSection(root, threads.filter { it.status == ThreadStatus.OPEN })
+        addFlatSection(root, "Orphaned", threads.filter { it.status == ThreadStatus.ORPHANED })
+        addFlatSection(root, "Resolved", threads.filter { it.status == ThreadStatus.RESOLVED })
+
+        tree.model = DefaultTreeModel(root)
+        // Everything expanded by default except the Resolved log.
+        for (i in 0 until root.childCount) {
+            val section = root.getChildAt(i) as DefaultMutableTreeNode
+            if ((section.userObject as NodeData.Section).title != "Resolved") expandRecursively(section)
+        }
+    }
+
+    private fun addOpenSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
+        if (threads.isEmpty()) return
+        val section = DefaultMutableTreeNode(NodeData.Section("Open", threads.size))
+        val trie = PathTrie().apply { threads.forEach(::insert) }
+        emitTrie(trie, section, prefix = "")
+        root.add(section)
+    }
+
+    /** Emit the trie, compressing single-child directory chains (a/b/c → one node). */
+    private fun emitTrie(trie: PathTrie, parent: DefaultMutableTreeNode, prefix: String) {
+        for ((name, child) in trie.dirs) {
+            var display = if (prefix.isEmpty()) name else "$prefix/$name"
+            var node = child
+            while (node.files.isEmpty() && node.dirs.size == 1) {
+                val (nextName, next) = node.dirs.entries.first()
+                display = "$display/$nextName"
+                node = next
+            }
+            val dirTreeNode = DefaultMutableTreeNode(NodeData.DirNode(display, node.threadCount()))
+            parent.add(dirTreeNode)
+            emitTrie(node, dirTreeNode, prefix = "")
+        }
+        for ((fileName, fileThreads) in trie.files) {
+            val fileNode = DefaultMutableTreeNode(NodeData.FileNode(fileName, fileThreads))
+            for (thread in fileThreads.sortedBy { it.line }) {
+                fileNode.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread)))
+            }
+            parent.add(fileNode)
+        }
+    }
+
+    private fun addFlatSection(root: DefaultMutableTreeNode, title: String, threads: List<CommentThread>) {
+        if (threads.isEmpty()) return
+        val section = DefaultMutableTreeNode(NodeData.Section(title, threads.size))
+        for (thread in threads.sortedBy { it.createdAt }) {
+            section.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread)))
+        }
+        root.add(section)
+    }
+
+    private fun expandRecursively(node: DefaultMutableTreeNode) {
+        tree.expandPath(TreePath(node.path))
+        for (i in 0 until node.childCount) {
+            expandRecursively(node.getChildAt(i) as DefaultMutableTreeNode)
+        }
+    }
+
+    private fun navigateTo(thread: CommentThread) {
+        val base = project.guessProjectDir() ?: return
+        val vFile = base.findFileByRelativePath(thread.file) ?: return
+        OpenFileDescriptor(project, vFile, thread.currentLine(), 0).navigate(true)
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
+        ThreadInlayManager.open(project, editor, thread)
+    }
+}
+
+private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
+    override fun customizeCellRenderer(
+        tree: JTree,
+        value: Any?,
+        selected: Boolean,
+        expanded: Boolean,
+        leaf: Boolean,
+        row: Int,
+        hasFocus: Boolean,
+    ) {
+        val node = value as? DefaultMutableTreeNode ?: return
+        when (val data = node.userObject) {
+            is NodeData.Section -> {
+                append(data.title, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+            }
+            is NodeData.DirNode -> {
+                icon = AllIcons.Nodes.Folder
+                append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+            }
+            is NodeData.FileNode -> {
+                icon = AllIcons.FileTypes.Any_type
+                append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                val needsYou = data.threads.count { awaitsHuman(it) }
+                val onClaude = data.threads.size - needsYou
+                if (needsYou > 0) append("  ●$needsYou", VIOLET_ATTRS)
+                if (onClaude > 0) append("  ○$onClaude", BLUE_ATTRS)
+            }
+            is NodeData.ThreadNode -> {
+                val thread = data.thread
+                icon = when {
+                    thread.status == ThreadStatus.RESOLVED -> AllIcons.General.GreenCheckmark
+                    thread.status == ThreadStatus.ORPHANED -> AllIcons.General.Warning
+                    else -> AllIcons.General.Balloon
+                }
+                append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                if (thread.status != ThreadStatus.OPEN) {
+                    append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                }
+                val preview = thread.messages.firstOrNull()?.body ?: ""
+                append(StringUtil.shortenTextWithEllipsis(preview.replace('\n', ' '), 70, 0))
+                if (thread.status == ThreadStatus.OPEN) {
+                    append(if (awaitsHuman(thread)) "  ●" else "  ○", if (awaitsHuman(thread)) VIOLET_ATTRS else BLUE_ATTRS)
+                }
+            }
+            else -> {}
+        }
+    }
+
+    private companion object {
+        // Same families as the thread-panel author colors.
+        val VIOLET_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x9C27B0, 0xCE93D8))
+        val BLUE_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x1565C0, 0x90CAF9))
+    }
+}

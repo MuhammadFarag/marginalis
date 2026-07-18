@@ -24,5 +24,11 @@
         <httpRequestHandler implementation="dev.marginalis.plugin.transport.MarginalisRestService"/>
         <!-- Keeps gutter icons in sync with thread status/unread changes. -->
         <postStartupActivity implementation="dev.marginalis.plugin.MarginalisStartup"/>
+        <!-- Cross-file visibility: all threads grouped by file (handover §8). -->
+        <toolWindow id="Marginalis" anchor="right"
+                    icon="AllIcons.Toolwindows.ToolWindowMessages"
+                    factoryClass="dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindowFactory"/>
+        <!-- At-a-glance: tab-title glyph for files with open threads. -->
+        <editorTabTitleProvider implementation="dev.marginalis.plugin.ui.MarginalisTabTitleProvider"/>
     </extensions>
 </idea-plugin>

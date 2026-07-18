@@ -34,6 +34,11 @@ object ThreadInlayManager {
         openPanel(project, editor, thread, ensureStored = {})
     }
 
+    /** Open (never close) the panel — used by tool-window navigation. */
+    fun open(project: Project, editor: Editor, thread: CommentThread) {
+        openPanel(project, editor, thread, ensureStored = {})
+    }
+
     /**
      * Open a panel for a thread that doesn't exist yet (human-initiated,
      * AddCommentAction). Nothing is stored or marked until the first message

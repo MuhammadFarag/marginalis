@@ -4,6 +4,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.startup.ProjectActivity
@@ -30,6 +31,11 @@ class MarginalisStartup : ProjectActivity {
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 syncMarker(project, thread)
+                // Targeted tab-title refresh so the ●/○ glyph tracks the
+                // thread's state (MarginalisTabTitleProvider).
+                project.guessProjectDir()?.findFileByRelativePath(thread.file)?.let { vFile ->
+                    FileEditorManagerEx.getInstanceEx(project).updateFileName(vFile)
+                }
             }
         }
     }
