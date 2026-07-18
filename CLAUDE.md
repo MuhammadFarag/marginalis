@@ -64,6 +64,13 @@ nobody can click. Verified working instead (2026-07-17, M0):
 
 Plugin reinstall (not auto-reload) is needed after each rebuild.
 
+> **Skill source of truth:** the agent-facing skill ships as the Claude Code
+> plugin `marginalis` in the operator's marketplace —
+> `/Users/Shared/plugins/mfarag-plugins/marginalis` (tenant path
+> `~/plugins/mfarag-plugins/marginalis`). Update it THERE and bump the
+> version in `.claude-plugin/plugin.json` whenever the protocol or API
+> changes. Do not recreate copies in `~/.claude/skills/` or this repo.
+
 ## Margin protocol (LIVE — follow this when the operator's IDE is up)
 
 The plugin this project builds is also our working channel. When the host
