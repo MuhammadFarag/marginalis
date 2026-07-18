@@ -5,7 +5,7 @@ import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.startup.ProjectActivity
@@ -39,9 +39,11 @@ class MarginalisStartup : ProjectActivity {
                 if (project.isDisposed) return@invokeLater
                 syncMarker(project, thread)
                 // Targeted tab-title refresh so the ●/○ glyph tracks the
-                // thread's state (MarginalisTabTitleProvider).
+                // thread's state (MarginalisTabTitleProvider). Deliberately the
+                // base-class API: FileEditorManagerEx.updateFileName is 2026.1+
+                // and broke the 2025.2 floor in CI.
                 project.guessProjectDir()?.findFileByRelativePath(thread.file)?.let { vFile ->
-                    FileEditorManagerEx.getInstanceEx(project).updateFileName(vFile)
+                    FileEditorManager.getInstance(project).updateFilePresentation(vFile)
                 }
             }
             AppExecutorUtil.getAppExecutorService().execute {
