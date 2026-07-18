@@ -56,6 +56,14 @@ intellijPlatform {
     pluginVerification {
         // CI runs this against JetBrains' recommended IDE set for our
         // since-build range — the proof behind the declared 2025.2+ support.
+        // Fail on real problems; deprecated/experimental/internal *usages*
+        // are reported but advisory (and NOT_DYNAMIC is a known, accepted
+        // limitation for now).
+        failureLevel = listOf(
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+        )
         ides {
             recommended()
         }
@@ -82,5 +90,9 @@ java {
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_21
+        // Without this, implementing a Kotlin interface generates bridge
+        // overrides for every default method — the Plugin Verifier then
+        // reports us "overriding" deprecated/internal APIs we never wrote.
+        freeCompilerArgs.add("-Xjvm-default=all")
     }
 }
