@@ -23,7 +23,9 @@ jobs:
           java-version: "25"
       - uses: gradle/actions/setup-gradle@v4
       - name: Build plugin
-        run: ./gradlew build --console=plain
+        # `build` alone runs checks but does not produce the distributable
+        # zip — `buildPlugin` does.
+        run: ./gradlew build buildPlugin --console=plain
       - uses: actions/upload-artifact@v4
         with:
           name: marginalis-plugin
