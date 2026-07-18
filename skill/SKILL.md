@@ -83,6 +83,8 @@ below if you need them):
 | `reply <thread_id> <body>` | reply in-thread |
 | `resolve <thread_id>` | outcome is in the code / moot |
 | `reopen <thread_id>` | resurface a resolved thread |
+| `resolve-all [file]` | bulk resolve (all projects, or one file) — only after the outcomes genuinely all landed |
+| `clear-all [file]` | delete threads AND the resolved log — destructive; only when the human asks |
 
 Raw API: `http://127.0.0.1:63342/api/marginalis/<endpoint>` — GET `ping`,
 `comment_list?file=&status=open|resolved|orphaned&unread_only=`; POST
@@ -114,8 +116,10 @@ rendering yet), reasonably short, one topic per thread.
 
 ## Gotchas
 
-- Threads are **in-memory**: an IDE restart clears them all. Don't treat the
-  store as a durable record; important conclusions belong in code or commits.
+- Threads persist across IDE restarts (`.idea/marginalis.json`, per project).
+  On reopen, anchors are re-found by content near the last known line; if the
+  code changed too much, the thread shows up as `orphaned` — deal with those,
+  don't ignore them. Important *conclusions* still belong in code or commits.
 - The human's replies arrive only when you look (habit 1). A human reply is
   guaranteed a response from you; make that promise true.
 - `status=orphaned` threads lost their anchor line (code deleted). Read them,

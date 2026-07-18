@@ -18,6 +18,26 @@ class MarginalisStore {
         notifyChanged(thread)
     }
 
+    /** Rehydration only: no listener storm while loading persisted threads. */
+    fun addSilently(thread: CommentThread) {
+        threads[thread.id] = thread
+    }
+
+    /** Remove one thread entirely; marker cleanup happens in the store listener. */
+    fun remove(id: String): CommentThread? {
+        val removed = threads.remove(id)
+        removed?.let { notifyChanged(it) }
+        return removed
+    }
+
+    /** Remove everything (Clear All); marker cleanup happens in the store listener. */
+    fun clear(): List<CommentThread> {
+        val removed = all()
+        threads.clear()
+        removed.forEach { notifyChanged(it) }
+        return removed
+    }
+
     fun byId(id: String): CommentThread? = threads[id]
 
     fun all(): List<CommentThread> = threads.values.sortedBy { it.createdAt }

@@ -10,7 +10,7 @@ BASE="${MARGINALIS_URL:-http://127.0.0.1:63342/api/marginalis}"
 usage() {
   echo "usage: marginalis.sh ping | discover [path] | unread | list | open-on <file> |" >&2
   echo "       add <file> <line> <anchor_text> <body> | reply <id> <body> |" >&2
-  echo "       resolve <id> | reopen <id>" >&2
+  echo "       resolve <id> | reopen <id> | resolve-all [file] | clear-all [file]" >&2
   exit 2
 }
 
@@ -67,6 +67,11 @@ case "$cmd" in
   resolve|reopen)
     tid="${1:?thread_id}"
     jq -n --arg t "$tid" '{thread_id:$t}' | post "comment_$cmd" ;;
+  resolve-all|clear-all)
+    # Optional arg scopes to one file; no arg = every thread in every project.
+    ep="comment_$(echo "$cmd" | tr - _)"
+    if [ -n "${1:-}" ]; then jq -n --arg f "$1" '{file:$f}' | post "$ep"
+    else echo '{}' | post "$ep"; fi ;;
   *)
     usage ;;
 esac

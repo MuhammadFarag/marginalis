@@ -81,6 +81,8 @@ class MarginalisRestService : RestService() {
             "comment_reply" -> post(request, context) { handleCommentReply(it, request, context) }
             "comment_resolve" -> post(request, context) { handleStatusChange(it, request, context, resolve = true) }
             "comment_reopen" -> post(request, context) { handleStatusChange(it, request, context, resolve = false) }
+            "comment_resolve_all" -> post(request, context) { handleResolveAll(it, request, context) }
+            "comment_clear_all" -> post(request, context) { handleClearAll(it, request, context) }
             "comment_list" -> handleCommentList(urlDecoder, request, context)
             else -> sendError(HttpResponseStatus.NOT_FOUND, "unknown endpoint '$endpoint'", request, context)
         }
@@ -251,6 +253,43 @@ class MarginalisRestService : RestService() {
             },
             request, context,
         )
+    }
+
+    /** Bulk resolve, optionally scoped to one file: {"file"?}. */
+    private fun handleResolveAll(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val fileFilter = json.stringOrNull("file")
+        var resolved = 0
+        for (project in ProjectManager.getInstance().openProjects) {
+            if (project.isDisposed) continue
+            val store = MarginalisStore.getInstance(project)
+            for (thread in store.all()) {
+                if (fileFilter != null && thread.file != fileFilter) continue
+                if (thread.status == ThreadStatus.RESOLVED) continue
+                thread.resolve(Author.AGENT)
+                store.notifyChanged(thread)
+                resolved++
+            }
+        }
+        sendJson(JsonObject().apply { addProperty("resolved", resolved) }, request, context)
+    }
+
+    /** Bulk delete (threads AND the resolved log), optionally scoped: {"file"?}. */
+    private fun handleClearAll(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val fileFilter = json.stringOrNull("file")
+        var cleared = 0
+        for (project in ProjectManager.getInstance().openProjects) {
+            if (project.isDisposed) continue
+            val store = MarginalisStore.getInstance(project)
+            if (fileFilter == null) {
+                cleared += store.clear().size
+            } else {
+                for (thread in store.all().filter { it.file == fileFilter }) {
+                    store.remove(thread.id)
+                    cleared++
+                }
+            }
+        }
+        sendJson(JsonObject().apply { addProperty("cleared", cleared) }, request, context)
     }
 
     private fun lookupThread(

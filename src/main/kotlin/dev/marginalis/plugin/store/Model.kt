@@ -5,7 +5,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * The M1 data model, handover §4. A struct rather than a boolean for `kind` —
+ * The data model, handover §4. A struct rather than a boolean for `kind` —
  * a second agent is plausible later.
  */
 enum class AuthorKind { HUMAN, AGENT }
@@ -23,20 +23,21 @@ data class Author(val kind: AuthorKind, val displayName: String) {
     }
 }
 
+/** id/createdAt/seen default for new messages, and are supplied on rehydration (M2). */
 class Message(
     val author: Author,
     val body: String,
+    val id: String = UUID.randomUUID().toString(),
+    val createdAt: Instant = Instant.now(),
+    seenByAgent: Boolean? = null,
 ) {
-    val id: String = UUID.randomUUID().toString()
-    val createdAt: Instant = Instant.now()
-
     /**
      * Read receipt (handover §3.1): exists because presence is asymmetric.
      * Agent-authored messages are born seen; human messages become seen when
      * the agent reads them via comment_list.
      */
     @Volatile
-    var seenByAgent: Boolean = author.kind == AuthorKind.AGENT
+    var seenByAgent: Boolean = seenByAgent ?: (author.kind == AuthorKind.AGENT)
 }
 
 enum class ThreadStatus { OPEN, RESOLVED, ORPHANED }
@@ -47,16 +48,16 @@ enum class ThreadStatus { OPEN, RESOLVED, ORPHANED }
  * The RangeHighlighter doubles as the live anchor (its RangeMarker side) and
  * the gutter presence. `line` is the last known good 0-based line, refreshed
  * from the marker whenever it is valid; the marker dying (deleted range) is
- * what orphans a thread (handover §3.3–3.4).
+ * what orphans a thread (handover §3.3–3.4). `anchorText` is the content
+ * fingerprint used to re-anchor across restarts (§7).
  */
 class CommentThread(
     val file: String, // project-relative path
     @Volatile var line: Int, // 0-based, last known good
-    val anchorText: String, // text of the anchor line at creation; M2 grows this into a fingerprint
+    val anchorText: String, // text of the anchor line at creation
+    val id: String = UUID.randomUUID().toString(),
+    val createdAt: Instant = Instant.now(),
 ) {
-    val id: String = UUID.randomUUID().toString()
-    val createdAt: Instant = Instant.now()
-
     private val messagesLock = Any()
     private val _messages = mutableListOf<Message>()
 
@@ -68,7 +69,7 @@ class CommentThread(
     var resolvedBy: Author? = null
         private set
 
-    /** In-memory only; dies with the Document. Persistence is M2. */
+    /** Live gutter marker; never persisted, always rebuilt (M2 re-anchoring). */
     @Volatile
     var highlighter: RangeHighlighter? = null
 
@@ -91,6 +92,12 @@ class CommentThread(
 
     fun markOrphaned() {
         status = ThreadStatus.ORPHANED
+    }
+
+    /** Rehydration only (M2): set persisted status without lifecycle semantics. */
+    fun restoreStatus(status: ThreadStatus, resolvedBy: Author?) {
+        this.status = status
+        this.resolvedBy = resolvedBy
     }
 
     /**

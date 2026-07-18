@@ -85,7 +85,11 @@ IDE is running (check: `curl -s http://127.0.0.1:63342/api/marginalis/ping`):
   consolidates the conclusion into code performs the resolve *after* editing.
   Never treat an early human Resolve as a work request — if it happens, ask.
   No-action threads: either party resolves immediately.
-- Threads are in-memory until M2: an IDE restart clears them.
+- Threads persist across restarts (M2): `.idea/marginalis.json` per project,
+  re-anchored by content on reopen; unmatchable anchors become ORPHANED.
+- Bulk ops exist on both sides (`comment_resolve_all` / `comment_clear_all`,
+  optional file scope; tool-window title actions for the human). Clearing is
+  destructive — agent-side, only on explicit human request.
 
 ## Project conventions
 

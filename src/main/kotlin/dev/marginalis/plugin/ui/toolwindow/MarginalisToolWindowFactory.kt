@@ -1,6 +1,9 @@
 package dev.marginalis.plugin.ui.toolwindow
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.UiDataProvider
@@ -10,6 +13,7 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -20,6 +24,7 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
+import dev.marginalis.plugin.store.Author
 import dev.marginalis.plugin.store.AuthorKind
 import dev.marginalis.plugin.store.CommentThread
 import dev.marginalis.plugin.store.MarginalisStore
@@ -47,6 +52,62 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
         val panel = MarginalisToolWindowPanel(project)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
         toolWindow.contentManager.addContent(content)
+        toolWindow.setTitleActions(listOf(ResolveAllAction(), ClearAllAction()))
+    }
+}
+
+/** Resolve every open/orphaned thread — the "consolidation is done" sweep. */
+private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread resolved", AllIcons.Actions.Selectall) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val project = e.project
+        e.presentation.isEnabled = project != null &&
+            MarginalisStore.getInstance(project).all().any { it.status != ThreadStatus.RESOLVED }
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val store = MarginalisStore.getInstance(project)
+        val pending = store.all().filter { it.status != ThreadStatus.RESOLVED }
+        if (pending.isEmpty()) return
+        val answer = Messages.showYesNoDialog(
+            project,
+            "Resolve all ${pending.size} open thread(s)? Their gutter markers will be removed; " +
+                "the threads remain in the Resolved log.",
+            "Resolve All Margin Threads",
+            Messages.getQuestionIcon(),
+        )
+        if (answer != Messages.YES) return
+        for (thread in pending) {
+            thread.resolve(Author.HUMAN)
+            store.notifyChanged(thread)
+        }
+    }
+}
+
+/** Delete everything, including the resolved log. Destructive; confirms first. */
+private class ClearAllAction : AnAction("Clear All", "Delete all threads, including resolved ones", AllIcons.Actions.GC) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val project = e.project
+        e.presentation.isEnabled = project != null && MarginalisStore.getInstance(project).all().isNotEmpty()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val store = MarginalisStore.getInstance(project)
+        val count = store.all().size
+        if (count == 0) return
+        val answer = Messages.showYesNoDialog(
+            project,
+            "Delete all $count margin thread(s), including the resolved log? This cannot be undone.",
+            "Clear All Margin Threads",
+            Messages.getWarningIcon(),
+        )
+        if (answer != Messages.YES) return
+        store.clear() // marker cleanup happens in the store listener (deleted-thread branch)
     }
 }
 
