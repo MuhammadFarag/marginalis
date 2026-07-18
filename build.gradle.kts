@@ -93,6 +93,8 @@ kotlin {
         // Without this, implementing a Kotlin interface generates bridge
         // overrides for every default method — the Plugin Verifier then
         // reports us "overriding" deprecated/internal APIs we never wrote.
-        freeCompilerArgs.add("-Xjvm-default=all")
+        // (-jvm-default=no-compatibility is the stable spelling of the old
+        // -Xjvm-default=all.)
+        freeCompilerArgs.add("-jvm-default=no-compatibility")
     }
 }
