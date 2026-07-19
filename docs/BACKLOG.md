@@ -60,3 +60,49 @@ GitHub issues once the token has Issues scope.
   "sent" anywhere — the message lands in a local store awaiting the agent's
   next read. "Submit" is honest. Trivial; batch with other small UI polish
   (anchor-left, native file icons) in one polish pass.
+
+## Open product questions
+
+- **What is "resolved" actually for?** (2026-07-19): a full review/idea
+  session happened without a single resolve. The concept was designed for
+  the discussing→editing transition (§3.1: resolve = outcome consolidated
+  into code, gates edits). In conversational/idea-capture use, threads are
+  answered and simply left. Either (a) that's fine — resolve only matters
+  when edits are pending, unresolved threads on untouched files are cheap;
+  or (b) the lifecycle needs a lighter terminal state ("done reading",
+  auto-archive on inactivity?). Watch real usage before mechanizing; §1.4.
+  - Real-usage data (2026-07-19, operator's separate project): resolve is
+    used exclusively by the AGENT, at the discussion→editing transition —
+    the resolver-is-the-completer etiquette makes that the natural shape,
+    since the agent performs the edits. Human-side resolve (panel button,
+    Resolve All) has gone unused. Conclusion: reading (a) confirmed; resolve
+    is an agent-side consolidation op in practice. Consider de-emphasizing
+    human-side resolve affordances rather than adding lifecycle states.
+
+- **Icon for "Add Marginalis Comment" context-menu action** (2026-07-19):
+  action shows text-only in the editor right-click menu. Give the AnAction
+  an icon (balloon, matching the gutter family) via the action registration.
+
+- **Multi-agent design note** (2026-07-19, review thread on Model.kt): with
+  N agents, seenByAgent (single bit) must become a per-participant read map;
+  then message addressing (@agent) and per-agent resolution authority.
+  Nothing to build yet — but the Author/status ADT refactor should keep the
+  door open (Agent variant carries identity).
+
+## Decided (review session 2026-07-19 — outcomes of resolved margin threads)
+
+- **Comment hygiene sweep** (approved): remove all planning-doc/§ references
+  from code comments — each becomes self-contained rationale or is deleted;
+  drop comments restating the obvious; move marginalis-handover.md to docs/
+  as historical record.
+- **AuthorKind.HUMAN → USER** (approved): rename with tolerant persistence
+  loader (accept legacy "HUMAN" in .idea/marginalis.json) + wire-format and
+  skill-doc updates.
+- **Author and ThreadStatus become ADTs** (approved, scheduled with core/
+  extraction): sealed Author { User(name); Agent(name, id?) }; sealed
+  ThreadStatus { Open; Resolved(by); Orphaned } — moves resolvedBy into the
+  state, enables agent self-identification, makes illegal states
+  unrepresentable. Done once, inside the hexagonal core/ module extraction.
+- **plugin.xml fixes applied directly** (this session): vendor email →
+  m@far.ag; description → "between you and your coding agent".
+- **Multi-agent questions**: recorded above; explicitly deferred.

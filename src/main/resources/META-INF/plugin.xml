@@ -1,9 +1,9 @@
 <idea-plugin>
     <id>dev.marginalis.plugin</id>
     <name>Marginalis</name>
-    <vendor email="muhammadfarag@gmail.com" url="https://github.com/MuhammadFarag/marginalis">Muhammad Farag</vendor>
+    <vendor email="m@far.ag" url="https://github.com/MuhammadFarag/marginalis">Muhammad Farag</vendor>
     <description><![CDATA[
-        In-editor margin notes shared between a human and an agent.
+        In-editor margin notes shared between you and your coding agent.
         Comments anchor to lines, thread, and resolve — Google Docs comments over live code.
     ]]></description>
 
