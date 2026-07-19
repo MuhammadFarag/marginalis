@@ -106,3 +106,11 @@ GitHub issues once the token has Issues scope.
 - **plugin.xml fixes applied directly** (this session): vendor email →
   m@far.ag; description → "between you and your coding agent".
 - **Multi-agent questions**: recorded above; explicitly deferred.
+
+- **Fence-interior highlighting while typing** (2026-07-19, nice-to-have):
+  the markdown composer is lexer-only, so fence delimiters color but code
+  inside fences doesn't until rendered. Real fix = custom layered
+  highlighter (markdown lexer + per-fence delegation to the language's
+  SyntaxHighlighter), ~half day of custom lexer code; daemon/injection on a
+  text field is worse. Deferred — rendered messages already show fences
+  fully highlighted, so typing-time interior color is cosmetic.
