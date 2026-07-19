@@ -136,6 +136,12 @@ private class PathTrie {
     }
 
     fun threadCount(): Int = files.values.sumOf { it.size } + dirs.values.sumOf { it.threadCount() }
+
+    /** Earliest tour stop beneath this node — lets guided trees read in tour order. */
+    fun minOrder(): Int = minOf(
+        files.values.flatten().mapNotNull { it.order }.minOrNull() ?: Int.MAX_VALUE,
+        dirs.values.minOfOrNull { it.minOrder() } ?: Int.MAX_VALUE,
+    )
 }
 
 private class MarginalisToolWindowPanel(private val project: Project) : JPanel(BorderLayout()), UiDataProvider {
@@ -210,11 +216,9 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
             val title = if (label.isEmpty()) "Guided" else "Guided $label"
             val section = DefaultMutableTreeNode(NodeData.Section(title, tourThreads.size))
             val total = tourThreads.size
-            for (thread in tourThreads.sortedWith(compareBy({ it.order }, { it.createdAt }))) {
-                val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
-                val prefix = "($shownLabel${thread.order}/$total)"
-                section.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread, tourPrefix = prefix)))
-            }
+            val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
+            val trie = PathTrie().apply { tourThreads.forEach(::insert) }
+            emitTrie(trie, section, prefixFor = { thread -> "($shownLabel${thread.order}/$total)" })
             root.add(section)
         }
     }
@@ -223,14 +227,26 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
         if (threads.isEmpty()) return
         val section = DefaultMutableTreeNode(NodeData.Section("Open", threads.size))
         val trie = PathTrie().apply { threads.forEach(::insert) }
-        emitTrie(trie, section, prefix = "")
+        emitTrie(trie, section)
         root.add(section)
     }
 
-    /** Emit the trie, compressing single-child directory chains (a/b/c → one node). */
-    private fun emitTrie(trie: PathTrie, parent: DefaultMutableTreeNode, prefix: String) {
-        for ((name, child) in trie.dirs) {
-            var display = if (prefix.isEmpty()) name else "$prefix/$name"
+    /**
+     * Emit the trie, compressing single-child directory chains (a/b/c → one
+     * node). With [prefixFor] (guided mode), directories/files sort by their
+     * earliest tour stop and threads by tour order, so the tree reads
+     * top-to-bottom in roughly walking order; otherwise alphabetical/by-line.
+     */
+    private fun emitTrie(
+        trie: PathTrie,
+        parent: DefaultMutableTreeNode,
+        prefixFor: ((CommentThread) -> String)? = null,
+    ) {
+        val dirEntries =
+            if (prefixFor != null) trie.dirs.entries.sortedBy { it.value.minOrder() }
+            else trie.dirs.entries.toList()
+        for ((name, child) in dirEntries) {
+            var display = name
             var node = child
             while (node.files.isEmpty() && node.dirs.size == 1) {
                 val (nextName, next) = node.dirs.entries.first()
@@ -239,12 +255,21 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
             }
             val dirTreeNode = DefaultMutableTreeNode(NodeData.DirNode(display, node.threadCount()))
             parent.add(dirTreeNode)
-            emitTrie(node, dirTreeNode, prefix = "")
+            emitTrie(node, dirTreeNode, prefixFor)
         }
-        for ((fileName, fileThreads) in trie.files) {
+        val fileEntries =
+            if (prefixFor != null) {
+                trie.files.entries.sortedBy { e -> e.value.mapNotNull { it.order }.minOrNull() ?: Int.MAX_VALUE }
+            } else {
+                trie.files.entries.toList()
+            }
+        for ((fileName, fileThreads) in fileEntries) {
             val fileNode = DefaultMutableTreeNode(NodeData.FileNode(fileName, fileThreads))
-            for (thread in fileThreads.sortedBy { it.line }) {
-                fileNode.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread)))
+            val ordered =
+                if (prefixFor != null) fileThreads.sortedWith(compareBy({ it.order }, { it.createdAt }))
+                else fileThreads.sortedBy { it.line }
+            for (thread in ordered) {
+                fileNode.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread, prefixFor?.invoke(thread))))
             }
             parent.add(fileNode)
         }
@@ -318,7 +343,8 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     append("${data.tourPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
                 append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                if (thread.status != ThreadStatus.OPEN || data.tourPrefix != null) {
+                if (thread.status != ThreadStatus.OPEN) {
+                    // Flat sections repeat the path; tree sections carry it in structure.
                     append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
                 val preview = thread.messages.firstOrNull()?.body ?: ""
