@@ -140,6 +140,7 @@ class MarginalisRestService : RestService() {
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
         val anchorText = json.stringOrNull("anchor_text")
         val order = json.intOrNull("order")
+        val tourLabel = json.stringOrNull("tour")
 
         val (project, vFile) = ApplicationManager.getApplication()
             .runReadAction(Computable { resolveFile(file) })
@@ -184,7 +185,7 @@ class MarginalisRestService : RestService() {
                 adjusted = true
             }
 
-            val created = CommentThread(file, line0, lineText(document, line0), order = order)
+            val created = CommentThread(file, line0, lineText(document, line0), order = order, tour = tourLabel)
             created.addMessage(Message(Author.AGENT, body))
             val markup = DocumentMarkupModel.forDocument(document, project, true)
             val highlighter = markup.addLineHighlighter(line0, HighlighterLayer.LAST, null)
@@ -369,6 +370,7 @@ class MarginalisRestService : RestService() {
                             addProperty("status", thread.status.name.lowercase())
                             addProperty("created_at", timeFormat.format(thread.createdAt))
                             thread.order?.let { addProperty("order", it) }
+                            thread.tour?.let { addProperty("tour", it) }
                             thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
                             add("messages", messagesJson)
                         },

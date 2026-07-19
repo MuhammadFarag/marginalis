@@ -60,6 +60,7 @@ object MarginalisPersistence {
         addProperty("line", thread.currentLine())
         addProperty("anchor_text", thread.anchorText)
         thread.order?.let { addProperty("order", it) }
+        thread.tour?.let { addProperty("tour", it) }
         addProperty("status", thread.status.name)
         addProperty("created_at", thread.createdAt.toString())
         thread.resolvedBy?.let { add("resolved_by", authorJson(it)) }
@@ -89,6 +90,7 @@ object MarginalisPersistence {
             id = json.get("id").asString,
             createdAt = Instant.parse(json.get("created_at").asString),
             order = json.get("order")?.takeIf { it.isJsonPrimitive }?.asInt,
+            tour = json.get("tour")?.takeIf { it.isJsonPrimitive }?.asString,
         )
         for (m in json.getAsJsonArray("messages")) {
             val msg = m.asJsonObject

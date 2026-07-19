@@ -116,7 +116,7 @@ private sealed class NodeData {
     class Section(val title: String, val count: Int) : NodeData()
     class DirNode(val name: String, val count: Int) : NodeData()
     class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
-    class ThreadNode(val thread: CommentThread, val tour: Boolean = false) : NodeData()
+    class ThreadNode(val thread: CommentThread, val tourPrefix: String? = null) : NodeData()
 }
 
 /** Whose turn is it in this thread? Claude spoke last → the human's. */
@@ -196,16 +196,27 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
     }
 
     /**
-     * The tour: agent-ordered open threads, across files, in "look here
+     * The tours: agent-ordered open threads, across files, in "look here
      * 1st, 2nd, …" sequence — the agent's answer to "where should I look?".
+     * Several tours coexist via labels; positions render compactly as
+     * (1/4), or (A1/4) once more than one tour is present. Totals are
+     * derived live, so they shrink as stops resolve.
      */
     private fun addGuidedSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
         if (threads.isEmpty()) return
-        val section = DefaultMutableTreeNode(NodeData.Section("Guided", threads.size))
-        for (thread in threads.sortedWith(compareBy({ it.order }, { it.createdAt }))) {
-            section.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread, tour = true)))
+        val tours = threads.groupBy { it.tour ?: "" }.toSortedMap()
+        val labelNeeded = tours.size > 1
+        for ((label, tourThreads) in tours) {
+            val title = if (label.isEmpty()) "Guided" else "Guided $label"
+            val section = DefaultMutableTreeNode(NodeData.Section(title, tourThreads.size))
+            val total = tourThreads.size
+            for (thread in tourThreads.sortedWith(compareBy({ it.order }, { it.createdAt }))) {
+                val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
+                val prefix = "($shownLabel${thread.order}/$total)"
+                section.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread, tourPrefix = prefix)))
+            }
+            root.add(section)
         }
-        root.add(section)
     }
 
     private fun addOpenSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
@@ -303,11 +314,11 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     thread.status == ThreadStatus.ORPHANED -> AllIcons.General.Warning
                     else -> AllIcons.General.Balloon
                 }
-                if (data.tour) {
-                    append("${thread.order}.  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                if (data.tourPrefix != null) {
+                    append("${data.tourPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
                 append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                if (thread.status != ThreadStatus.OPEN || data.tour) {
+                if (thread.status != ThreadStatus.OPEN || data.tourPrefix != null) {
                     append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
                 val preview = thread.messages.firstOrNull()?.body ?: ""

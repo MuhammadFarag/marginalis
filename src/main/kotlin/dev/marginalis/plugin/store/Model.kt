@@ -59,6 +59,8 @@ class CommentThread(
     val createdAt: Instant = Instant.now(),
     /** Agent-assigned tour position: "look here 1st, 2nd, …" — null = not part of a tour. */
     val order: Int? = null,
+    /** Tour label (e.g. "A") — lets several guided sequences coexist. Null = the unnamed tour. */
+    val tour: String? = null,
 ) {
     private val messagesLock = Any()
     private val _messages = mutableListOf<Message>()
