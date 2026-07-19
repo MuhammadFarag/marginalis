@@ -240,20 +240,10 @@ class ThreadPanel(
             panel.add(metaRow, BorderLayout.NORTH)
             return panel
         }
-        // Deliberately NOT an HTML label: css 'width:px' doesn't reliably match
-        // layout pixels (font scaling skews it), which clipped text on the
-        // right. A wrapping text area wraps at its *actual* width, always.
-        val body = JBTextArea(message.body).apply {
-            isEditable = false
-            isOpaque = false
-            lineWrap = true
-            wrapStyleWord = true
-            font = JBUI.Fonts.label()
-            border = JBUI.Borders.empty()
-            // Measure at a slightly conservative width so the computed
-            // preferred height can only overestimate, never clip the bottom.
-            setSize(panelWidth - JBUI.scale(64), Int.MAX_VALUE)
-        }
+        // Markdown-lite body: paragraphs as wrapped HTML panes, fenced code
+        // as native highlighted editor fragments. Measured at a conservative
+        // width so heights only overestimate, never clip.
+        val body = MarkdownRenderer.render(project, message.body, panelWidth - JBUI.scale(64))
         panel.add(metaRow, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)
         return panel

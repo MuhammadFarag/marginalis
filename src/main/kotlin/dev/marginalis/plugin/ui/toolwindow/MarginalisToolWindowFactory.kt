@@ -30,6 +30,7 @@ import dev.marginalis.plugin.store.AuthorKind
 import dev.marginalis.plugin.store.CommentThread
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.store.ThreadStatus
+import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ThreadInlayManager
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
@@ -347,8 +348,8 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     // Flat sections repeat the path; tree sections carry it in structure.
                     append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
-                val preview = thread.messages.firstOrNull()?.body ?: ""
-                append(StringUtil.shortenTextWithEllipsis(preview.replace('\n', ' '), 70, 0))
+                val preview = MarkdownRenderer.previewText(thread.messages.firstOrNull()?.body ?: "")
+                append(StringUtil.shortenTextWithEllipsis(preview, 70, 0))
                 if (thread.status == ThreadStatus.OPEN) {
                     append(if (awaitsHuman(thread)) "  ●" else "  ○", if (awaitsHuman(thread)) VIOLET_ATTRS else BLUE_ATTRS)
                 }

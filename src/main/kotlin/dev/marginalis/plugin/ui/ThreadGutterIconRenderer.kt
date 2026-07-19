@@ -29,7 +29,9 @@ class ThreadGutterIconRenderer(
 
     override fun getTooltipText(): String {
         val first = thread.messages.firstOrNull() ?: return "Marginalis thread"
-        val preview = StringUtil.escapeXmlEntities(StringUtil.shortenTextWithEllipsis(first.body, 120, 0))
+        val preview = StringUtil.escapeXmlEntities(
+            StringUtil.shortenTextWithEllipsis(MarkdownRenderer.previewText(first.body), 120, 0),
+        )
         val status = thread.status.name.lowercase()
         return "<html><b>${first.author.displayName}</b> · $status · ${thread.messages.size} message(s)<br/>" +
             "$preview<br/><i>Click to open thread</i></html>"

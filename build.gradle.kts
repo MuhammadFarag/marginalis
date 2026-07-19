@@ -18,6 +18,12 @@ repositories {
 }
 
 dependencies {
+    // Markdown parsing for message bodies (markdown-lite rendering scope).
+    // The platform bundles the Kotlin stdlib — don't ship a second copy.
+    implementation("org.jetbrains:markdown:0.7.7") {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    }
+
     intellijPlatform {
         // Default: compile against the oldest supported target (the honest
         // floor; CI uses this). Environments that can't reach the JetBrains
