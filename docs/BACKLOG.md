@@ -1,116 +1,77 @@
-# Marginalis — idea backlog
+# Marginalis — roadmap & backlog
 
-Captured from operator feedback during use; not yet scheduled. Move items to
-GitHub issues once the token has Issues scope.
+Captured from operator feedback during real use. Move items to GitHub issues
+once the token gains Issues scope.
 
-## Tool window
+## Shipped (2026-07-19)
 
-- **Guided ordering / numbering** (2026-07-19, during first code review via
-  Marginalis): when the agent proposes a reading or review order, the tool
-  window should be able to show that numbering so it can guide the human
-  through "where to look next". Implies threads (or files) can carry an
-  agent-assigned sequence, rendered as `1.`, `2.`, … in the tree — margin
-  threads as a *tour*, not just a pile. Probably an optional field on
-  comment_add (e.g. `order`) plus sort + prefix in the tree renderer.
+- ✅ Guided tours — `comment_add order`/`tour`, compact `(A1/4)` prefixes,
+  directory hierarchy in Guided sections, walking-order sort
+- ✅ Tool window: anchor left, native per-filetype icons
+- ✅ "Send" → "Submit"; context-menu action icon
+- ✅ Edit-before-seen — composer-based editing; read receipt = edit boundary
+- ✅ Markdown-lite rendering + fenced code as native highlighted editor
+  fragments; markdown-aware composer (structure highlighting while typing)
+- ✅ `core/` extraction — pure-Kotlin domain module, Author/ThreadStatus
+  ADTs, USER rename (legacy-tolerant codec), AnchorPolicy deduplicated,
+  22-test suite, `scripts/test-core.sh` local loop, comment-hygiene sweep,
+  handover doc → docs/
 
-- **Default anchor: left** (2026-07-19): the tool window opens on the right;
-  most file-navigation surfaces in IntelliJ live on the left, and this is a
-  navigation surface. One-word change (`anchor="left"` in plugin.xml) — but
-  decide consciously: left competes with the Project view stripe.
+## Open — features
 
-- **Native IDE file icons** (2026-07-19): the directory tree uses a generic
-  file icon (`AllIcons.FileTypes.Any_type`) instead of per-type IDE icons
-  (Python, Kotlin, XML…). Definitely possible: resolve the VirtualFile and
-  use its file-type icon (e.g. `FileTypeManager` / `IconUtil.getIcon`) —
-  directories likewise (`AllIcons.Nodes.Folder` is fine). Small change,
-  meaningful familiarity win.
+- **Agent self-identification** — model ready (`Author.Agent(name, id)`);
+  transport still stamps "Claude": accept optional `author_name`/`author_id`
+  on comment_add/comment_reply, default the display to "Agent".
+- **`navigate(file, line)` endpoint** — the last piece of the original tool
+  surface: agent moves the user's caret without leaving a thread.
+- **Session-presence indicator** — "is an agent attached right now": small,
+  persistent, honest. Requires deciding what presence means over a stateless
+  HTTP API (recent-activity window? explicit session start/end calls?).
+- **`comment_edit` (agent-side)** — symmetry with edit-before-seen.
+- **User display-name setting** — currently derived from the OS username.
+- **De-emphasize human-side resolve affordances** — real usage shows resolve
+  is an agent verb (the resolver is the completer, and the agent performs
+  the edits); the panel button and Resolve All earn their place only for
+  moot threads and bulk cleanup.
+- **Rendered heading sizes** — h1/h2 render at document scale inside margin
+  panels; likely want scaling down. (Operator thread open in sample-project.)
 
-## Thread panel / messages
+## Open — infrastructure
 
-- **Edit own unseen messages** (2026-07-19): no way to edit a comment after
-  sending, before the agent reads it. The read receipt is the natural edit
-  window: editable while `seenByAgent == false`, immutable record after.
-  Panel pencil affordance + store mutation; agent-side `comment_edit` later
-  for symmetry.
+- **JetBrains Marketplace publishing** — plugin-side wiring ~1hr (signing +
+  publishPlugin + beta channel); operator side: account, first manual upload
+  (creates the listing, ~2-business-day review), API token, four CI secrets.
+- **Hot reload** — dynamic-EP audit + clean unload pass so plugin updates
+  stop requiring an IDE restart (today: restart required, empirically).
+- **Issues migration** — grant the PAT Issues scope, move this file there.
+- **Skill trigger evals** — only if the `marginalis` skill under-triggers in
+  other sessions (skill-creator's optimization loop is ready when needed).
 
-- **Markdown rendering, markdown-lite scope** (2026-07-19): bold/italic/
-  inline code/fences/links/lists. Parse with org.jetbrains:markdown; render
-  via JBHtmlPane (NOT raw JBLabel html — see the 7a62f64 truncation lessons;
-  reuse measure-at-width). ~half day; risk = panel height measurement +
-  dark-theme styles. Tool-window previews should strip formatting.
+## Deferred with analysis
 
-- **Syntax-highlighted code fences via native editor fragments** (2026-07-19):
-  render fenced blocks as read-only EditorTextField with
-  EditorHighlighterFactory + language from the fence tag — real IDE lexer +
-  user color scheme, no Markdown-plugin/JCEF dependency. ~+half day on top
-  of markdown-lite.
+- **Fence-interior highlighting while typing** — the composer is lexer-only;
+  the real fix is a custom layered highlighter (markdown lexer delegating
+  fence regions to each language's SyntaxHighlighter), ~half a day of
+  bespoke lexer code; daemon/injection on a text field is worse. Rendered
+  messages already show fences fully highlighted, so typing-time interior
+  color is cosmetic.
+- **Project-view tree badges** — ranked least useful of the visibility trio
+  (tool window and tab glyphs cover the need).
 
-## Identity & protocol
+## Future era
 
-- **Agent self-identification** (2026-07-19): "Claude" is hardcoded as the
-  agent displayName (Model.kt), but any agent can drive the protocol. Default
-  the agent author to "Agent"; let posts carry identity — optional
-  `author_name` (maybe `author_id`) on comment_add/comment_reply, echoed in
-  comment_list and rendered in panels/attribution. Pairs with making the
-  human name configurable (currently derived from the OS username).
+- **Multi-agent** — `seenByAgent` (single bit) must become a per-participant
+  read map; then message addressing (@agent) and per-agent resolution
+  authority. The Author ADT keeps the door open; nothing to build until a
+  second agent is real.
 
-## Thread panel / messages (cont.)
+## Decision log
 
-- **"Send" → "Submit"** (2026-07-19, operator wording note): nothing is
-  "sent" anywhere — the message lands in a local store awaiting the agent's
-  next read. "Submit" is honest. Trivial; batch with other small UI polish
-  (anchor-left, native file icons) in one polish pass.
-
-## Open product questions
-
-- **What is "resolved" actually for?** (2026-07-19): a full review/idea
-  session happened without a single resolve. The concept was designed for
-  the discussing→editing transition (§3.1: resolve = outcome consolidated
-  into code, gates edits). In conversational/idea-capture use, threads are
-  answered and simply left. Either (a) that's fine — resolve only matters
-  when edits are pending, unresolved threads on untouched files are cheap;
-  or (b) the lifecycle needs a lighter terminal state ("done reading",
-  auto-archive on inactivity?). Watch real usage before mechanizing; §1.4.
-  - Real-usage data (2026-07-19, operator's separate project): resolve is
-    used exclusively by the AGENT, at the discussion→editing transition —
-    the resolver-is-the-completer etiquette makes that the natural shape,
-    since the agent performs the edits. Human-side resolve (panel button,
-    Resolve All) has gone unused. Conclusion: reading (a) confirmed; resolve
-    is an agent-side consolidation op in practice. Consider de-emphasizing
-    human-side resolve affordances rather than adding lifecycle states.
-
-- **Icon for "Add Marginalis Comment" context-menu action** (2026-07-19):
-  action shows text-only in the editor right-click menu. Give the AnAction
-  an icon (balloon, matching the gutter family) via the action registration.
-
-- **Multi-agent design note** (2026-07-19, review thread on Model.kt): with
-  N agents, seenByAgent (single bit) must become a per-participant read map;
-  then message addressing (@agent) and per-agent resolution authority.
-  Nothing to build yet — but the Author/status ADT refactor should keep the
-  door open (Agent variant carries identity).
-
-## Decided (review session 2026-07-19 — outcomes of resolved margin threads)
-
-- **Comment hygiene sweep** (approved): remove all planning-doc/§ references
-  from code comments — each becomes self-contained rationale or is deleted;
-  drop comments restating the obvious; move marginalis-handover.md to docs/
-  as historical record.
-- **AuthorKind.HUMAN → USER** (approved): rename with tolerant persistence
-  loader (accept legacy "HUMAN" in .idea/marginalis.json) + wire-format and
-  skill-doc updates.
-- **Author and ThreadStatus become ADTs** (approved, scheduled with core/
-  extraction): sealed Author { User(name); Agent(name, id?) }; sealed
-  ThreadStatus { Open; Resolved(by); Orphaned } — moves resolvedBy into the
-  state, enables agent self-identification, makes illegal states
-  unrepresentable. Done once, inside the hexagonal core/ module extraction.
-- **plugin.xml fixes applied directly** (this session): vendor email →
-  m@far.ag; description → "between you and your coding agent".
-- **Multi-agent questions**: recorded above; explicitly deferred.
-
-- **Fence-interior highlighting while typing** (2026-07-19, nice-to-have):
-  the markdown composer is lexer-only, so fence delimiters color but code
-  inside fences doesn't until rendered. Real fix = custom layered
-  highlighter (markdown lexer + per-fence delegation to the language's
-  SyntaxHighlighter), ~half day of custom lexer code; daemon/injection on a
-  text field is worse. Deferred — rendered messages already show fences
-  fully highlighted, so typing-time interior color is cosmetic.
+- **Resolve is an agent verb** (2026-07-19, real-usage finding): the human
+  never resolves; the agent resolves at the discussion→editing transition,
+  as the resolver-is-the-completer etiquette implies. No new lifecycle
+  states needed.
+- **Review outcomes 2026-07-19** (via resolved margin threads, all landed in
+  `65db25b`): comment-hygiene sweep; AuthorKind.HUMAN → USER with tolerant
+  loader; Author + ThreadStatus as sealed ADTs; vendor email → m@far.ag;
+  description → "between you and your coding agent".
