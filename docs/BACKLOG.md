@@ -44,3 +44,19 @@ GitHub issues once the token has Issues scope.
   EditorHighlighterFactory + language from the fence tag — real IDE lexer +
   user color scheme, no Markdown-plugin/JCEF dependency. ~+half day on top
   of markdown-lite.
+
+## Identity & protocol
+
+- **Agent self-identification** (2026-07-19): "Claude" is hardcoded as the
+  agent displayName (Model.kt), but any agent can drive the protocol. Default
+  the agent author to "Agent"; let posts carry identity — optional
+  `author_name` (maybe `author_id`) on comment_add/comment_reply, echoed in
+  comment_list and rendered in panels/attribution. Pairs with making the
+  human name configurable (currently derived from the OS username).
+
+## Thread panel / messages (cont.)
+
+- **"Send" → "Submit"** (2026-07-19, operator wording note): nothing is
+  "sent" anywhere — the message lands in a local store awaiting the agent's
+  next read. "Submit" is honest. Trivial; batch with other small UI polish
+  (anchor-left, native file icons) in one polish pass.
