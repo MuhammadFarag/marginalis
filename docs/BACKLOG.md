@@ -24,3 +24,23 @@ GitHub issues once the token has Issues scope.
   use its file-type icon (e.g. `FileTypeManager` / `IconUtil.getIcon`) —
   directories likewise (`AllIcons.Nodes.Folder` is fine). Small change,
   meaningful familiarity win.
+
+## Thread panel / messages
+
+- **Edit own unseen messages** (2026-07-19): no way to edit a comment after
+  sending, before the agent reads it. The read receipt is the natural edit
+  window: editable while `seenByAgent == false`, immutable record after.
+  Panel pencil affordance + store mutation; agent-side `comment_edit` later
+  for symmetry.
+
+- **Markdown rendering, markdown-lite scope** (2026-07-19): bold/italic/
+  inline code/fences/links/lists. Parse with org.jetbrains:markdown; render
+  via JBHtmlPane (NOT raw JBLabel html — see the 7a62f64 truncation lessons;
+  reuse measure-at-width). ~half day; risk = panel height measurement +
+  dark-theme styles. Tool-window previews should strip formatting.
+
+- **Syntax-highlighted code fences via native editor fragments** (2026-07-19):
+  render fenced blocks as read-only EditorTextField with
+  EditorHighlighterFactory + language from the fence tag — real IDE lexer +
+  user color scheme, no Markdown-plugin/JCEF dependency. ~+half day on top
+  of markdown-lite.
