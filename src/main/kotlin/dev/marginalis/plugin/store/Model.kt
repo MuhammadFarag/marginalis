@@ -57,6 +57,8 @@ class CommentThread(
     val anchorText: String, // text of the anchor line at creation
     val id: String = UUID.randomUUID().toString(),
     val createdAt: Instant = Instant.now(),
+    /** Agent-assigned tour position: "look here 1st, 2nd, …" — null = not part of a tour. */
+    val order: Int? = null,
 ) {
     private val messagesLock = Any()
     private val _messages = mutableListOf<Message>()

@@ -116,7 +116,7 @@ private sealed class NodeData {
     class Section(val title: String, val count: Int) : NodeData()
     class DirNode(val name: String, val count: Int) : NodeData()
     class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
-    class ThreadNode(val thread: CommentThread) : NodeData()
+    class ThreadNode(val thread: CommentThread, val tour: Boolean = false) : NodeData()
 }
 
 /** Whose turn is it in this thread? Claude spoke last → the human's. */
@@ -182,6 +182,7 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
         threads.forEach { it.currentLine() } // refresh live lines + orphan status
 
         val root = DefaultMutableTreeNode()
+        addGuidedSection(root, threads.filter { it.status == ThreadStatus.OPEN && it.order != null })
         addOpenSection(root, threads.filter { it.status == ThreadStatus.OPEN })
         addFlatSection(root, "Orphaned", threads.filter { it.status == ThreadStatus.ORPHANED })
         addFlatSection(root, "Resolved", threads.filter { it.status == ThreadStatus.RESOLVED })
@@ -192,6 +193,19 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
             val section = root.getChildAt(i) as DefaultMutableTreeNode
             if ((section.userObject as NodeData.Section).title != "Resolved") expandRecursively(section)
         }
+    }
+
+    /**
+     * The tour: agent-ordered open threads, across files, in "look here
+     * 1st, 2nd, …" sequence — the agent's answer to "where should I look?".
+     */
+    private fun addGuidedSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
+        if (threads.isEmpty()) return
+        val section = DefaultMutableTreeNode(NodeData.Section("Guided", threads.size))
+        for (thread in threads.sortedWith(compareBy({ it.order }, { it.createdAt }))) {
+            section.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread, tour = true)))
+        }
+        root.add(section)
     }
 
     private fun addOpenSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
@@ -289,8 +303,11 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     thread.status == ThreadStatus.ORPHANED -> AllIcons.General.Warning
                     else -> AllIcons.General.Balloon
                 }
+                if (data.tour) {
+                    append("${thread.order}.  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                }
                 append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                if (thread.status != ThreadStatus.OPEN) {
+                if (thread.status != ThreadStatus.OPEN || data.tour) {
                     append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
                 val preview = thread.messages.firstOrNull()?.body ?: ""
