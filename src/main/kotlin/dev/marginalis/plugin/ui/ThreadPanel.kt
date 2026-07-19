@@ -2,6 +2,7 @@ package dev.marginalis.plugin.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -42,7 +43,9 @@ class ThreadPanel(
     private val statusLabel = JBLabel()
     private val resolveButton = JButton()
     private val sendButton = JButton()
+    private val cancelEditButton = JButton("Cancel")
     private val replyArea = JBTextArea(3, 40)
+    private var editingMessageId: String? = null
 
     init {
         border = JBUI.Borders.compound(
@@ -121,14 +124,40 @@ class ThreadPanel(
         })
         sendButton.font = JBUI.Fonts.smallFont()
         sendButton.addActionListener { sendReply() }
+        cancelEditButton.font = JBUI.Fonts.smallFont()
+        cancelEditButton.addActionListener {
+            editingMessageId = null
+            replyArea.text = ""
+            refresh()
+        }
+        val buttons = JPanel().apply {
+            isOpaque = false
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(sendButton)
+            add(cancelEditButton)
+        }
         row.add(JBScrollPane(replyArea), BorderLayout.CENTER)
-        row.add(sendButton, BorderLayout.EAST)
+        row.add(buttons, BorderLayout.EAST)
         return row
     }
 
     private fun sendReply() {
         val body = replyArea.text.trim()
         if (body.isEmpty()) return
+
+        val editing = editingMessageId?.let { id -> thread.messages.find { it.id == id } }
+        if (editing != null) {
+            editingMessageId = null
+            // The window may have closed mid-edit: if the agent read the
+            // original in the meantime, it is record now — don't rewrite it.
+            if (!editing.seenByAgent) {
+                editing.body = body
+            }
+            replyArea.text = ""
+            MarginalisStore.getInstance(project).notifyChanged(thread)
+            return
+        }
+
         ensureStored() // draft threads materialize on first send
         thread.addMessage(Message(Author.HUMAN, body))
         replyArea.text = ""
@@ -153,8 +182,14 @@ class ThreadPanel(
 
         // The affordance follows state — and "Submit" over "Send": nothing is
         // transmitted anywhere, the message lands in the local store awaiting
-        // the agent's next read.
-        sendButton.text = if (thread.messages.isEmpty()) "Submit" else "Reply"
+        // the agent's next read. While editing, the composer becomes the
+        // editor: Save + Cancel.
+        sendButton.text = when {
+            editingMessageId != null -> "Save"
+            thread.messages.isEmpty() -> "Submit"
+            else -> "Reply"
+        }
+        cancelEditButton.isVisible = editingMessageId != null
         replyArea.emptyText.text =
             if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to submit)" else "Reply… (⌘⏎ to submit)"
 
@@ -178,6 +213,33 @@ class ThreadPanel(
             font = JBUI.Fonts.smallFont().asBold()
             foreground = authorColor
         }
+        val metaRow = JPanel(BorderLayout()).apply { isOpaque = false }
+        metaRow.add(meta, BorderLayout.WEST)
+
+        // The read receipt is the edit window: your message is revisable
+        // until the agent reads it, immutable record after. Editing happens
+        // in the same composer the message was written in.
+        if (message.author.kind == AuthorKind.HUMAN && !message.seenByAgent && editingMessageId == null) {
+            val editLink = ActionLink("Edit") {
+                editingMessageId = message.id
+                replyArea.text = message.body
+                refresh()
+                focusReply()
+            }
+            editLink.font = JBUI.Fonts.smallFont()
+            metaRow.add(editLink, BorderLayout.EAST)
+        } else if (editingMessageId == message.id) {
+            metaRow.add(
+                JBLabel("editing below ↓").apply {
+                    font = JBUI.Fonts.smallFont()
+                    foreground = UIUtil.getContextHelpForeground()
+                },
+                BorderLayout.EAST,
+            )
+            // The text has MOVED to the composer — don't show it twice.
+            panel.add(metaRow, BorderLayout.NORTH)
+            return panel
+        }
         // Deliberately NOT an HTML label: css 'width:px' doesn't reliably match
         // layout pixels (font scaling skews it), which clipped text on the
         // right. A wrapping text area wraps at its *actual* width, always.
@@ -192,8 +254,9 @@ class ThreadPanel(
             // preferred height can only overestimate, never clip the bottom.
             setSize(panelWidth - JBUI.scale(64), Int.MAX_VALUE)
         }
-        panel.add(meta, BorderLayout.NORTH)
+        panel.add(metaRow, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)
         return panel
     }
+
 }

@@ -26,11 +26,18 @@ data class Author(val kind: AuthorKind, val displayName: String) {
 /** id/createdAt/seen default for new messages, and are supplied on rehydration (M2). */
 class Message(
     val author: Author,
-    val body: String,
+    body: String,
     val id: String = UUID.randomUUID().toString(),
     val createdAt: Instant = Instant.now(),
     seenByAgent: Boolean? = null,
 ) {
+    /**
+     * Mutable only within the edit window: a human message may be revised
+     * until the agent reads it (the read receipt doubles as the boundary
+     * between "still mine" and "conversational record").
+     */
+    @Volatile
+    var body: String = body
     /**
      * Read receipt (handover §3.1): exists because presence is asymmetric.
      * Agent-authored messages are born seen; human messages become seen when
