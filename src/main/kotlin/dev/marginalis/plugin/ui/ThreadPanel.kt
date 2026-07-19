@@ -11,12 +11,12 @@ import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import dev.marginalis.plugin.store.Author
-import dev.marginalis.plugin.store.AuthorKind
-import dev.marginalis.plugin.store.CommentThread
+import dev.marginalis.core.Author
+import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Message
+import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
-import dev.marginalis.plugin.store.Message
-import dev.marginalis.plugin.store.ThreadStatus
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.event.KeyAdapter
@@ -30,9 +30,9 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * Expanded state of a thread (handover §8): messages with author attribution,
- * an inline reply field — the human's entire outbound channel, one click and
- * one keystroke away — and a resolve button on the header.
+ * Expanded state of a thread: messages with author attribution, an inline
+ * reply field — the user's entire outbound channel, one click and one
+ * keystroke away — and a resolve button on the header.
  */
 class ThreadPanel(
     private val project: Project,
@@ -106,8 +106,8 @@ class ThreadPanel(
 
         resolveButton.font = JBUI.Fonts.smallFont()
         resolveButton.addActionListener {
-            if (thread.status == ThreadStatus.OPEN) thread.resolve(Author.HUMAN) else thread.reopen()
-            MarginalisStore.getInstance(project).notifyChanged(thread)
+            if (thread.status is ThreadStatus.Open) thread.resolve(Authors.user) else thread.reopen()
+            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         }
         val closeButton = JButton("Close").apply {
             font = JBUI.Fonts.smallFont()
@@ -169,14 +169,14 @@ class ThreadPanel(
                 editing.body = body
             }
             replyArea.text = ""
-            MarginalisStore.getInstance(project).notifyChanged(thread)
+            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
             return
         }
 
         ensureStored() // draft threads materialize on first send
-        thread.addMessage(Message(Author.HUMAN, body))
+        thread.addMessage(Message(Authors.user, body))
         replyArea.text = ""
-        MarginalisStore.getInstance(project).notifyChanged(thread)
+        MarginalisStore.getInstance(project).threads.notifyChanged(thread)
     }
 
     fun focusReply() {
@@ -185,14 +185,14 @@ class ThreadPanel(
 
     /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
-        val isDraft = MarginalisStore.getInstance(project).byId(thread.id) == null
+        val isDraft = MarginalisStore.getInstance(project).threads.byId(thread.id) == null
         statusLabel.text = when {
             isDraft -> "new comment — unsent"
-            thread.status == ThreadStatus.OPEN -> "open"
-            thread.status == ThreadStatus.RESOLVED -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
+            thread.status is ThreadStatus.Open -> "open"
+            thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
             else -> "orphaned (anchor deleted)"
         }
-        resolveButton.text = if (thread.status == ThreadStatus.OPEN) "Resolve" else "Reopen"
+        resolveButton.text = if (thread.status is ThreadStatus.Open) "Resolve" else "Reopen"
         resolveButton.isVisible = !isDraft // nothing to resolve before the first send
 
         // The affordance follows state — and "Submit" over "Send": nothing is
@@ -221,10 +221,9 @@ class ThreadPanel(
 
     private fun messageComponent(message: Message, timeFormat: DateTimeFormatter): JComponent {
         val panel = JPanel(BorderLayout()).apply { isOpaque = false }
-        val authorColor = when (message.author.kind) {
-            AuthorKind.AGENT -> JBColor(0x9C27B0, 0xCE93D8) // agent: purple
-            AuthorKind.HUMAN -> JBColor(0x1565C0, 0x90CAF9) // human: blue
-        }
+        val authorColor =
+            if (message.author is Author.Agent) JBColor(0x9C27B0, 0xCE93D8) // agent: purple
+            else JBColor(0x1565C0, 0x90CAF9) // user: blue
         val meta = JBLabel("${message.author.displayName} · ${timeFormat.format(message.createdAt)}").apply {
             font = JBUI.Fonts.smallFont().asBold()
             foreground = authorColor
@@ -235,7 +234,7 @@ class ThreadPanel(
         // The read receipt is the edit window: your message is revisable
         // until the agent reads it, immutable record after. Editing happens
         // in the same composer the message was written in.
-        if (message.author.kind == AuthorKind.HUMAN && !message.seenByAgent && editingMessageId == null) {
+        if (message.author is Author.User && !message.seenByAgent && editingMessageId == null) {
             val editLink = ActionLink("Edit") {
                 editingMessageId = message.id
                 replyArea.text = message.body

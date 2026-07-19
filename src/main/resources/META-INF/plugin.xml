@@ -21,11 +21,11 @@
     </actions>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Transport: Option B (built-in HTTP server, handover §6). -->
+        <!-- Agent transport: JSON endpoints on the IDE's built-in HTTP server. -->
         <httpRequestHandler implementation="dev.marginalis.plugin.transport.MarginalisRestService"/>
         <!-- Keeps gutter icons in sync with thread status/unread changes. -->
         <postStartupActivity implementation="dev.marginalis.plugin.MarginalisStartup"/>
-        <!-- Cross-file visibility: all threads grouped by file (handover §8). -->
+        <!-- Cross-file visibility: all threads, grouped by file. -->
         <!-- Left: this is a navigation surface, and navigation lives on the left. -->
         <toolWindow id="Marginalis" anchor="left"
                     icon="AllIcons.Toolwindows.ToolWindowMessages"

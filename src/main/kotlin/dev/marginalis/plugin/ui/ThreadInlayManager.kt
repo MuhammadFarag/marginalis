@@ -11,7 +11,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.util.ui.JBUI
-import dev.marginalis.plugin.store.CommentThread
+import dev.marginalis.core.CommentThread
 import dev.marginalis.plugin.store.MarginalisStore
 
 /**
@@ -47,12 +47,12 @@ object ThreadInlayManager {
     fun openDraft(project: Project, editor: Editor, thread: CommentThread) {
         openPanel(project, editor, thread) {
             val store = MarginalisStore.getInstance(project)
-            if (store.byId(thread.id) == null) {
+            if (store.threads.byId(thread.id) == null) {
                 val markup = DocumentMarkupModel.forDocument(editor.document, project, true)
                 val highlighter = markup.addLineHighlighter(thread.line, HighlighterLayer.LAST, null)
                 highlighter.gutterIconRenderer = ThreadGutterIconRenderer(project, thread)
-                thread.highlighter = highlighter
-                store.add(thread)
+                store.setMarker(thread, highlighter)
+                store.threads.add(thread)
             }
         }
     }
@@ -71,7 +71,8 @@ object ThreadInlayManager {
         val panelWidth = (visibleWidth - JBUI.scale(120))
             .coerceIn(JBUI.scale(360), JBUI.scale(800))
         val panel = ThreadPanel(project, thread, panelWidth, ensureStored) { close(editor, thread.id) }
-        val line = thread.currentLine().coerceAtMost(editor.document.lineCount - 1)
+        val line = MarginalisStore.getInstance(project).currentLine(thread)
+            .coerceAtMost(editor.document.lineCount - 1)
         val offset = editor.document.getLineEndOffset(line.coerceAtLeast(0))
         val inlay = EditorEmbeddedComponentManager.getInstance().addComponent(
             editor as EditorEx,
@@ -80,7 +81,7 @@ object ThreadInlayManager {
                 EditorEmbeddedComponentManager.ResizePolicy.none(),
                 null,
                 true, // relatesToPrecedingText
-                false, // showAbove = false -> below the anchor line (handover §8)
+                false, // showAbove = false -> the panel unfolds below the anchor line
                 0,
                 offset,
             ),
@@ -102,7 +103,7 @@ object ThreadInlayManager {
     private fun installStoreListener(project: Project, editor: Editor) {
         if (editor.getUserData(LISTENER_INSTALLED) == true) return
         editor.putUserData(LISTENER_INSTALLED, true)
-        MarginalisStore.getInstance(project).addListener { thread ->
+        MarginalisStore.getInstance(project).threads.addListener { thread ->
             ApplicationManager.getApplication().invokeLater {
                 if (editor.isDisposed) return@invokeLater
                 editor.getUserData(OPEN_INLAYS)?.get(thread.id)?.second?.refresh()

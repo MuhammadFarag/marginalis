@@ -25,11 +25,10 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
-import dev.marginalis.plugin.store.Author
-import dev.marginalis.plugin.store.AuthorKind
-import dev.marginalis.plugin.store.CommentThread
+import dev.marginalis.core.CommentThread
+import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
-import dev.marginalis.plugin.store.ThreadStatus
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ThreadInlayManager
 import java.awt.BorderLayout
@@ -44,10 +43,10 @@ import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
 
 /**
- * The cross-file answer to "which files have notes?" (handover §8): every
- * thread in the project — Open as a directory tree (expanded), Orphaned, and
- * Resolved (folded; doubles as the decision log, §10). Double-click or F4
- * (Jump to Source) navigates to the anchor line and opens the thread panel.
+ * The cross-file answer to "which files have notes?": every thread in the
+ * project — Open as a directory tree (expanded), Orphaned, and Resolved
+ * (folded; it doubles as the decision log). Double-click or F4 (Jump to
+ * Source) navigates to the anchor line and opens the thread panel.
  */
 class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -65,13 +64,13 @@ private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread
     override fun update(e: AnActionEvent) {
         val project = e.project
         e.presentation.isEnabled = project != null &&
-            MarginalisStore.getInstance(project).all().any { it.status != ThreadStatus.RESOLVED }
+            MarginalisStore.getInstance(project).threads.all().any { it.status !is ThreadStatus.Resolved }
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val store = MarginalisStore.getInstance(project)
-        val pending = store.all().filter { it.status != ThreadStatus.RESOLVED }
+        val pending = store.threads.all().filter { it.status !is ThreadStatus.Resolved }
         if (pending.isEmpty()) return
         val answer = Messages.showYesNoDialog(
             project,
@@ -82,8 +81,8 @@ private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread
         )
         if (answer != Messages.YES) return
         for (thread in pending) {
-            thread.resolve(Author.HUMAN)
-            store.notifyChanged(thread)
+            thread.resolve(Authors.user)
+            store.threads.notifyChanged(thread)
         }
     }
 }
@@ -94,13 +93,13 @@ private class ClearAllAction : AnAction("Clear All", "Delete all threads, includ
 
     override fun update(e: AnActionEvent) {
         val project = e.project
-        e.presentation.isEnabled = project != null && MarginalisStore.getInstance(project).all().isNotEmpty()
+        e.presentation.isEnabled = project != null && MarginalisStore.getInstance(project).threads.all().isNotEmpty()
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val store = MarginalisStore.getInstance(project)
-        val count = store.all().size
+        val count = store.threads.all().size
         if (count == 0) return
         val answer = Messages.showYesNoDialog(
             project,
@@ -109,7 +108,7 @@ private class ClearAllAction : AnAction("Clear All", "Delete all threads, includ
             Messages.getWarningIcon(),
         )
         if (answer != Messages.YES) return
-        store.clear() // marker cleanup happens in the store listener (deleted-thread branch)
+        store.threads.clear() // marker cleanup happens in the store listener (deleted-thread branch)
     }
 }
 
@@ -120,9 +119,7 @@ private sealed class NodeData {
     class ThreadNode(val thread: CommentThread, val tourPrefix: String? = null) : NodeData()
 }
 
-/** Whose turn is it in this thread? Claude spoke last → the human's. */
-private fun awaitsHuman(thread: CommentThread): Boolean =
-    thread.messages.lastOrNull()?.author?.kind == AuthorKind.AGENT
+
 
 /** Path trie for the Open section's directory tree. */
 private class PathTrie {
@@ -161,7 +158,7 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
         })
         add(JBScrollPane(tree), BorderLayout.CENTER)
 
-        MarginalisStore.getInstance(project).addListener {
+        MarginalisStore.getInstance(project).threads.addListener {
             ApplicationManager.getApplication().invokeLater {
                 if (!project.isDisposed) rebuild()
             }
@@ -185,14 +182,15 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
     }
 
     private fun rebuild() {
-        val threads = MarginalisStore.getInstance(project).all()
-        threads.forEach { it.currentLine() } // refresh live lines + orphan status
+        val store = MarginalisStore.getInstance(project)
+        val threads = store.threads.all()
+        store.syncLines() // refresh live lines + orphan status from markers
 
         val root = DefaultMutableTreeNode()
-        addGuidedSection(root, threads.filter { it.status == ThreadStatus.OPEN && it.order != null })
-        addOpenSection(root, threads.filter { it.status == ThreadStatus.OPEN })
-        addFlatSection(root, "Orphaned", threads.filter { it.status == ThreadStatus.ORPHANED })
-        addFlatSection(root, "Resolved", threads.filter { it.status == ThreadStatus.RESOLVED })
+        addGuidedSection(root, threads.filter { it.status is ThreadStatus.Open && it.order != null })
+        addOpenSection(root, threads.filter { it.status is ThreadStatus.Open })
+        addFlatSection(root, "Orphaned", threads.filter { it.status is ThreadStatus.Orphaned })
+        addFlatSection(root, "Resolved", threads.filter { it.status is ThreadStatus.Resolved })
 
         tree.model = DefaultTreeModel(root)
         // Everything expanded by default except the Resolved log.
@@ -295,7 +293,7 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
     private fun navigateTo(thread: CommentThread) {
         val base = project.guessProjectDir() ?: return
         val vFile = base.findFileByRelativePath(thread.file) ?: return
-        OpenFileDescriptor(project, vFile, thread.currentLine(), 0).navigate(true)
+        OpenFileDescriptor(project, vFile, MarginalisStore.getInstance(project).currentLine(thread), 0).navigate(true)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
         ThreadInlayManager.open(project, editor, thread)
     }
@@ -328,7 +326,7 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 icon = FileTypeManager.getInstance().getFileTypeByFileName(data.name).icon
                     ?: AllIcons.FileTypes.Any_type
                 append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                val needsYou = data.threads.count { awaitsHuman(it) }
+                val needsYou = data.threads.count { it.awaitsUser() }
                 val onClaude = data.threads.size - needsYou
                 if (needsYou > 0) append("  ●$needsYou", VIOLET_ATTRS)
                 if (onClaude > 0) append("  ○$onClaude", BLUE_ATTRS)
@@ -336,22 +334,22 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
             is NodeData.ThreadNode -> {
                 val thread = data.thread
                 icon = when {
-                    thread.status == ThreadStatus.RESOLVED -> AllIcons.General.GreenCheckmark
-                    thread.status == ThreadStatus.ORPHANED -> AllIcons.General.Warning
+                    thread.status is ThreadStatus.Resolved -> AllIcons.General.GreenCheckmark
+                    thread.status is ThreadStatus.Orphaned -> AllIcons.General.Warning
                     else -> AllIcons.General.Balloon
                 }
                 if (data.tourPrefix != null) {
                     append("${data.tourPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
                 append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                if (thread.status != ThreadStatus.OPEN) {
+                if (thread.status !is ThreadStatus.Open) {
                     // Flat sections repeat the path; tree sections carry it in structure.
                     append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
                 val preview = MarkdownRenderer.previewText(thread.messages.firstOrNull()?.body ?: "")
                 append(StringUtil.shortenTextWithEllipsis(preview, 70, 0))
-                if (thread.status == ThreadStatus.OPEN) {
-                    append(if (awaitsHuman(thread)) "  ●" else "  ○", if (awaitsHuman(thread)) VIOLET_ATTRS else BLUE_ATTRS)
+                if (thread.status is ThreadStatus.Open) {
+                    append(if (thread.awaitsUser()) "  ●" else "  ○", if (thread.awaitsUser()) VIOLET_ATTRS else BLUE_ATTRS)
                 }
             }
             else -> {}

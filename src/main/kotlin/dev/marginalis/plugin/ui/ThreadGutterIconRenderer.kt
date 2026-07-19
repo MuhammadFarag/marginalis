@@ -7,13 +7,13 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
-import dev.marginalis.plugin.store.CommentThread
-import dev.marginalis.plugin.store.ThreadStatus
+import dev.marginalis.core.CommentThread
+import dev.marginalis.core.ThreadStatus
 import javax.swing.Icon
 
 /**
- * Collapsed state of a thread (handover §8): one gutter icon on the anchor
- * line, distinct per status, click to expand the inlay.
+ * Collapsed state of a thread: one gutter icon on the anchor line, distinct
+ * per status, click to expand the inlay.
  */
 class ThreadGutterIconRenderer(
     private val project: Project,
@@ -21,8 +21,8 @@ class ThreadGutterIconRenderer(
 ) : GutterIconRenderer() {
 
     override fun getIcon(): Icon = when {
-        thread.status == ThreadStatus.RESOLVED -> AllIcons.General.GreenCheckmark
-        thread.status == ThreadStatus.ORPHANED -> AllIcons.General.Warning
+        thread.status is ThreadStatus.Resolved -> AllIcons.General.GreenCheckmark
+        thread.status is ThreadStatus.Orphaned -> AllIcons.General.Warning
         thread.unreadCount() > 0 -> AllIcons.General.BalloonInformation
         else -> AllIcons.General.Balloon
     }
@@ -32,7 +32,7 @@ class ThreadGutterIconRenderer(
         val preview = StringUtil.escapeXmlEntities(
             StringUtil.shortenTextWithEllipsis(MarkdownRenderer.previewText(first.body), 120, 0),
         )
-        val status = thread.status.name.lowercase()
+        val status = thread.status.kind.name.lowercase()
         return "<html><b>${first.author.displayName}</b> · $status · ${thread.messages.size} message(s)<br/>" +
             "$preview<br/><i>Click to open thread</i></html>"
     }
@@ -49,7 +49,7 @@ class ThreadGutterIconRenderer(
     override fun equals(other: Any?): Boolean =
         other is ThreadGutterIconRenderer &&
             other.thread.id == thread.id &&
-            other.thread.status == thread.status &&
+            other.thread.status.kind == thread.status.kind &&
             other.thread.unreadCount() == thread.unreadCount()
 
     override fun hashCode(): Int = thread.id.hashCode()

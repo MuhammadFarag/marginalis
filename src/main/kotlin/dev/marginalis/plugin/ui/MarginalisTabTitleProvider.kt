@@ -5,9 +5,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
-import dev.marginalis.plugin.store.AuthorKind
+import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisStore
-import dev.marginalis.plugin.store.ThreadStatus
 
 /**
  * Tab indicator for files with open margin threads. A glyph, not a color:
@@ -25,9 +24,10 @@ class MarginalisTabTitleProvider : EditorTabTitleProvider {
     override fun getEditorTabTitle(project: Project, file: VirtualFile): String? {
         val base = project.guessProjectDir() ?: return null
         val rel = VfsUtilCore.getRelativePath(file, base) ?: return null
-        val open = MarginalisStore.getInstance(project).query(file = rel, status = ThreadStatus.OPEN)
+        val open = MarginalisStore.getInstance(project).threads
+            .query(file = rel, status = ThreadStatus.Kind.OPEN)
         if (open.isEmpty()) return null
-        val needsHuman = open.any { it.messages.lastOrNull()?.author?.kind == AuthorKind.AGENT }
-        return "${file.name} ${if (needsHuman) "●" else "○"}"
+        val needsUser = open.any { it.awaitsUser() }
+        return "${file.name} ${if (needsUser) "●" else "○"}"
     }
 }

@@ -1,7 +1,7 @@
 # Marginalis
 
 In-editor agent↔human comment threads for JetBrains IDEs. Design brief:
-[marginalis-handover.md](marginalis-handover.md) · Sandbox notes:
+[docs/marginalis-handover.md](docs/marginalis-handover.md) · Sandbox notes:
 [tenant-environment.md](tenant-environment.md)
 
 **Status: M0** — one tool, `comment_add`, over the IDE's built-in HTTP server.

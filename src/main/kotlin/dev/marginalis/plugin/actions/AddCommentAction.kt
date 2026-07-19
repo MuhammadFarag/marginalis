@@ -8,15 +8,15 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VfsUtilCore
-import dev.marginalis.plugin.store.CommentThread
+import dev.marginalis.core.CommentThread
 import dev.marginalis.plugin.ui.ThreadInlayManager
 
 /**
- * The human's pen: start a margin thread on the caret line. Opens a draft
+ * The user's pen: start a margin thread on the caret line. Opens a draft
  * panel; the thread only materializes (gutter icon, store, agent visibility)
  * when the first message is sent. The message is born unseen, so the agent
- * discovers it via comment_list(unread_only=true) at its next turn — the
- * "leaving a note" half of handover §3.1.
+ * discovers it via comment_list(unread_only=true) at its next turn — outside
+ * a live discussion you are leaving a note, not sending a message.
  */
 class AddCommentAction : AnAction() {
 

@@ -1,7 +1,7 @@
 # Marginalis — agent notes
 
 JetBrains plugin: in-editor agent↔human comment threads. Read
-`marginalis-handover.md` (design brief) and `tenant-environment.md` (sandbox
+`docs/marginalis-handover.md` (design brief, historical) and `tenant-environment.md` (sandbox
 rules) before substantial work.
 
 ## Building in the tenant sandbox
@@ -34,9 +34,10 @@ ports, so every Gradle process must run fully in-process:
     loopback too).
 - Symptom of a mismatch: "a single-use Daemon process will be forked" then
   "Could not connect to the Gradle daemon". Fix the arg mismatch; don't retry.
-- Test workers also fork over loopback — expect `test` to need the same care
-  once tests exist; if truly stuck, ask the operator for a declared port or
-  temporary permissive inbound mode.
+- Test workers fork over loopback too — CONFIRMED: `gradle :core:test` dies
+  locally with worker ConnectException. Local loop: `scripts/test-core.sh`
+  (compiles via Gradle, executes via JUnit ConsoleLauncher in one JVM). CI
+  runs the normal Gradle test task.
 
 Non-interactive shells don't source `~/.zshrc.local`, so scripts/CI-style
 invocations must export `JAVA_HOME`, `PATH`, and `GRADLE_OPTS` themselves
@@ -108,8 +109,12 @@ IDE is running (check: `curl -s http://127.0.0.1:63342/api/marginalis/ping`):
 
 ## Project conventions
 
-- API `line` parameters are 1-based (as agents read files); internal
-  `MarginNote.line` is 0-based. Convert at the transport boundary.
+- API `line` parameters are 1-based (as agents read files); the core model's
+  `CommentThread.line` is 0-based. Convert at the transport boundary.
+- Architecture: `core/` is pure Kotlin (model, lifecycle, AnchorPolicy,
+  ThreadsCodec) — it imports nothing from the plugin module, ever. The
+  plugin module is adapters: transport, Swing/editor UI, VFS+file I/O,
+  markers (MarginalisStore pairs core threads with live RangeHighlighters).
 - The built-in server port (63342) is the declared transport; `runIde`
   sandbox IDEs also use it.
 - Milestones live in the handover doc §9 — keep M-scope discipline; don't

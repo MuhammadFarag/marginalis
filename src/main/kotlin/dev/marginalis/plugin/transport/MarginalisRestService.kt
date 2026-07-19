@@ -15,11 +15,13 @@ import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VirtualFile
-import dev.marginalis.plugin.store.Author
-import dev.marginalis.plugin.store.CommentThread
+import dev.marginalis.core.AnchorPolicy
+import dev.marginalis.core.Author
+import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Message
+import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
-import dev.marginalis.plugin.store.Message
-import dev.marginalis.plugin.store.ThreadStatus
 import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
@@ -34,36 +36,37 @@ import org.jetbrains.ide.RestService
 import java.time.format.DateTimeFormatter
 
 /**
- * M1 transport: the full §5 tool surface minus `navigate` (M3), over the
- * IDE's built-in HTTP server (Option B, handover §6).
+ * The agent's transport: JSON endpoints on the IDE's built-in HTTP server
+ * (port 63342 by default; each running IDE process has its own server one
+ * port up).
  *
- * Endpoints (built-in server port, normally 63342):
- *   GET  /api/marginalis/ping
- *   POST /api/marginalis/comment_add      {"file","line","body","anchor_text"?}
- *   POST /api/marginalis/comment_reply    {"thread_id","body"}
- *   POST /api/marginalis/comment_resolve  {"thread_id"}
- *   POST /api/marginalis/comment_reopen   {"thread_id"}
+ * Endpoints:
+ *   GET  /api/marginalis/ping             -> {status, ide, projects}
+ *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, tour?}
+ *   POST /api/marginalis/comment_reply    {thread_id, body}
+ *   POST /api/marginalis/comment_resolve  {thread_id}
+ *   POST /api/marginalis/comment_reopen   {thread_id}
+ *   POST /api/marginalis/comment_resolve_all  {file?}
+ *   POST /api/marginalis/comment_clear_all    {file?}
  *   GET  /api/marginalis/comment_list?file=&status=&unread_only=
  *
- * `file` is project-relative; `line` is 1-based (as agents read files).
- * Reading comment_list marks human messages seen — made explicit via
- * per-message "newly_seen" and top-level "marked_seen" (handover §5).
+ * `file` is project-relative; `line` is 1-based, matching how agents read
+ * files. Listing marks messages seen and says so explicitly (per-message
+ * `newly_seen`, top-level `marked_seen`) — that read receipt is what lets
+ * the user trust "the agent will see this on its next turn".
  *
- * Handlers run on a background HTTP thread (handover §3.5): editor markup is
- * marshalled to the EDT; document/VFS reads take read actions.
+ * Handlers run on a background HTTP thread; editor markup is marshalled to
+ * the EDT, document/VFS reads take read actions.
  */
 class MarginalisRestService : RestService() {
-
-    private val anchorSearchWindow = 20 // lines each direction, §3.2 fallback
 
     override fun getServiceName(): String = "marginalis"
 
     override fun isMethodSupported(method: HttpMethod): Boolean =
         method === HttpMethod.GET || method === HttpMethod.POST
 
-    // Two cooperating local participants, loopback only (handover §1.4). Skips
-    // the built-in server's origin-confirmation dialog, which would otherwise
-    // block headless agent calls.
+    // Two cooperating local participants over loopback: skip the built-in
+    // server's origin-confirmation dialog, which would block headless calls.
     override fun isHostTrusted(request: FullHttpRequest, urlDecoder: QueryStringDecoder): Boolean = true
 
     // Default is 30/min — an agent annotating a file in one turn bursts past that.
@@ -90,9 +93,9 @@ class MarginalisRestService : RestService() {
     }
 
     /**
-     * Self-describing ping: with several IDE processes running, the built-in
-     * servers stack up on ports 63342, 63343, … and an agent must be able to
-     * ask "which projects do YOU have open?" to find the right one.
+     * Self-describing ping: with several IDE processes running, an agent
+     * must be able to ask "which projects do YOU have open?" to find the
+     * right server instead of inferring from 404s.
      */
     private fun pingInfo(): JsonObject = JsonObject().apply {
         addProperty("status", "ok")
@@ -168,16 +171,17 @@ class MarginalisRestService : RestService() {
                 return@invokeAndWait
             }
 
-            // §3.2: the agent's line numbers may be stale. Verify against
-            // anchor_text; search a small window; never silently anchor wrong.
-            if (anchorText != null && !lineMatches(document, line0, anchorText)) {
-                val found = ((line0 - anchorSearchWindow)..(line0 + anchorSearchWindow))
-                    .filter { it in 0 until document.lineCount && it != line0 }
-                    .sortedBy { kotlin.math.abs(it - line0) }
-                    .firstOrNull { lineMatches(document, it, anchorText) }
+            // The agent's line numbers may be stale; anchor text is the truth.
+            if (anchorText != null && !AnchorPolicy.lineMatches(lineText(document, line0), anchorText)) {
+                val found = AnchorPolicy.findAnchorLine(
+                    lineCount = document.lineCount,
+                    lineTextAt = { lineText(document, it) },
+                    nearLine = line0,
+                    anchorText = anchorText,
+                )
                 if (found == null) {
-                    error = "anchor_text does not match line $line1 or the ±$anchorSearchWindow lines around it. " +
-                        "The file has probably changed — re-read it."
+                    error = "anchor_text does not match line $line1 or the ±${AnchorPolicy.SEARCH_WINDOW} lines " +
+                        "around it. The file has probably changed — re-read it."
                     errorStatus = HttpResponseStatus.CONFLICT
                     return@invokeAndWait
                 }
@@ -186,12 +190,13 @@ class MarginalisRestService : RestService() {
             }
 
             val created = CommentThread(file, line0, lineText(document, line0), order = order, tour = tourLabel)
-            created.addMessage(Message(Author.AGENT, body))
+            created.addMessage(Message(Authors.agent, body))
+            val store = MarginalisStore.getInstance(project)
             val markup = DocumentMarkupModel.forDocument(document, project, true)
             val highlighter = markup.addLineHighlighter(line0, HighlighterLayer.LAST, null)
             highlighter.gutterIconRenderer = ThreadGutterIconRenderer(project, created)
-            created.highlighter = highlighter
-            MarginalisStore.getInstance(project).add(created)
+            store.setMarker(created, highlighter)
+            store.threads.add(created)
             thread = created
         }
 
@@ -202,7 +207,7 @@ class MarginalisRestService : RestService() {
                 addProperty("file", added.file)
                 addProperty("line", added.line + 1)
                 addProperty("line_adjusted", adjusted)
-                addProperty("status", added.status.name.lowercase())
+                addProperty("status", added.status.kind.name.lowercase())
             },
             request, context,
         )
@@ -211,27 +216,20 @@ class MarginalisRestService : RestService() {
     private fun lineText(document: Document, line: Int): String =
         document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)))
 
-    private fun lineMatches(document: Document, line: Int, anchorText: String): Boolean {
-        val actual = lineText(document, line).trim()
-        val expected = anchorText.trim()
-        if (expected.isEmpty()) return actual.isEmpty()
-        return actual == expected || actual.contains(expected)
-    }
-
     // -------------------------------------------------------------- reply
 
     private fun handleCommentReply(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
         val (project, thread) = lookupThread(json, request, context) ?: return
         val body = json.stringOrNull("body")
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
-        val message = Message(Author.AGENT, body)
+        val message = Message(Authors.agent, body)
         thread.addMessage(message)
-        MarginalisStore.getInstance(project).notifyChanged(thread)
+        MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         sendJson(
             JsonObject().apply {
                 addProperty("message_id", message.id)
                 addProperty("thread_id", thread.id)
-                addProperty("status", thread.status.name.lowercase())
+                addProperty("status", thread.status.kind.name.lowercase())
             },
             request, context,
         )
@@ -246,12 +244,12 @@ class MarginalisRestService : RestService() {
         resolve: Boolean,
     ) {
         val (project, thread) = lookupThread(json, request, context) ?: return
-        if (resolve) thread.resolve(Author.AGENT) else thread.reopen()
-        MarginalisStore.getInstance(project).notifyChanged(thread)
+        if (resolve) thread.resolve(Authors.agent) else thread.reopen()
+        MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         sendJson(
             JsonObject().apply {
                 addProperty("thread_id", thread.id)
-                addProperty("status", thread.status.name.lowercase())
+                addProperty("status", thread.status.kind.name.lowercase())
             },
             request, context,
         )
@@ -264,11 +262,11 @@ class MarginalisRestService : RestService() {
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue
             val store = MarginalisStore.getInstance(project)
-            for (thread in store.all()) {
+            for (thread in store.threads.all()) {
                 if (fileFilter != null && thread.file != fileFilter) continue
-                if (thread.status == ThreadStatus.RESOLVED) continue
-                thread.resolve(Author.AGENT)
-                store.notifyChanged(thread)
+                if (thread.status is ThreadStatus.Resolved) continue
+                thread.resolve(Authors.agent)
+                store.threads.notifyChanged(thread)
                 resolved++
             }
         }
@@ -283,10 +281,10 @@ class MarginalisRestService : RestService() {
             if (project.isDisposed) continue
             val store = MarginalisStore.getInstance(project)
             if (fileFilter == null) {
-                cleared += store.clear().size
+                cleared += store.threads.clear().size
             } else {
-                for (thread in store.all().filter { it.file == fileFilter }) {
-                    store.remove(thread.id)
+                for (thread in store.threads.all().filter { it.file == fileFilter }) {
+                    store.threads.remove(thread.id)
                     cleared++
                 }
             }
@@ -306,7 +304,7 @@ class MarginalisRestService : RestService() {
         }
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue
-            MarginalisStore.getInstance(project).byId(threadId)?.let { return project to it }
+            MarginalisStore.getInstance(project).threads.byId(threadId)?.let { return project to it }
         }
         sendError(HttpResponseStatus.NOT_FOUND, "no thread with id '$threadId'", request, context)
         return null
@@ -323,7 +321,7 @@ class MarginalisRestService : RestService() {
         val fileFilter = params["file"]?.firstOrNull()
         val statusFilter = params["status"]?.firstOrNull()?.let {
             try {
-                ThreadStatus.valueOf(it.uppercase())
+                ThreadStatus.Kind.valueOf(it.uppercase())
             } catch (e: IllegalArgumentException) {
                 return sendError(HttpResponseStatus.BAD_REQUEST, "invalid status '$it' (open|resolved|orphaned)", request, context)
             }
@@ -338,7 +336,7 @@ class MarginalisRestService : RestService() {
             for (project in ProjectManager.getInstance().openProjects) {
                 if (project.isDisposed) continue
                 val store = MarginalisStore.getInstance(project)
-                for (thread in store.query(fileFilter, statusFilter, unreadOnly)) {
+                for (thread in store.threads.query(fileFilter, statusFilter, unreadOnly)) {
                     val messagesJson = JsonArray()
                     for (message in thread.messages) {
                         val newlySeen = !message.seenByAgent
@@ -349,13 +347,7 @@ class MarginalisRestService : RestService() {
                         messagesJson.add(
                             JsonObject().apply {
                                 addProperty("message_id", message.id)
-                                add(
-                                    "author",
-                                    JsonObject().apply {
-                                        addProperty("kind", message.author.kind.name.lowercase())
-                                        addProperty("name", message.author.displayName)
-                                    },
-                                )
+                                add("author", authorJson(message.author))
                                 addProperty("body", message.body)
                                 addProperty("created_at", timeFormat.format(message.createdAt))
                                 if (newlySeen) addProperty("newly_seen", true)
@@ -366,8 +358,8 @@ class MarginalisRestService : RestService() {
                         JsonObject().apply {
                             addProperty("thread_id", thread.id)
                             addProperty("file", thread.file)
-                            addProperty("line", thread.currentLine() + 1)
-                            addProperty("status", thread.status.name.lowercase())
+                            addProperty("line", store.currentLine(thread) + 1)
+                            addProperty("status", thread.status.kind.name.lowercase())
                             addProperty("created_at", timeFormat.format(thread.createdAt))
                             thread.order?.let { addProperty("order", it) }
                             thread.tour?.let { addProperty("tour", it) }
@@ -388,9 +380,15 @@ class MarginalisRestService : RestService() {
         )
     }
 
+    private fun authorJson(author: Author): JsonObject = JsonObject().apply {
+        addProperty("kind", if (author is Author.Agent) "agent" else "user")
+        addProperty("name", author.displayName)
+        (author as? Author.Agent)?.id?.let { addProperty("id", it) }
+    }
+
     // ------------------------------------------------------------ helpers
 
-    /** Resolve a project-relative path against every open project; first match wins (handover §3.6 keeps this soft for v1). */
+    /** Resolve a project-relative path against every open project; first match wins. */
     private fun resolveFile(relPath: String): Pair<Project, VirtualFile>? {
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue

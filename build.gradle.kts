@@ -18,6 +18,9 @@ repositories {
 }
 
 dependencies {
+    // The domain core: model, lifecycle, anchoring policy, persistence codec.
+    implementation(project(":core"))
+
     // Markdown parsing for message bodies (markdown-lite rendering scope).
     // The platform bundles the Kotlin stdlib — don't ship a second copy.
     implementation("org.jetbrains:markdown:0.7.7") {
