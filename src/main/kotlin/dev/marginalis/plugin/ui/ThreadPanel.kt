@@ -1,11 +1,14 @@
 package dev.marginalis.plugin.ui
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.fileTypes.FileType
+import com.intellij.openapi.fileTypes.FileTypeManager
+import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.fileTypes.UnknownFileType
+import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.marginalis.plugin.store.Author
@@ -44,7 +47,24 @@ class ThreadPanel(
     private val resolveButton = JButton()
     private val sendButton = JButton()
     private val cancelEditButton = JButton("Cancel")
-    private val replyArea = JBTextArea(3, 40)
+
+    // Markdown-aware composer: the IDE's own Markdown lexer highlights as you
+    // type (plain text when the Markdown plugin is absent). Same input, same
+    // colors you'll see rendered after submitting.
+    private val replyArea = EditorTextField("", project, composerFileType()).apply {
+        setOneLineMode(false)
+        addSettingsProvider { editor ->
+            editor.settings.isUseSoftWraps = true
+            editor.contentComponent.addKeyListener(object : KeyAdapter() {
+                override fun keyPressed(e: KeyEvent) {
+                    if (e.keyCode == KeyEvent.VK_ENTER && (e.isMetaDown || e.isControlDown)) {
+                        e.consume()
+                        sendReply()
+                    }
+                }
+            })
+        }
+    }
     private var editingMessageId: String? = null
 
     init {
@@ -112,16 +132,6 @@ class ThreadPanel(
             isOpaque = false
             border = JBUI.Borders.emptyTop(6)
         }
-        replyArea.lineWrap = true
-        replyArea.wrapStyleWord = true
-        replyArea.addKeyListener(object : KeyAdapter() {
-            override fun keyPressed(e: KeyEvent) {
-                if (e.keyCode == KeyEvent.VK_ENTER && (e.isMetaDown || e.isControlDown)) {
-                    e.consume()
-                    sendReply()
-                }
-            }
-        })
         sendButton.font = JBUI.Fonts.smallFont()
         sendButton.addActionListener { sendReply() }
         cancelEditButton.font = JBUI.Fonts.smallFont()
@@ -136,9 +146,14 @@ class ThreadPanel(
             add(sendButton)
             add(cancelEditButton)
         }
-        row.add(JBScrollPane(replyArea), BorderLayout.CENTER)
+        row.add(replyArea, BorderLayout.CENTER)
         row.add(buttons, BorderLayout.EAST)
         return row
+    }
+
+    private fun composerFileType(): FileType {
+        val markdown = FileTypeManager.getInstance().getFileTypeByExtension("md")
+        return if (markdown is UnknownFileType) PlainTextFileType.INSTANCE else markdown
     }
 
     private fun sendReply() {
@@ -190,8 +205,9 @@ class ThreadPanel(
             else -> "Reply"
         }
         cancelEditButton.isVisible = editingMessageId != null
-        replyArea.emptyText.text =
-            if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to submit)" else "Reply… (⌘⏎ to submit)"
+        replyArea.setPlaceholder(
+            if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to submit)" else "Reply… (⌘⏎ to submit)",
+        )
 
         messagesBox.removeAll()
         val timeFormat = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
