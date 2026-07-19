@@ -10,6 +10,7 @@ import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
@@ -271,7 +272,10 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             }
             is NodeData.FileNode -> {
-                icon = AllIcons.FileTypes.Any_type
+                // The IDE's own per-filetype icon, so the tree reads like the
+                // Project view does.
+                icon = FileTypeManager.getInstance().getFileTypeByFileName(data.name).icon
+                    ?: AllIcons.FileTypes.Any_type
                 append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
                 val needsYou = data.threads.count { awaitsHuman(it) }
                 val onClaude = data.threads.size - needsYou

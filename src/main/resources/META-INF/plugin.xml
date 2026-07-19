@@ -13,6 +13,7 @@
         <action id="marginalis.addComment"
                 class="dev.marginalis.plugin.actions.AddCommentAction"
                 text="Add Marginalis Comment"
+                icon="AllIcons.General.Balloon"
                 description="Start a margin thread on the current line for the agent to pick up">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt M"/>
@@ -25,7 +26,8 @@
         <!-- Keeps gutter icons in sync with thread status/unread changes. -->
         <postStartupActivity implementation="dev.marginalis.plugin.MarginalisStartup"/>
         <!-- Cross-file visibility: all threads grouped by file (handover §8). -->
-        <toolWindow id="Marginalis" anchor="right"
+        <!-- Left: this is a navigation surface, and navigation lives on the left. -->
+        <toolWindow id="Marginalis" anchor="left"
                     icon="AllIcons.Toolwindows.ToolWindowMessages"
                     factoryClass="dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindowFactory"/>
         <!-- At-a-glance: tab-title glyph for files with open threads. -->

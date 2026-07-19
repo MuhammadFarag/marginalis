@@ -151,10 +151,12 @@ class ThreadPanel(
         resolveButton.text = if (thread.status == ThreadStatus.OPEN) "Resolve" else "Reopen"
         resolveButton.isVisible = !isDraft // nothing to resolve before the first send
 
-        // "Reply" is wrong when starting a thread — the affordance follows state.
-        sendButton.text = if (thread.messages.isEmpty()) "Send" else "Reply"
+        // The affordance follows state — and "Submit" over "Send": nothing is
+        // transmitted anywhere, the message lands in the local store awaiting
+        // the agent's next read.
+        sendButton.text = if (thread.messages.isEmpty()) "Submit" else "Reply"
         replyArea.emptyText.text =
-            if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to send)" else "Reply… (⌘⏎ to send)"
+            if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to submit)" else "Reply… (⌘⏎ to submit)"
 
         messagesBox.removeAll()
         val timeFormat = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
