@@ -9,6 +9,7 @@ import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.guessProjectDir
@@ -20,6 +21,7 @@ import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Message
 import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
@@ -49,6 +51,7 @@ import java.time.format.DateTimeFormatter
  *   POST /api/marginalis/comment_resolve_all  {file?}
  *   POST /api/marginalis/comment_clear_all    {file?}
  *   GET  /api/marginalis/comment_list?file=&status=&unread_only=
+ *   POST /api/marginalis/navigate         {file, line, anchor_text?}
  *
  * `file` is project-relative; `line` is 1-based, matching how agents read
  * files. Listing marks messages seen and says so explicitly (per-message
@@ -87,6 +90,7 @@ class MarginalisRestService : RestService() {
             "comment_resolve_all" -> post(request, context) { handleResolveAll(it, request, context) }
             "comment_clear_all" -> post(request, context) { handleClearAll(it, request, context) }
             "comment_list" -> handleCommentList(urlDecoder, request, context)
+            "navigate" -> post(request, context) { handleNavigate(it, request, context) }
             else -> sendError(HttpResponseStatus.NOT_FOUND, "unknown endpoint '$endpoint'", request, context)
         }
         return null
@@ -164,30 +168,16 @@ class MarginalisRestService : RestService() {
                 error = "'$file' has no text document (binary or too large?)"
                 return@invokeAndWait
             }
-            var line0 = line1 - 1
-            if (line0 < 0 || line0 >= document.lineCount) {
-                error = "line $line1 out of range: '$file' has ${document.lineCount} lines. Re-read the file."
-                errorStatus = HttpResponseStatus.CONFLICT
-                return@invokeAndWait
-            }
-
-            // The agent's line numbers may be stale; anchor text is the truth.
-            if (anchorText != null && !AnchorPolicy.lineMatches(lineText(document, line0), anchorText)) {
-                val found = AnchorPolicy.findAnchorLine(
-                    lineCount = document.lineCount,
-                    lineTextAt = { lineText(document, it) },
-                    nearLine = line0,
-                    anchorText = anchorText,
-                )
-                if (found == null) {
-                    error = "anchor_text does not match line $line1 or the ±${AnchorPolicy.SEARCH_WINDOW} lines " +
-                        "around it. The file has probably changed — re-read it."
+            val placed = when (val outcome = resolveAnchoredLine(document, file, line1, anchorText)) {
+                is AnchorOutcome.Stale -> {
+                    error = outcome.message
                     errorStatus = HttpResponseStatus.CONFLICT
                     return@invokeAndWait
                 }
-                line0 = found
-                adjusted = true
+                is AnchorOutcome.Placed -> outcome
             }
+            val line0 = placed.line0
+            adjusted = placed.adjusted
 
             val created = CommentThread(file, line0, lineText(document, line0), order = order, tour = tourLabel)
             created.addMessage(Message(Authors.agent, body))
@@ -215,6 +205,38 @@ class MarginalisRestService : RestService() {
 
     private fun lineText(document: Document, line: Int): String =
         document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)))
+
+    /** Outcome of placing a 1-based line hint + anchor text against a live document. */
+    private sealed class AnchorOutcome {
+        class Placed(val line0: Int, val adjusted: Boolean) : AnchorOutcome()
+        class Stale(val message: String) : AnchorOutcome()
+    }
+
+    /**
+     * The anchoring contract, shared by every endpoint that takes {file,
+     * line, anchor_text}: the agent's line numbers may be stale; anchor text
+     * is the truth. Stale means 409 — the caller should re-read the file,
+     * never land somewhere wrong silently.
+     */
+    private fun resolveAnchoredLine(document: Document, file: String, line1: Int, anchorText: String?): AnchorOutcome {
+        val line0 = line1 - 1
+        if (line0 < 0 || line0 >= document.lineCount) {
+            return AnchorOutcome.Stale("line $line1 out of range: '$file' has ${document.lineCount} lines. Re-read the file.")
+        }
+        if (anchorText != null && !AnchorPolicy.lineMatches(lineText(document, line0), anchorText)) {
+            val found = AnchorPolicy.findAnchorLine(
+                lineCount = document.lineCount,
+                lineTextAt = { lineText(document, it) },
+                nearLine = line0,
+                anchorText = anchorText,
+            ) ?: return AnchorOutcome.Stale(
+                "anchor_text does not match line $line1 or the ±${AnchorPolicy.SEARCH_WINDOW} lines " +
+                    "around it. The file has probably changed — re-read it.",
+            )
+            return AnchorOutcome.Placed(found, adjusted = true)
+        }
+        return AnchorOutcome.Placed(line0, adjusted = false)
+    }
 
     // -------------------------------------------------------------- reply
 
@@ -375,6 +397,74 @@ class MarginalisRestService : RestService() {
             JsonObject().apply {
                 add("threads", threadsJson)
                 addProperty("marked_seen", markedSeen)
+            },
+            request, context,
+        )
+    }
+
+    // ----------------------------------------------------------- navigate
+
+    /**
+     * Ephemeral pointing: open the file and put the caret on the line,
+     * creating no artifact — threads are for things worth saying, navigate
+     * is for things worth seeing. Fires only on explicit user request
+     * (etiquette lives in the agent-facing skill); the settings page holds
+     * the hard off-switch, surfaced honestly as a 403 so the agent can tell
+     * the user why nothing happened. Full navigation with focus is correct
+     * BECAUSE every call is user-solicited.
+     */
+    private fun handleNavigate(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val file = json.stringOrNull("file")
+            ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'file' (project-relative path)", request, context)
+        val line1 = json.intOrNull("line")
+            ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing or non-integer 'line' (1-based)", request, context)
+        val anchorText = json.stringOrNull("anchor_text")
+
+        if (!MarginalisSettings.getInstance().state.navigationEnabled) {
+            return sendError(HttpResponseStatus.FORBIDDEN, "navigation is disabled in Marginalis settings", request, context)
+        }
+
+        val (project, vFile) = ApplicationManager.getApplication()
+            .runReadAction(Computable { resolveFile(file) })
+            ?: return sendError(
+                HttpResponseStatus.NOT_FOUND,
+                "'$file' not found in any open project (paths are project-relative)",
+                request, context,
+            )
+
+        var error: String? = null
+        var errorStatus = HttpResponseStatus.BAD_REQUEST
+        var landedLine0 = -1
+        var adjusted = false
+
+        ApplicationManager.getApplication().invokeAndWait {
+            val document = FileDocumentManager.getInstance().getDocument(vFile)
+            if (document == null) {
+                error = "'$file' has no text document (binary or too large?)"
+                return@invokeAndWait
+            }
+            val placed = when (val outcome = resolveAnchoredLine(document, file, line1, anchorText)) {
+                is AnchorOutcome.Stale -> {
+                    error = outcome.message
+                    errorStatus = HttpResponseStatus.CONFLICT
+                    return@invokeAndWait
+                }
+                is AnchorOutcome.Placed -> outcome
+            }
+            OpenFileDescriptor(project, vFile, placed.line0, 0).navigate(true)
+            landedLine0 = placed.line0
+            adjusted = placed.adjusted
+        }
+
+        if (error != null || landedLine0 < 0) {
+            return sendError(errorStatus, error ?: "internal error", request, context)
+        }
+        sendJson(
+            JsonObject().apply {
+                addProperty("navigated", true)
+                addProperty("file", file)
+                addProperty("line", landedLine0 + 1)
+                addProperty("line_adjusted", adjusted)
             },
             request, context,
         )

@@ -32,5 +32,9 @@
                     factoryClass="dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindowFactory"/>
         <!-- At-a-glance: tab-title glyph for files with open threads. -->
         <editorTabTitleProvider implementation="dev.marginalis.plugin.ui.MarginalisTabTitleProvider"/>
+        <!-- Navigation consent + display name; app-level, these follow the user. -->
+        <applicationConfigurable parentId="tools" id="dev.marginalis.settings"
+                                 displayName="Marginalis"
+                                 instance="dev.marginalis.plugin.settings.MarginalisConfigurable"/>
     </extensions>
 </idea-plugin>

@@ -1,7 +1,9 @@
 # Handover: `navigate` + the first settings surface
 
 **Audience:** the implementing agent, fresh context window.
-**Status:** designed in conversation 2026-07-19, not yet implemented.
+**Status:** implemented and verified live 2026-07-19 (endpoint, settings page
+incl. display-name stretch, skill 0.4.0). Kept as the design record; the
+consent pattern in §"two decisions" is the precedent for future capabilities.
 **Read first:** `CLAUDE.md` (sandbox build recipe, margin protocol, verification
 workflow — everything environmental lives there, not here). Architecture:
 `core/` is the pure domain module, the plugin module is adapters; keep that
