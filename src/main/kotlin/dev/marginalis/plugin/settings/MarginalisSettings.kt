@@ -24,6 +24,9 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
 
         /** Blank means "derive from the OS username" (see Authors.user). */
         var displayName: String = ""
+
+        /** Message timestamps: "AUTO" (locale decides), "12", or "24". */
+        var timeFormat: String = "AUTO"
     }
 
     private var state = State()

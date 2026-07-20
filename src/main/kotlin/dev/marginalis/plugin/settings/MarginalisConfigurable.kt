@@ -1,6 +1,7 @@
 package dev.marginalis.plugin.settings
 
 import com.intellij.openapi.options.Configurable
+import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
@@ -31,6 +32,26 @@ class MarginalisConfigurable : Configurable {
                     .comment("Shown as the author of your comments. Leave blank to use your OS username.")
                     .columns(24)
                     .bindText(state::displayName)
+            }
+            row("Time format:") {
+                comboBox(listOf("Auto (system)", "12-hour", "24-hour"))
+                    .comment("Message timestamps in thread panels.")
+                    .bindItem(
+                        {
+                            when (state.timeFormat) {
+                                "12" -> "12-hour"
+                                "24" -> "24-hour"
+                                else -> "Auto (system)"
+                            }
+                        },
+                        {
+                            state.timeFormat = when (it) {
+                                "12-hour" -> "12"
+                                "24-hour" -> "24"
+                                else -> "AUTO"
+                            }
+                        },
+                    )
             }
         }
         created.border = JBUI.Borders.empty(8)

@@ -21,6 +21,7 @@ import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Message
 import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import java.awt.BorderLayout
@@ -29,6 +30,7 @@ import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.Icon
@@ -243,12 +245,36 @@ class ThreadPanel(
         replyArea.requestFocusInWindow()
     }
 
+    /** Timestamp style is the user's call; "auto" lets the locale decide 12h vs 24h. */
+    private fun messageTimeFormatter(): DateTimeFormatter =
+        when (MarginalisSettings.getInstance().state.timeFormat) {
+            "12" -> DateTimeFormatter.ofPattern("h:mm a")
+            "24" -> DateTimeFormatter.ofPattern("HH:mm")
+            else -> DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+        }.withZone(ZoneId.systemDefault())
+
+    /**
+     * " · step 2/5" — where this thread sits in its walk. Ordered steps use
+     * their fixed position over the walkthrough's stable total (agreeing
+     * with the tool window's (2/5) prefixes even as steps resolve);
+     * unordered threads show their live position in the open-section walk.
+     */
+    private fun walkPosition(): String {
+        val order = thread.order
+        if (order != null) {
+            val total = WalkthroughNavigator.stableTotal(project, thread) ?: return ""
+            return " · step $order/$total"
+        }
+        val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
+        return if (i >= 0 && walk.size > 1) " · step ${i + 1}/${walk.size}" else ""
+    }
+
     /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
         val isDraft = MarginalisStore.getInstance(project).threads.byId(thread.id) == null
         statusLabel.text = when {
             isDraft -> "new comment — unsent"
-            thread.status is ThreadStatus.Open -> "open"
+            thread.status is ThreadStatus.Open -> "open${walkPosition()}"
             thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
             else -> "orphaned (anchor deleted)"
         }
@@ -270,7 +296,7 @@ class ThreadPanel(
         )
 
         messagesBox.removeAll()
-        val timeFormat = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+        val timeFormat = messageTimeFormatter()
         for (message in thread.messages) {
             messagesBox.add(messageComponent(message, timeFormat))
             messagesBox.add(Box.createVerticalStrut(JBUI.scale(6)))

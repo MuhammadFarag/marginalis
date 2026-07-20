@@ -35,6 +35,25 @@ object WalkthroughNavigator {
         return walk to walk.indexOfFirst { it.id == thread.id }
     }
 
+    /**
+     * The fixed denominator for a step's (n/total). A label alone can't
+     * identify one walkthrough — every unlabeled walkthrough ever run
+     * shares "" — so the cohort is same-label ordered threads created
+     * at-or-after the earliest still-open step: finished walkthroughs
+     * predate that and drop out; steps resolved mid-walk (created
+     * together) stay counted. Null when [thread] isn't an ordered step or
+     * its walkthrough has no open steps.
+     */
+    fun stableTotal(project: Project, thread: CommentThread): Int? {
+        if (thread.order == null) return null
+        val label = thread.walkthrough ?: ""
+        val sameLabel = MarginalisStore.getInstance(project).threads.all()
+            .filter { it.order != null && (it.walkthrough ?: "") == label }
+        val earliestOpen = sameLabel.filter { it.status is ThreadStatus.Open }
+            .minOfOrNull { it.createdAt } ?: return null
+        return sameLabel.filter { it.createdAt >= earliestOpen }.maxOf { it.order!! }
+    }
+
     /** Open the thread's file at its live line and pop its panel — the double-click behavior. */
     fun navigateTo(project: Project, thread: CommentThread) {
         val base = project.guessProjectDir() ?: return

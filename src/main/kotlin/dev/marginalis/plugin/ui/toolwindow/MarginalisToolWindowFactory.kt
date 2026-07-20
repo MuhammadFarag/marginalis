@@ -320,7 +320,7 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         for ((label, walkthroughThreads) in walkthroughs) {
             val title = if (label.isEmpty()) "Guided" else "Guided $label"
             val section = DefaultMutableTreeNode(NodeData.Section(title, walkthroughThreads.size))
-            val total = allThreads.filter { (it.walkthrough ?: "") == label }.mapNotNull { it.order }.maxOrNull()
+            val total = WalkthroughNavigator.stableTotal(project, walkthroughThreads.first())
                 ?: walkthroughThreads.size
             val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
             val trie = PathTrie().apply { walkthroughThreads.forEach(::insert) }
