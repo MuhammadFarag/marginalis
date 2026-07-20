@@ -54,6 +54,10 @@ import java.time.format.DateTimeFormatter
  *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&project=
  *   POST /api/marginalis/navigate         {file, line, anchor_text?, project?}
  *
+ * Writing/resolving endpoints (comment_add, comment_reply, comment_resolve,
+ * comment_resolve_all) also accept `author_name?`/`author_id?` — an agent's
+ * self-introduction; without it the author displays as "Agent".
+ *
  * `file` is project-relative; `line` is 1-based, matching how agents read
  * files. Listing marks messages seen and says so explicitly (per-message
  * `newly_seen`, top-level `marked_seen`) — that read receipt is what lets
@@ -130,6 +134,18 @@ class MarginalisRestService : RestService() {
         }
     }
 
+    /**
+     * The posting author: agents may introduce themselves with
+     * `author_name` (+ optional stable `author_id`); an unintroduced agent
+     * is just "Agent". Applied wherever the agent writes or resolves.
+     */
+    private fun agentAuthor(json: JsonObject): Author.Agent {
+        val name = json.stringOrNull("author_name")
+        val id = json.stringOrNull("author_id")
+        if (name == null && id == null) return Authors.agent
+        return Author.Agent(name ?: Authors.agent.displayName, id)
+    }
+
     /** Shared POST plumbing: method check + JSON body parse. */
     private fun post(request: FullHttpRequest, context: ChannelHandlerContext, handler: (JsonObject) -> Unit) {
         if (request.method() !== HttpMethod.POST) {
@@ -184,7 +200,7 @@ class MarginalisRestService : RestService() {
             adjusted = placed.adjusted
 
             val created = CommentThread(file, line0, lineText(document, line0), order = order, walkthrough = walkthroughLabel)
-            created.addMessage(Message(Authors.agent, body))
+            created.addMessage(Message(agentAuthor(json), body))
             val store = MarginalisStore.getInstance(project)
             val markup = DocumentMarkupModel.forDocument(document, project, true)
             val highlighter = markup.addLineHighlighter(line0, HighlighterLayer.LAST, null)
@@ -248,7 +264,7 @@ class MarginalisRestService : RestService() {
         val (project, thread) = lookupThread(json, request, context) ?: return
         val body = json.stringOrNull("body")
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
-        val message = Message(Authors.agent, body)
+        val message = Message(agentAuthor(json), body)
         thread.addMessage(message)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         sendJson(
@@ -270,7 +286,7 @@ class MarginalisRestService : RestService() {
         resolve: Boolean,
     ) {
         val (project, thread) = lookupThread(json, request, context) ?: return
-        if (resolve) thread.resolve(Authors.agent) else thread.reopen()
+        if (resolve) thread.resolve(agentAuthor(json)) else thread.reopen()
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         sendJson(
             JsonObject().apply {
@@ -284,6 +300,7 @@ class MarginalisRestService : RestService() {
     /** Bulk resolve, optionally scoped to one file: {"file"?}. */
     private fun handleResolveAll(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
         val fileFilter = json.stringOrNull("file")
+        val resolver = agentAuthor(json)
         var resolved = 0
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue
@@ -291,7 +308,7 @@ class MarginalisRestService : RestService() {
             for (thread in store.threads.all()) {
                 if (fileFilter != null && thread.file != fileFilter) continue
                 if (thread.status is ThreadStatus.Resolved) continue
-                thread.resolve(Authors.agent)
+                thread.resolve(resolver)
                 store.threads.notifyChanged(thread)
                 resolved++
             }

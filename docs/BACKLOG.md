@@ -28,7 +28,12 @@ once the token gains Issues scope.
 - **Agent self-identification** — model ready (`Author.Agent(name, id)`);
   transport still stamps "Claude": accept optional `author_name`/`author_id`
   on comment_add/comment_reply, default the display to "Agent".
-- **`comment_edit` (agent-side)** — symmetry with edit-before-seen.
+- **Cross-project walkthroughs fragment** (observed 2026-07-20): steps in
+  different projects render in separate tool windows, each fragment
+  numbered against its own project's total — a 4-step walkthrough spanning
+  two projects shows as (1/2)(2/2) + (3/4)(4/4), both looking
+  self-contained. Options: per-window "steps continue in project X" note,
+  or an agent-side convention (one walkthrough per project). Needs design.
 - **Rendered heading sizes** — h1/h2 render at document scale inside margin
   panels; likely want scaling down. (Operator thread open in sample-project.)
 
@@ -94,6 +99,11 @@ once the token gains Issues scope.
   the de-emphasis item is dropped.
 - **Session presence dropped** (2026-07-19): operator call — the indicator
   doesn't make sense for a turn-based channel.
+- **comment_edit dropped** (2026-07-20): symmetry without a use case — a
+  full session of real use never produced the want. Agents compose in one
+  pass and the human reads almost immediately, so the edit window would be
+  seconds; corrective replies serve better and keep the record honest.
+  Revisit only if real usage produces the need.
 - **Review outcomes 2026-07-19** (via resolved margin threads, all landed in
   `65db25b`): comment-hygiene sweep; AuthorKind.HUMAN → USER with tolerant
   loader; Author + ThreadStatus as sealed ADTs; vendor email → m@far.ag;

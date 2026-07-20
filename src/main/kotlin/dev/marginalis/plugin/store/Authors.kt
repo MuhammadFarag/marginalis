@@ -4,13 +4,14 @@ import dev.marginalis.core.Author
 import dev.marginalis.plugin.settings.MarginalisSettings
 
 /**
- * The two local identities. The agent name is a default — posts may carry
- * their own author identity as agents learn to introduce themselves; the
- * user name is the settings-page display name, falling back to the OS
- * account.
+ * The two local identities. The agent side is deliberately anonymous —
+ * "Agent" is what an agent is called when it doesn't introduce itself;
+ * self-identified posts carry their own Author.Agent (see the transport's
+ * author_name/author_id params). The user name is the settings-page
+ * display name, falling back to the OS account.
  */
 object Authors {
-    val agent: Author.Agent = Author.Agent("Claude")
+    val agent: Author.Agent = Author.Agent("Agent")
 
     val user: Author.User
         get() {
