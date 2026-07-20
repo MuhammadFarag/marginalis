@@ -20,6 +20,14 @@
         </action>
     </actions>
 
+    <applicationListeners>
+        <!-- Clean unload: strip our classes from platform structures that
+             outlive the classloader, so plugin updates hot-reload without
+             an IDE restart. -->
+        <listener class="dev.marginalis.plugin.MarginalisUnloadListener"
+                  topic="com.intellij.ide.plugins.DynamicPluginListener"/>
+    </applicationListeners>
+
     <extensions defaultExtensionNs="com.intellij">
         <!-- Agent transport: JSON endpoints on the IDE's built-in HTTP server. -->
         <httpRequestHandler implementation="dev.marginalis.plugin.transport.MarginalisRestService"/>

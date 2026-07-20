@@ -71,7 +71,24 @@ nobody can click. Verified working instead (2026-07-17, M0):
 4. Kill any tenant-side IDE first: if it holds 63342, the host IDE binds
    63343+, which the sandbox blocks.
 
-Plugin reinstall (not auto-reload) is needed after each rebuild.
+**Reinstalling after a rebuild — hot reload, no IDE restart (verified
+2026-07-20):** the one-step "Install Plugin from Disk over an existing
+version" ALWAYS demands a restart — `PluginInstaller.installFromDisk`
+hard-codes `isRestartRequired = oldFile != null || …`, so the dynamic
+machinery is never consulted (and idea.log stays silent about why). The
+two-step path is fully dynamic:
+
+1. Settings → Plugins → Marginalis → **Uninstall** — restart-free because
+   `MarginalisUnloadListener` strips our classes from structures that
+   outlive the classloader (markup-model highlighters, editor inlays and
+   user-data keys). If a restart prompt appears here, the unload leaked;
+   idea.log then names the culprit.
+2. **Install Plugin from Disk** with the new zip — no old version on disk →
+   dynamic-load branch; startup activity re-runs and rehydrates threads
+   from `.idea/marginalis.json`.
+
+Threads and settings live outside the plugin dir (`.idea/marginalis.json`,
+IDE `options/marginalis.xml`), so the uninstall loses nothing.
 
 > **Skill source of truth:** the agent-facing skill ships as the Claude Code
 > plugin `marginalis` in the operator's marketplace —

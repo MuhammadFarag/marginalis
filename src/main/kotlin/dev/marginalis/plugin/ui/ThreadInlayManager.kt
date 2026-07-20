@@ -2,6 +2,7 @@ package dev.marginalis.plugin.ui
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
@@ -94,6 +95,20 @@ object ThreadInlayManager {
     private fun close(editor: Editor, threadId: String) {
         val open = editor.getUserData(OPEN_INLAYS) ?: return
         open.remove(threadId)?.let { (inlay, _) -> Disposer.dispose(inlay) }
+    }
+
+    /**
+     * Dynamic-unload cleanup: dispose every open panel and clear our user
+     * data from every editor. Editor user data outlives the plugin's
+     * classloader — anything of ours left behind (panels, inlays, even the
+     * stale Key values) pins the old classloader after a hot reload.
+     */
+    fun disposeAll() {
+        for (editor in EditorFactory.getInstance().allEditors) {
+            editor.getUserData(OPEN_INLAYS)?.values?.forEach { (inlay, _) -> Disposer.dispose(inlay) }
+            editor.putUserData(OPEN_INLAYS, null)
+            editor.putUserData(LISTENER_INSTALLED, null)
+        }
     }
 
     /**

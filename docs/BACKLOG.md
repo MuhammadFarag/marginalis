@@ -16,33 +16,37 @@ once the token gains Issues scope.
   ADTs, USER rename (legacy-tolerant codec), AnchorPolicy deduplicated,
   22-test suite, `scripts/test-core.sh` local loop, comment-hygiene sweep,
   handover doc → docs/
+- ✅ `navigate` endpoint + first settings surface — consent pattern
+  (skill etiquette + hard off-switch, 403 when off), display-name override,
+  anchor verification shared with comment_add (`940b096`)
+- ✅ Tour walking — stable `(n/total)` denominators, first/prev/next/last in
+  tool window title (⌘⌥↑/⌘⌥↓ free via occurrence actions) and thread-panel
+  header, TourNavigator shared walk, panel title de-redundified (`db11943`)
 
 ## Open — features
 
 - **Agent self-identification** — model ready (`Author.Agent(name, id)`);
   transport still stamps "Claude": accept optional `author_name`/`author_id`
   on comment_add/comment_reply, default the display to "Agent".
-- **`navigate(file, line)` endpoint** — the last piece of the original tool
-  surface: agent moves the user's caret without leaving a thread.
-- **Session-presence indicator** — "is an agent attached right now": small,
-  persistent, honest. Requires deciding what presence means over a stateless
-  HTTP API (recent-activity window? explicit session start/end calls?).
 - **`comment_edit` (agent-side)** — symmetry with edit-before-seen.
-- **User display-name setting** — currently derived from the OS username.
-- **De-emphasize human-side resolve affordances** — real usage shows resolve
-  is an agent verb (the resolver is the completer, and the agent performs
-  the edits); the panel button and Resolve All earn their place only for
-  moot threads and bulk cleanup.
 - **Rendered heading sizes** — h1/h2 render at document scale inside margin
   panels; likely want scaling down. (Operator thread open in sample-project.)
+
+## Shipped (2026-07-20)
+
+- ✅ Hot reload — clean dynamic unload (`MarginalisUnloadListener` strips
+  markup highlighters + editor inlays/user-data; all EPs verified
+  `dynamic="true"`). Verified live: uninstall → install-from-disk cycles
+  without IDE restart, threads survive via persistence + rehydration.
+  Platform finding: one-step install-over-existing ALWAYS restarts
+  (`PluginInstaller.installFromDisk` hard-codes it); the two-step flow is
+  the reload loop — documented in CLAUDE.md.
 
 ## Open — infrastructure
 
 - **JetBrains Marketplace publishing** — plugin-side wiring ~1hr (signing +
   publishPlugin + beta channel); operator side: account, first manual upload
   (creates the listing, ~2-business-day review), API token, four CI secrets.
-- **Hot reload** — dynamic-EP audit + clean unload pass so plugin updates
-  stop requiring an IDE restart (today: restart required, empirically).
 - **Issues migration** — grant the PAT Issues scope, move this file there.
 - **Skill trigger evals** — only if the `marginalis` skill under-triggers in
   other sessions (skill-creator's optimization loop is ready when needed).
@@ -67,10 +71,12 @@ once the token gains Issues scope.
 
 ## Decision log
 
-- **Resolve is an agent verb** (2026-07-19, real-usage finding): the human
-  never resolves; the agent resolves at the discussion→editing transition,
-  as the resolver-is-the-completer etiquette implies. No new lifecycle
-  states needed.
+- **Resolve is an agent verb** (2026-07-19, real-usage finding) — OVERTURNED
+  later the same day: the operator resolves tour stops directly while
+  walking a review. Human-side resolve affordances stay as they are;
+  the de-emphasis item is dropped.
+- **Session presence dropped** (2026-07-19): operator call — the indicator
+  doesn't make sense for a turn-based channel.
 - **Review outcomes 2026-07-19** (via resolved margin threads, all landed in
   `65db25b`): comment-hygiene sweep; AuthorKind.HUMAN → USER with tolerant
   loader; Author + ThreadStatus as sealed ADTs; vendor email → m@far.ag;
