@@ -10,5 +10,8 @@ sealed interface Author {
 
     data class User(override val displayName: String) : Author
 
-    data class Agent(override val displayName: String, val id: String? = null) : Author
+    data class Agent(override val displayName: String, val id: String? = null) : Author {
+        /** Read-receipt identity: the stable id when the agent has one, else its name. */
+        val receiptKey: String get() = id ?: displayName
+    }
 }

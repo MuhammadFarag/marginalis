@@ -28,12 +28,6 @@ once the token gains Issues scope.
 - **Agent self-identification** — model ready (`Author.Agent(name, id)`);
   transport still stamps "Claude": accept optional `author_name`/`author_id`
   on comment_add/comment_reply, default the display to "Agent".
-- **Cross-project walkthroughs fragment** (observed 2026-07-20): steps in
-  different projects render in separate tool windows, each fragment
-  numbered against its own project's total — a 4-step walkthrough spanning
-  two projects shows as (1/2)(2/2) + (3/4)(4/4), both looking
-  self-contained. Options: per-window "steps continue in project X" note,
-  or an agent-side convention (one walkthrough per project). Needs design.
 - **Rendered heading sizes** — h1/h2 render at document scale inside margin
   panels; likely want scaling down. (Operator thread open in sample-project.)
 
@@ -86,10 +80,10 @@ once the token gains Issues scope.
 
 ## Future era
 
-- **Multi-agent** — `seenByAgent` (single bit) must become a per-participant
-  read map; then message addressing (@agent) and per-agent resolution
-  authority. The Author ADT keeps the door open; nothing to build until a
-  second agent is real.
+- **Multi-agent, remaining halves** — message addressing (@agent) and
+  per-agent resolution authority. The read map shipped in v0.1.7
+  (per-agent `seen_by` receipts); build the rest when concurrent agent
+  sessions are routine.
 
 ## Decision log
 
@@ -99,6 +93,10 @@ once the token gains Issues scope.
   the de-emphasis item is dropped.
 - **Session presence dropped** (2026-07-19): operator call — the indicator
   doesn't make sense for a turn-based channel.
+- **Cross-project walkthrough fragmentation accepted** (2026-07-20):
+  rare in practice and harmless while walkthroughs don't interleave;
+  the agent-side convention (one walkthrough per project) suffices —
+  no UI work.
 - **comment_edit dropped** (2026-07-20): symmetry without a use case — a
   full session of real use never produced the want. Agents compose in one
   pass and the human reads almost immediately, so the edit window would be

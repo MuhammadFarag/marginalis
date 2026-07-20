@@ -25,11 +25,12 @@ class ThreadStore {
     fun query(
         file: String? = null,
         status: ThreadStatus.Kind? = null,
-        unreadOnly: Boolean = false,
+        /** Non-null: only threads with messages this agent hasn't seen. */
+        unreadFor: String? = null,
     ): List<CommentThread> = all().filter { thread ->
         (file == null || thread.file == file) &&
             (status == null || thread.status.kind == status) &&
-            (!unreadOnly || thread.unreadCount() > 0)
+            (unreadFor == null || thread.unreadCountFor(unreadFor) > 0)
     }
 
     /** Remove one thread entirely. Any live UI attachments are the caller's to clean up. */

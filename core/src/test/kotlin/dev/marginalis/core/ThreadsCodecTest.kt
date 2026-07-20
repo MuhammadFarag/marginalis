@@ -34,9 +34,9 @@ class ThreadsCodecTest {
         val (m1, m2) = decoded.messages
         assertEquals(agent, m1.author)
         assertEquals("**bold** question", m1.body)
-        assertTrue(m1.seenByAgent)
+        assertEquals(setOf("claude-1"), m1.seenBy)
         assertEquals(user, m2.author)
-        assertFalse(m2.seenByAgent)
+        assertFalse(m2.seenByAnyAgent)
     }
 
     @Test
@@ -53,6 +53,23 @@ class ThreadsCodecTest {
         val author = thread.messages.single().author
         assertIs<Author.User>(author)
         assertEquals("Muhammad", author.displayName)
+    }
+
+    @Test
+    fun `pre-multi-agent seen_by_agent bit maps to the anonymous Agent key`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t3","file":"a.py","line":3,"anchor_text":"x = 1",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z",
+              "messages":[{"id":"m1","author":{"kind":"USER","name":"Muhammad"},
+                "body":"read","created_at":"2026-07-18T12:00:01Z","seen_by_agent":true},
+               {"id":"m2","author":{"kind":"USER","name":"Muhammad"},
+                "body":"unread","created_at":"2026-07-18T12:00:02Z","seen_by_agent":false}]
+            }]}
+        """.trimIndent()
+        val messages = ThreadsCodec.decode(legacy).single().messages
+        assertEquals(setOf("Agent"), messages[0].seenBy)
+        assertFalse(messages[1].seenByAnyAgent)
     }
 
     @Test

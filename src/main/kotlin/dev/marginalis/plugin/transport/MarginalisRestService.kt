@@ -51,7 +51,7 @@ import java.time.format.DateTimeFormatter
  *   POST /api/marginalis/comment_reopen   {thread_id}
  *   POST /api/marginalis/comment_resolve_all  {file?}
  *   POST /api/marginalis/comment_clear_all    {file?}
- *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&project=
+ *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&project=&author_name=&author_id=
  *   POST /api/marginalis/navigate         {file, line, anchor_text?, project?}
  *
  * Writing/resolving endpoints (comment_add, comment_reply, comment_resolve,
@@ -371,6 +371,10 @@ class MarginalisRestService : RestService() {
         }
         val unreadOnly = params["unread_only"]?.firstOrNull()?.toBoolean() ?: false
         val projectFilter = params["project"]?.firstOrNull()
+        // The caller's read receipts are their own: identity via the same
+        // author params (query-string here), anonymous callers share "Agent".
+        val callerKey = (params["author_id"]?.firstOrNull() ?: params["author_name"]?.firstOrNull())
+            ?: Authors.agent.receiptKey
 
         val threadsJson = JsonArray()
         var markedSeen = 0
@@ -381,12 +385,12 @@ class MarginalisRestService : RestService() {
                 if (project.isDisposed) continue
                 if (projectFilter != null && !projectMatches(project, projectFilter)) continue
                 val store = MarginalisStore.getInstance(project)
-                for (thread in store.threads.query(fileFilter, statusFilter, unreadOnly)) {
+                for (thread in store.threads.query(fileFilter, statusFilter, if (unreadOnly) callerKey else null)) {
                     val messagesJson = JsonArray()
                     for (message in thread.messages) {
-                        val newlySeen = !message.seenByAgent
+                        val newlySeen = !message.seenBy(callerKey)
                         if (newlySeen) {
-                            message.seenByAgent = true
+                            message.markSeenBy(callerKey)
                             markedSeen++
                         }
                         messagesJson.add(
@@ -395,6 +399,7 @@ class MarginalisRestService : RestService() {
                                 add("author", authorJson(message.author))
                                 addProperty("body", message.body)
                                 addProperty("created_at", timeFormat.format(message.createdAt))
+                                add("seen_by", JsonArray().apply { message.seenBy.sorted().forEach(::add) })
                                 if (newlySeen) addProperty("newly_seen", true)
                             },
                         )

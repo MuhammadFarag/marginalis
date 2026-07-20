@@ -225,9 +225,9 @@ class ThreadPanel(
         val editing = editingMessageId?.let { id -> thread.messages.find { it.id == id } }
         if (editing != null) {
             editingMessageId = null
-            // The window may have closed mid-edit: if the agent read the
+            // The window may have closed mid-edit: if an agent read the
             // original in the meantime, it is record now — don't rewrite it.
-            if (!editing.seenByAgent) {
+            if (!editing.seenByAnyAgent) {
                 editing.body = body
             }
             replyArea.text = ""
@@ -320,7 +320,7 @@ class ThreadPanel(
         // The read receipt is the edit window: your message is revisable
         // until the agent reads it, immutable record after. Editing happens
         // in the same composer the message was written in.
-        if (message.author is Author.User && !message.seenByAgent && editingMessageId == null) {
+        if (message.author is Author.User && !message.seenByAnyAgent && editingMessageId == null) {
             val editLink = ActionLink("Edit") {
                 editingMessageId = message.id
                 replyArea.text = message.body

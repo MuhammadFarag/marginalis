@@ -59,7 +59,11 @@ class CommentThread(
         this.status = status
     }
 
-    fun unreadCount(): Int = messages.count { !it.seenByAgent }
+    /** Messages no agent has consumed yet — the user-facing "will be seen" count. */
+    fun unreadCount(): Int = messages.count { !it.seenByAnyAgent }
+
+    /** Messages a specific agent hasn't seen — that agent's sweep is keyed by this. */
+    fun unreadCountFor(agentKey: String): Int = messages.count { !it.seenBy(agentKey) }
 
     /** Whose turn: the agent spoke last, so the conversation awaits the user. */
     fun awaitsUser(): Boolean = messages.lastOrNull()?.author is Author.Agent

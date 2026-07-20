@@ -46,7 +46,7 @@ object ThreadsCodec {
                             add("author", authorJson(m.author))
                             addProperty("body", m.body)
                             addProperty("created_at", m.createdAt.toString())
-                            addProperty("seen_by_agent", m.seenByAgent)
+                            add("seen_by", JsonArray().apply { m.seenBy.sorted().forEach(::add) })
                         },
                     )
                 }
@@ -74,7 +74,7 @@ object ThreadsCodec {
                     body = msg.get("body").asString,
                     id = msg.get("id").asString,
                     createdAt = Instant.parse(msg.get("created_at").asString),
-                    seenByAgent = msg.get("seen_by_agent")?.asBoolean,
+                    seenBy = seenBy(msg),
                 ),
             )
         }
@@ -87,6 +87,18 @@ object ThreadsCodec {
             },
         )
         return thread
+    }
+
+    /**
+     * "seen_by" is a set of agent receipt keys; pre-multi-agent files wrote
+     * a single "seen_by_agent" bit — true maps to the anonymous "Agent",
+     * preserving "was read in the single-agent era" for the edit window.
+     */
+    private fun seenBy(msg: JsonObject): Set<String> {
+        msg.get("seen_by")?.takeIf { it.isJsonArray }?.let { keys ->
+            return keys.asJsonArray.mapNotNull { el -> el.takeIf { it.isJsonPrimitive }?.asString }.toSet()
+        }
+        return if (msg.get("seen_by_agent")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) setOf("Agent") else emptySet()
     }
 
     private fun authorJson(author: Author): JsonObject = JsonObject().apply {

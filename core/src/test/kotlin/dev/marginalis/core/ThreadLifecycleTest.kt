@@ -41,13 +41,32 @@ class ThreadLifecycleTest {
     }
 
     @Test
-    fun `agent messages are born seen, user messages born unread`() {
+    fun `agent messages are born seen by their author, user messages born unread`() {
         val t = thread()
         t.addMessage(Message(agent, "proposal"))
         t.addMessage(Message(user, "reply"))
         assertEquals(1, t.unreadCount())
-        assertTrue(t.messages[0].seenByAgent)
-        assertFalse(t.messages[1].seenByAgent)
+        assertTrue(t.messages[0].seenByAnyAgent)
+        assertFalse(t.messages[1].seenByAnyAgent)
+    }
+
+    @Test
+    fun `read receipts are per agent — one agent's sweep leaves another's unread alone`() {
+        val t = thread()
+        t.addMessage(Message(user, "for everyone"))
+        t.addMessage(Message(agent, "agent one speaking"))
+        val one = agent.receiptKey
+        val two = "agent-two"
+
+        // Agent one reads everything; agent two hasn't looked yet.
+        t.messages.forEach { it.markSeenBy(one) }
+        assertEquals(0, t.unreadCountFor(one))
+        assertEquals(2, t.unreadCountFor(two))
+        // The human-facing count: someone consumed it all.
+        assertEquals(0, t.unreadCount())
+
+        t.messages.forEach { it.markSeenBy(two) }
+        assertEquals(0, t.unreadCountFor(two))
     }
 
     @Test
@@ -69,10 +88,10 @@ class ThreadLifecycleTest {
         val m = Message(user, "draft")
         m.body = "final"
         assertEquals("final", m.body)
-        // Core stores state; refusing edits after seenByAgent is the
+        // Core stores state; refusing edits after any-agent-read is the
         // adapters' contract, verified here only as data.
-        m.seenByAgent = true
-        assertTrue(m.seenByAgent)
+        m.markSeenBy("someone")
+        assertTrue(m.seenByAnyAgent)
     }
 
     @Test
@@ -89,7 +108,9 @@ class ThreadLifecycleTest {
         assertEquals(listOf(a), store.query(file = "a.py"))
         assertEquals(listOf(a), store.query(status = ThreadStatus.Kind.OPEN))
         assertEquals(listOf(b), store.query(status = ThreadStatus.Kind.RESOLVED))
-        assertEquals(listOf(a), store.query(unreadOnly = true))
+        // From the authoring agent's view only its own words are seen; a
+        // DIFFERENT agent would also find b unread — receipts are per agent.
+        assertEquals(listOf(a), store.query(unreadFor = agent.receiptKey))
     }
 
     @Test
