@@ -34,6 +34,17 @@ once the token gains Issues scope.
 
 ## Shipped (2026-07-20)
 
+- ✅ Marketplace publishing wiring + walkthrough vocabulary (v0.1.3) —
+  signing/publishPlugin off CI secrets (workflow skips gracefully until
+  they exist), refreshed listing description; tour → walkthrough rename
+  across model (legacy-tolerant codec), wire, UI (Step actions), skill
+  0.5.0 incl. new Walkthroughs practice section (`a9c8cfc`)
+- ✅ Worktree-safe anchoring (v0.1.4) — first externally-reported bug:
+  same-layout worktrees made first-match resolution ambiguous. Optional
+  `project` on anchored endpoints, git branch in ping + teaching 404s
+  (`.git/HEAD` read, platform-only), per-thread `project` in listings,
+  script auto-scopes by cwd; skill 0.6.0. CONFIRMED fixed in the
+  reporting PyCharm worktree setup (`ae98560`)
 - ✅ Hot reload — clean dynamic unload (`MarginalisUnloadListener` strips
   markup highlighters + editor inlays/user-data; all EPs verified
   `dynamic="true"`). Verified live: uninstall → install-from-disk cycles
