@@ -12,7 +12,7 @@ class ThreadsCodecTest {
     fun `full round trip preserves everything`() {
         val agent = Author.Agent("Claude", id = "claude-1")
         val user = Author.User("Muhammad")
-        val t = CommentThread("src/a.py", 7, "def f():", order = 2, tour = "A")
+        val t = CommentThread("src/a.py", 7, "def f():", order = 2, walkthrough = "A")
         t.addMessage(Message(agent, "**bold** question"))
         t.addMessage(Message(user, "answer"))
         t.resolve(user)
@@ -24,7 +24,7 @@ class ThreadsCodecTest {
         assertEquals(7, decoded.line)
         assertEquals("def f():", decoded.anchorText)
         assertEquals(2, decoded.order)
-        assertEquals("A", decoded.tour)
+        assertEquals("A", decoded.walkthrough)
         assertEquals(t.createdAt, decoded.createdAt)
         val status = decoded.status
         assertIs<ThreadStatus.Resolved>(status)
@@ -53,6 +53,17 @@ class ThreadsCodecTest {
         val author = thread.messages.single().author
         assertIs<Author.User>(author)
         assertEquals("Muhammad", author.displayName)
+    }
+
+    @Test
+    fun `pre-rename files with tour key load as walkthrough`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t2","file":"a.py","line":3,"anchor_text":"x = 1","order":1,"tour":"B",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]
+            }]}
+        """.trimIndent()
+        assertEquals("B", ThreadsCodec.decode(legacy).single().walkthrough)
     }
 
     @Test

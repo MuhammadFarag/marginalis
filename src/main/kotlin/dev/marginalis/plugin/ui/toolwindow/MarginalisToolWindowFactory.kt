@@ -29,7 +29,7 @@ import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.MarkdownRenderer
-import dev.marginalis.plugin.ui.TourNavigator
+import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -52,16 +52,16 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
         val panel = MarginalisToolWindowPanel(project)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
         toolWindow.contentManager.addContent(content)
-        // Walk the stops of a section like a tour: first/prev/next/last.
+        // Walk the steps of a section like a walkthrough: first/prev/next/last.
         // Prev/next are platform occurrence actions, so they arrive with the
         // standard icons and shortcuts (⌘⌥↑ / ⌘⌥↓).
         val common = CommonActionsManager.getInstance()
         toolWindow.setTitleActions(
             listOf(
-                FirstStopAction(panel),
+                FirstStepAction(panel),
                 common.createPrevOccurenceAction(panel),
                 common.createNextOccurenceAction(panel),
-                LastStopAction(panel),
+                LastStepAction(panel),
                 ResolveAllAction(),
                 ClearAllAction(),
             ),
@@ -69,9 +69,9 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
     }
 }
 
-/** Jump to a section's first stop; disabled when already there. */
-private class FirstStopAction(private val panel: MarginalisToolWindowPanel) :
-    AnAction("First Stop", "Go to the first stop in this section", AllIcons.Actions.Play_first) {
+/** Jump to a section's first step; disabled when already there. */
+private class FirstStepAction(private val panel: MarginalisToolWindowPanel) :
+    AnAction("First Step", "Go to the first step in this section", AllIcons.Actions.Play_first) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
@@ -81,9 +81,9 @@ private class FirstStopAction(private val panel: MarginalisToolWindowPanel) :
     override fun actionPerformed(e: AnActionEvent) = panel.goFirst()
 }
 
-/** Jump to a section's last stop; disabled when already there. */
-private class LastStopAction(private val panel: MarginalisToolWindowPanel) :
-    AnAction("Last Stop", "Go to the last stop in this section", AllIcons.Actions.Play_last) {
+/** Jump to a section's last step; disabled when already there. */
+private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
+    AnAction("Last Step", "Go to the last step in this section", AllIcons.Actions.Play_last) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
@@ -152,7 +152,7 @@ private sealed class NodeData {
     class Section(val title: String, val count: Int) : NodeData()
     class DirNode(val name: String, val count: Int) : NodeData()
     class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
-    class ThreadNode(val thread: CommentThread, val tourPrefix: String? = null) : NodeData()
+    class ThreadNode(val thread: CommentThread, val walkthroughPrefix: String? = null) : NodeData()
 }
 
 
@@ -171,7 +171,7 @@ private class PathTrie {
 
     fun threadCount(): Int = files.values.sumOf { it.size } + dirs.values.sumOf { it.threadCount() }
 
-    /** Earliest tour stop beneath this node — lets guided trees read in tour order. */
+    /** Earliest walkthrough step beneath this node — lets guided trees read in walkthrough order. */
     fun minOrder(): Int = minOf(
         files.values.flatten().mapNotNull { it.order }.minOrNull() ?: Int.MAX_VALUE,
         dirs.values.minOfOrNull { it.minOrder() } ?: Int.MAX_VALUE,
@@ -218,16 +218,16 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         return (node.userObject as? NodeData.ThreadNode)?.thread
     }
 
-    // ------------------------------------------------- stop-by-stop walking
+    // ------------------------------------------------- step-by-step walking
     //
     // The tree selection is the cursor. The walk is scoped to the section
-    // (Guided A, Guided B, Open, …) holding the selection — a tour never
-    // bleeds into its neighbor — and runs in display order, which is tour
+    // (Guided A, Guided B, Open, …) holding the selection — a walkthrough never
+    // bleeds into its neighbor — and runs in display order, which is walkthrough
     // order in Guided sections and file-then-line order elsewhere. With no
-    // selection, the walk starts at the first section's first stop.
+    // selection, the walk starts at the first section's first step.
 
     /** Thread nodes of the active section in display order, plus the cursor index (-1 = before first). */
-    private fun stops(): Pair<List<DefaultMutableTreeNode>, Int> {
+    private fun steps(): Pair<List<DefaultMutableTreeNode>, Int> {
         val none = emptyList<DefaultMutableTreeNode>() to -1
         val root = tree.model.root as? DefaultMutableTreeNode ?: return none
         val selected = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
@@ -249,38 +249,38 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         (node.userObject as? NodeData.ThreadNode)?.thread?.let { navigateTo(it) }
     }
 
-    override fun hasNextOccurence(): Boolean = stops().let { (walk, i) -> i < walk.size - 1 && walk.isNotEmpty() }
+    override fun hasNextOccurence(): Boolean = steps().let { (walk, i) -> i < walk.size - 1 && walk.isNotEmpty() }
 
-    override fun hasPreviousOccurence(): Boolean = stops().second > 0
+    override fun hasPreviousOccurence(): Boolean = steps().second > 0
 
     override fun goNextOccurence(): OccurenceNavigator.OccurenceInfo? {
-        val (walk, i) = stops()
+        val (walk, i) = steps()
         val target = walk.getOrNull(i + 1) ?: return null
         goTo(target)
         return OccurenceNavigator.OccurenceInfo.position(i + 2, walk.size)
     }
 
     override fun goPreviousOccurence(): OccurenceNavigator.OccurenceInfo? {
-        val (walk, i) = stops()
+        val (walk, i) = steps()
         val target = walk.getOrNull(i - 1) ?: return null
         goTo(target)
         return OccurenceNavigator.OccurenceInfo.position(i, walk.size)
     }
 
-    override fun getNextOccurenceActionName(): String = "Next Stop"
+    override fun getNextOccurenceActionName(): String = "Next Step"
 
-    override fun getPreviousOccurenceActionName(): String = "Previous Stop"
+    override fun getPreviousOccurenceActionName(): String = "Previous Step"
 
-    fun canGoFirst(): Boolean = stops().let { (walk, i) -> walk.isNotEmpty() && i != 0 }
+    fun canGoFirst(): Boolean = steps().let { (walk, i) -> walk.isNotEmpty() && i != 0 }
 
-    fun canGoLast(): Boolean = stops().let { (walk, i) -> walk.isNotEmpty() && i != walk.size - 1 }
+    fun canGoLast(): Boolean = steps().let { (walk, i) -> walk.isNotEmpty() && i != walk.size - 1 }
 
     fun goFirst() {
-        stops().first.firstOrNull()?.let { goTo(it) }
+        steps().first.firstOrNull()?.let { goTo(it) }
     }
 
     fun goLast() {
-        stops().first.lastOrNull()?.let { goTo(it) }
+        steps().first.lastOrNull()?.let { goTo(it) }
     }
 
     private fun rebuild() {
@@ -303,27 +303,27 @@ private class MarginalisToolWindowPanel(private val project: Project) :
     }
 
     /**
-     * The tours: agent-ordered open threads, across files, in "look here
+     * The walkthroughs: agent-ordered open threads, across files, in "look here
      * 1st, 2nd, …" sequence — the agent's answer to "where should I look?".
-     * Several tours coexist via labels; positions render compactly as
-     * (1/4), or (A1/4) once more than one tour is present. The total is
-     * fixed for the life of the tour — resolving stop 2 of 5 must not turn
+     * Several walkthroughs coexist via labels; positions render compactly as
+     * (1/4), or (A1/4) once more than one walkthrough is present. The total is
+     * fixed for the life of the walkthrough — resolving step 2 of 5 must not turn
      * (4/5) into (4/4); a position only means something against a stable
-     * denominator — so it comes from every thread in the tour regardless
+     * denominator — so it comes from every thread in the walkthrough regardless
      * of status.
      */
     private fun addGuidedSection(root: DefaultMutableTreeNode, allThreads: List<CommentThread>) {
         val openStops = allThreads.filter { it.status is ThreadStatus.Open && it.order != null }
         if (openStops.isEmpty()) return
-        val tours = openStops.groupBy { it.tour ?: "" }.toSortedMap()
-        val labelNeeded = tours.size > 1
-        for ((label, tourThreads) in tours) {
+        val walkthroughs = openStops.groupBy { it.walkthrough ?: "" }.toSortedMap()
+        val labelNeeded = walkthroughs.size > 1
+        for ((label, walkthroughThreads) in walkthroughs) {
             val title = if (label.isEmpty()) "Guided" else "Guided $label"
-            val section = DefaultMutableTreeNode(NodeData.Section(title, tourThreads.size))
-            val total = allThreads.filter { (it.tour ?: "") == label }.mapNotNull { it.order }.maxOrNull()
-                ?: tourThreads.size
+            val section = DefaultMutableTreeNode(NodeData.Section(title, walkthroughThreads.size))
+            val total = allThreads.filter { (it.walkthrough ?: "") == label }.mapNotNull { it.order }.maxOrNull()
+                ?: walkthroughThreads.size
             val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
-            val trie = PathTrie().apply { tourThreads.forEach(::insert) }
+            val trie = PathTrie().apply { walkthroughThreads.forEach(::insert) }
             emitTrie(trie, section, prefixFor = { thread -> "($shownLabel${thread.order}/$total)" })
             root.add(section)
         }
@@ -340,7 +340,7 @@ private class MarginalisToolWindowPanel(private val project: Project) :
     /**
      * Emit the trie, compressing single-child directory chains (a/b/c → one
      * node). With [prefixFor] (guided mode), directories/files sort by their
-     * earliest tour stop and threads by tour order, so the tree reads
+     * earliest walkthrough step and threads by walkthrough order, so the tree reads
      * top-to-bottom in roughly walking order; otherwise alphabetical/by-line.
      */
     private fun emitTrie(
@@ -397,7 +397,7 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         }
     }
 
-    private fun navigateTo(thread: CommentThread) = TourNavigator.navigateTo(project, thread)
+    private fun navigateTo(thread: CommentThread) = WalkthroughNavigator.navigateTo(project, thread)
 }
 
 private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
@@ -439,8 +439,8 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     thread.status is ThreadStatus.Orphaned -> AllIcons.General.Warning
                     else -> AllIcons.General.Balloon
                 }
-                if (data.tourPrefix != null) {
-                    append("${data.tourPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                if (data.walkthroughPrefix != null) {
+                    append("${data.walkthroughPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
                 append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 if (thread.status !is ThreadStatus.Open) {

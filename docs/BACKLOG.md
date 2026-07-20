@@ -48,6 +48,12 @@ once the token gains Issues scope.
   publishPlugin + beta channel); operator side: account, first manual upload
   (creates the listing, ~2-business-day review), API token, four CI secrets.
 - **Issues migration** — grant the PAT Issues scope, move this file there.
+- **Skill source into repo** (deferred 2026-07-20, operator call) — move
+  SKILL.md + marginalis.sh into an inert `skill/` dir here, one-way
+  sync script → mfarag-plugins (plugin.json stays operator-owned);
+  optional later: `.claude-plugin/marketplace.json` makes the repo itself
+  an installable Claude Code marketplace. Design agreed, build skipped
+  for now.
 - **Skill trigger evals** — only if the `marginalis` skill under-triggers in
   other sessions (skill-creator's optimization loop is ready when needed).
 

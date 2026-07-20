@@ -139,23 +139,24 @@ class ThreadPanel(
     }
 
     /**
-     * Stop-by-stop navigation without leaving the panel — during a tour the
-     * mouse lives here, not in the tool window. Same walk semantics as the
-     * tool window's title buttons (TourNavigator); moving on closes this
-     * panel and opens the target's, one stop at a time.
+     * Step-by-step navigation without leaving the panel — during a
+     * walkthrough the mouse lives here, not in the tool window. Same walk
+     * semantics as the tool window's title buttons (WalkthroughNavigator);
+     * moving on closes this panel and opens the target's, one step at a
+     * time.
      */
     private fun buildNavToolbar(): JComponent {
         val group = DefaultActionGroup(
-            navAction("First Stop", AllIcons.Actions.Play_first) { walk, i ->
+            navAction("First Step", AllIcons.Actions.Play_first) { walk, i ->
                 walk.firstOrNull().takeIf { i != 0 }
             },
-            navAction("Previous Stop", AllIcons.Actions.PreviousOccurence) { walk, i ->
+            navAction("Previous Step", AllIcons.Actions.PreviousOccurence) { walk, i ->
                 if (i > 0) walk[i - 1] else null
             },
-            navAction("Next Stop", AllIcons.Actions.NextOccurence) { walk, i ->
+            navAction("Next Step", AllIcons.Actions.NextOccurence) { walk, i ->
                 walk.getOrNull(i + 1)
             },
-            navAction("Last Stop", AllIcons.Actions.Play_last) { walk, i ->
+            navAction("Last Step", AllIcons.Actions.Play_last) { walk, i ->
                 walk.lastOrNull().takeIf { i != walk.size - 1 }
             },
         )
@@ -165,7 +166,7 @@ class ThreadPanel(
         return toolbar.component
     }
 
-    /** A nav button is enabled exactly when [target] yields a stop to go to. */
+    /** A nav button is enabled exactly when [target] yields a step to go to. */
     private fun navAction(
         name: String,
         icon: Icon,
@@ -174,15 +175,15 @@ class ThreadPanel(
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
         override fun update(e: AnActionEvent) {
-            val (walk, i) = TourNavigator.walkFrom(project, thread)
+            val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
             e.presentation.isEnabled = target(walk, i) != null
         }
 
         override fun actionPerformed(e: AnActionEvent) {
-            val (walk, i) = TourNavigator.walkFrom(project, thread)
+            val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
             val destination = target(walk, i) ?: return
             onClose()
-            TourNavigator.navigateTo(project, destination)
+            WalkthroughNavigator.navigateTo(project, destination)
         }
     }
 

@@ -9,22 +9,22 @@ import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisStore
 
 /**
- * Stop-by-stop walking for the thread panel's navigation buttons, computed
+ * Step-by-step walking for the thread panel's navigation buttons, computed
  * from the store so a panel can walk without the tool window being open.
- * Same semantics as the tool window's walk: a tour stop walks its own tour
- * in stop order (never bleeding into a neighboring tour); an unordered
- * thread walks every open thread in directory-tree order (directories
- * before files at each level, then by line) — the order the tool window
- * displays.
+ * Same semantics as the tool window's walk: a walkthrough step walks its
+ * own walkthrough in step order (never bleeding into a neighboring
+ * walkthrough); an unordered thread walks every open thread in
+ * directory-tree order (directories before files at each level, then by
+ * line) — the order the tool window displays.
  */
-object TourNavigator {
+object WalkthroughNavigator {
 
     /** The walk containing [thread], and its position in it (-1 = not a member, e.g. resolved). */
     fun walkFrom(project: Project, thread: CommentThread): Pair<List<CommentThread>, Int> {
         val open = MarginalisStore.getInstance(project).threads.all()
             .filter { it.status is ThreadStatus.Open }
         val walk = if (thread.order != null) {
-            open.filter { it.order != null && (it.tour ?: "") == (thread.tour ?: "") }
+            open.filter { it.order != null && (it.walkthrough ?: "") == (thread.walkthrough ?: "") }
                 .sortedWith(compareBy({ it.order }, { it.createdAt }))
         } else {
             open.sortedWith(

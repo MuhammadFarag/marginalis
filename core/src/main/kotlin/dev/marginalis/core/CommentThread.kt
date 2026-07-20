@@ -20,10 +20,10 @@ class CommentThread(
     val anchorText: String,
     val id: String = UUID.randomUUID().toString(),
     val createdAt: Instant = Instant.now(),
-    /** Position in a guided tour ("look here Nth"); null = not part of one. */
+    /** Step position in a guided walkthrough ("look here Nth"); null = not part of one. */
     val order: Int? = null,
-    /** Tour label (e.g. "A") so several guided sequences can coexist. */
-    val tour: String? = null,
+    /** Walkthrough label (e.g. "A") so several guided sequences can coexist. */
+    val walkthrough: String? = null,
 ) {
     private val messagesLock = Any()
     private val _messages = mutableListOf<Message>()

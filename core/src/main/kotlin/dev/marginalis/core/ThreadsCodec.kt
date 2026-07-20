@@ -32,7 +32,7 @@ object ThreadsCodec {
         addProperty("line", thread.line)
         addProperty("anchor_text", thread.anchorText)
         thread.order?.let { addProperty("order", it) }
-        thread.tour?.let { addProperty("tour", it) }
+        thread.walkthrough?.let { addProperty("walkthrough", it) }
         addProperty("status", thread.status.kind.name)
         addProperty("created_at", thread.createdAt.toString())
         thread.resolvedBy?.let { add("resolved_by", authorJson(it)) }
@@ -62,7 +62,9 @@ object ThreadsCodec {
             id = json.get("id").asString,
             createdAt = Instant.parse(json.get("created_at").asString),
             order = json.get("order")?.takeIf { it.isJsonPrimitive }?.asInt,
-            tour = json.get("tour")?.takeIf { it.isJsonPrimitive }?.asString,
+            // "walkthrough"; pre-rename files wrote "tour" — both mean the label.
+            walkthrough = (json.get("walkthrough") ?: json.get("tour"))
+                ?.takeIf { it.isJsonPrimitive }?.asString,
         )
         for (m in json.getAsJsonArray("messages")) {
             val msg = m.asJsonObject

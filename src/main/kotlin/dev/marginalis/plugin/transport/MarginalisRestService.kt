@@ -44,7 +44,7 @@ import java.time.format.DateTimeFormatter
  *
  * Endpoints:
  *   GET  /api/marginalis/ping             -> {status, ide, projects}
- *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, tour?}
+ *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, walkthrough?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
  *   POST /api/marginalis/comment_reopen   {thread_id}
@@ -147,7 +147,7 @@ class MarginalisRestService : RestService() {
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
         val anchorText = json.stringOrNull("anchor_text")
         val order = json.intOrNull("order")
-        val tourLabel = json.stringOrNull("tour")
+        val walkthroughLabel = json.stringOrNull("walkthrough")
 
         val (project, vFile) = ApplicationManager.getApplication()
             .runReadAction(Computable { resolveFile(file) })
@@ -179,7 +179,7 @@ class MarginalisRestService : RestService() {
             val line0 = placed.line0
             adjusted = placed.adjusted
 
-            val created = CommentThread(file, line0, lineText(document, line0), order = order, tour = tourLabel)
+            val created = CommentThread(file, line0, lineText(document, line0), order = order, walkthrough = walkthroughLabel)
             created.addMessage(Message(Authors.agent, body))
             val store = MarginalisStore.getInstance(project)
             val markup = DocumentMarkupModel.forDocument(document, project, true)
@@ -384,7 +384,7 @@ class MarginalisRestService : RestService() {
                             addProperty("status", thread.status.kind.name.lowercase())
                             addProperty("created_at", timeFormat.format(thread.createdAt))
                             thread.order?.let { addProperty("order", it) }
-                            thread.tour?.let { addProperty("tour", it) }
+                            thread.walkthrough?.let { addProperty("walkthrough", it) }
                             thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
                             add("messages", messagesJson)
                         },

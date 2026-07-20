@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "dev.marginalis"
-version = "0.1.2"
+version = "0.1.3"
 
 repositories {
     mavenCentral()
@@ -43,7 +43,8 @@ dependencies {
 }
 
 intellijPlatform {
-    // No settings UI yet; skips a slow headless-IDE fork during build.
+    // We do have a settings page now, but this forks a headless IDE the
+    // sandbox can't run; the one page is findable by name regardless.
     buildSearchableOptions = false
 
     // Needs java-compiler-ant-tasks from the blocked CDN, and we have no GUI
@@ -60,6 +61,18 @@ intellijPlatform {
             // be any version ≥ 2025.2, and JetBrains discourages upper bounds.
             untilBuild = provider { null }
         }
+    }
+
+    // Marketplace publishing: all four values arrive as CI secrets (see
+    // release.yml); locally they're simply absent and the tasks are skipped.
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 
     pluginVerification {

@@ -3,8 +3,13 @@
     <name>Marginalis</name>
     <vendor email="m@far.ag" url="https://github.com/MuhammadFarag/marginalis">Muhammad Farag</vendor>
     <description><![CDATA[
-        In-editor margin notes shared between you and your coding agent.
-        Comments anchor to lines, thread, and resolve — Google Docs comments over live code.
+        Code conversations with your AI coding agent, in the margins of your editor.
+        <br/><br/>
+        Comment threads anchor to lines, survive edits and restarts, and resolve when
+        their outcome lands in code. Your agent reads and replies between turns, guides
+        you through changes with step-by-step walkthroughs, and takes you to the code
+        in question when you ask — Google Docs comments over live code, built for the
+        human-agent pair.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
