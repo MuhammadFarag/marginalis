@@ -35,6 +35,7 @@ import io.netty.handler.codec.http.HttpResponseStatus
 import io.netty.handler.codec.http.HttpVersion
 import io.netty.handler.codec.http.QueryStringDecoder
 import org.jetbrains.ide.RestService
+import java.nio.file.Path
 import java.time.format.DateTimeFormatter
 
 /**
@@ -44,14 +45,14 @@ import java.time.format.DateTimeFormatter
  *
  * Endpoints:
  *   GET  /api/marginalis/ping             -> {status, ide, projects}
- *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, walkthrough?}
+ *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, walkthrough?, project?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
  *   POST /api/marginalis/comment_reopen   {thread_id}
  *   POST /api/marginalis/comment_resolve_all  {file?}
  *   POST /api/marginalis/comment_clear_all    {file?}
- *   GET  /api/marginalis/comment_list?file=&status=&unread_only=
- *   POST /api/marginalis/navigate         {file, line, anchor_text?}
+ *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&project=
+ *   POST /api/marginalis/navigate         {file, line, anchor_text?, project?}
  *
  * `file` is project-relative; `line` is 1-based, matching how agents read
  * files. Listing marks messages seen and says so explicitly (per-message
@@ -105,22 +106,28 @@ class MarginalisRestService : RestService() {
         addProperty("status", "ok")
         val appInfo = ApplicationInfo.getInstance()
         addProperty("ide", "${appInfo.versionName} ${appInfo.fullVersion}")
-        add(
-            "projects",
-            JsonArray().apply {
-                ApplicationManager.getApplication().runReadAction {
-                    for (project in ProjectManager.getInstance().openProjects) {
-                        if (project.isDisposed) continue
-                        add(
-                            JsonObject().apply {
-                                addProperty("name", project.name)
-                                addProperty("path", project.guessProjectDir()?.path ?: project.basePath)
-                            },
-                        )
-                    }
-                }
-            },
-        )
+        ApplicationManager.getApplication().runReadAction {
+            add("projects", openProjectsJson())
+        }
+    }
+
+    /**
+     * The open projects with their git branches. Branch is the discriminator
+     * for same-layout worktrees — name and file layout are identical there
+     * by construction, so it rides along in ping and resolution errors.
+     */
+    private fun openProjectsJson(): JsonArray = JsonArray().apply {
+        for (project in ProjectManager.getInstance().openProjects) {
+            if (project.isDisposed) continue
+            add(
+                JsonObject().apply {
+                    addProperty("name", project.name)
+                    val path = project.guessProjectDir()?.path ?: project.basePath
+                    addProperty("path", path)
+                    path?.let { p -> GitBranches.of(Path.of(p))?.let { addProperty("branch", it) } }
+                },
+            )
+        }
     }
 
     /** Shared POST plumbing: method check + JSON body parse. */
@@ -148,14 +155,11 @@ class MarginalisRestService : RestService() {
         val anchorText = json.stringOrNull("anchor_text")
         val order = json.intOrNull("order")
         val walkthroughLabel = json.stringOrNull("walkthrough")
+        val projectFilter = json.stringOrNull("project")
 
         val (project, vFile) = ApplicationManager.getApplication()
-            .runReadAction(Computable { resolveFile(file) })
-            ?: return sendError(
-                HttpResponseStatus.NOT_FOUND,
-                "'$file' not found in any open project (paths are project-relative)",
-                request, context,
-            )
+            .runReadAction(Computable { resolveFile(file, projectFilter) })
+            ?: return sendResolutionError(resolutionFailure(file, projectFilter), request, context)
 
         var error: String? = null
         var errorStatus = HttpResponseStatus.BAD_REQUEST
@@ -349,6 +353,7 @@ class MarginalisRestService : RestService() {
             }
         }
         val unreadOnly = params["unread_only"]?.firstOrNull()?.toBoolean() ?: false
+        val projectFilter = params["project"]?.firstOrNull()
 
         val threadsJson = JsonArray()
         var markedSeen = 0
@@ -357,6 +362,7 @@ class MarginalisRestService : RestService() {
         ApplicationManager.getApplication().runReadAction {
             for (project in ProjectManager.getInstance().openProjects) {
                 if (project.isDisposed) continue
+                if (projectFilter != null && !projectMatches(project, projectFilter)) continue
                 val store = MarginalisStore.getInstance(project)
                 for (thread in store.threads.query(fileFilter, statusFilter, unreadOnly)) {
                     val messagesJson = JsonArray()
@@ -379,6 +385,7 @@ class MarginalisRestService : RestService() {
                     threadsJson.add(
                         JsonObject().apply {
                             addProperty("thread_id", thread.id)
+                            addProperty("project", project.name)
                             addProperty("file", thread.file)
                             addProperty("line", store.currentLine(thread) + 1)
                             addProperty("status", thread.status.kind.name.lowercase())
@@ -419,18 +426,15 @@ class MarginalisRestService : RestService() {
         val line1 = json.intOrNull("line")
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing or non-integer 'line' (1-based)", request, context)
         val anchorText = json.stringOrNull("anchor_text")
+        val projectFilter = json.stringOrNull("project")
 
         if (!MarginalisSettings.getInstance().state.navigationEnabled) {
             return sendError(HttpResponseStatus.FORBIDDEN, "navigation is disabled in Marginalis settings", request, context)
         }
 
         val (project, vFile) = ApplicationManager.getApplication()
-            .runReadAction(Computable { resolveFile(file) })
-            ?: return sendError(
-                HttpResponseStatus.NOT_FOUND,
-                "'$file' not found in any open project (paths are project-relative)",
-                request, context,
-            )
+            .runReadAction(Computable { resolveFile(file, projectFilter) })
+            ?: return sendResolutionError(resolutionFailure(file, projectFilter), request, context)
 
         var error: String? = null
         var errorStatus = HttpResponseStatus.BAD_REQUEST
@@ -478,15 +482,49 @@ class MarginalisRestService : RestService() {
 
     // ------------------------------------------------------------ helpers
 
-    /** Resolve a project-relative path against every open project; first match wins. */
-    private fun resolveFile(relPath: String): Pair<Project, VirtualFile>? {
+    /**
+     * Resolve a project-relative path; first match wins among the projects
+     * [projectFilter] admits (all of them when null). With same-layout
+     * worktrees open, first-match is ambiguous by construction — the filter
+     * is the caller's way out, and resolution failures list the open
+     * projects with branches so the caller can pick.
+     */
+    private fun resolveFile(relPath: String, projectFilter: String? = null): Pair<Project, VirtualFile>? {
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue
+            if (projectFilter != null && !projectMatches(project, projectFilter)) continue
             val base = project.guessProjectDir() ?: continue
             val vFile = base.findFileByRelativePath(relPath) ?: continue
             return project to vFile
         }
         return null
+    }
+
+    /** Match by project name, full root path, or the root's trailing segment. */
+    private fun projectMatches(project: Project, filter: String): Boolean {
+        if (project.name == filter) return true
+        val path = project.guessProjectDir()?.path ?: project.basePath ?: return false
+        return path == filter || path.endsWith("/$filter")
+    }
+
+    private fun resolutionFailure(file: String, projectFilter: String?): String =
+        if (projectFilter == null) {
+            "'$file' not found in any open project (paths are project-relative). " +
+                "If several open projects share this layout, pass 'project' — see open_projects."
+        } else {
+            "'$file' not found in a project matching '$projectFilter' — see open_projects."
+        }
+
+    /** 404 that teaches: the error plus every open project with its branch. */
+    private fun sendResolutionError(message: String, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val projects = ApplicationManager.getApplication().runReadAction(Computable { openProjectsJson() })
+        send(
+            JsonObject().apply {
+                addProperty("error", message)
+                add("open_projects", projects)
+            },
+            HttpResponseStatus.NOT_FOUND, request, context,
+        )
     }
 
     private fun JsonObject.stringOrNull(key: String): String? =

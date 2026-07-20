@@ -96,6 +96,10 @@ IDE `options/marginalis.xml`), so the uninstall loses nothing.
 > `~/plugins/mfarag-plugins/marginalis`). Update it THERE and bump the
 > version in `.claude-plugin/plugin.json` whenever the protocol or API
 > changes. Do not recreate copies in `~/.claude/skills/` or this repo.
+> The marketplace IS a git repo, but owned by the operator: the tenant can
+> edit files yet cannot commit (`.git` is operator-only — and git shows
+> "dubious ownership" until `safe.directory` is added). After skill edits,
+> hand the operator a ready commit message; they commit from their side.
 
 ## Margin protocol (LIVE — follow this when the operator's IDE is up)
 
