@@ -1,0 +1,64 @@
+package dev.marginalis.plugin.ui
+
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.guessProjectDir
+import dev.marginalis.core.CommentThread
+import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.store.MarginalisStore
+
+/**
+ * Stop-by-stop walking for the thread panel's navigation buttons, computed
+ * from the store so a panel can walk without the tool window being open.
+ * Same semantics as the tool window's walk: a tour stop walks its own tour
+ * in stop order (never bleeding into a neighboring tour); an unordered
+ * thread walks every open thread in directory-tree order (directories
+ * before files at each level, then by line) — the order the tool window
+ * displays.
+ */
+object TourNavigator {
+
+    /** The walk containing [thread], and its position in it (-1 = not a member, e.g. resolved). */
+    fun walkFrom(project: Project, thread: CommentThread): Pair<List<CommentThread>, Int> {
+        val open = MarginalisStore.getInstance(project).threads.all()
+            .filter { it.status is ThreadStatus.Open }
+        val walk = if (thread.order != null) {
+            open.filter { it.order != null && (it.tour ?: "") == (thread.tour ?: "") }
+                .sortedWith(compareBy({ it.order }, { it.createdAt }))
+        } else {
+            open.sortedWith(
+                Comparator<CommentThread> { a, b -> pathOrder(a.file, b.file) }
+                    .thenComparingInt { it.line },
+            )
+        }
+        return walk to walk.indexOfFirst { it.id == thread.id }
+    }
+
+    /** Open the thread's file at its live line and pop its panel — the double-click behavior. */
+    fun navigateTo(project: Project, thread: CommentThread) {
+        val base = project.guessProjectDir() ?: return
+        val vFile = base.findFileByRelativePath(thread.file) ?: return
+        OpenFileDescriptor(project, vFile, MarginalisStore.getInstance(project).currentLine(thread), 0).navigate(true)
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
+        ThreadInlayManager.open(project, editor, thread)
+    }
+
+    /**
+     * Directory-tree order for project-relative paths: at each level all
+     * directories sort before all files, mirroring how the tool window's
+     * trie renders — so both walks visit files in the same sequence.
+     */
+    private fun pathOrder(a: String, b: String): Int {
+        val pa = a.split('/')
+        val pb = b.split('/')
+        for (i in 0 until minOf(pa.size, pb.size)) {
+            val aIsDir = i < pa.size - 1
+            val bIsDir = i < pb.size - 1
+            if (aIsDir != bIsDir) return if (aIsDir) -1 else 1
+            val byName = pa[i].compareTo(pb[i])
+            if (byName != 0) return byName
+        }
+        return pa.size - pb.size
+    }
+}

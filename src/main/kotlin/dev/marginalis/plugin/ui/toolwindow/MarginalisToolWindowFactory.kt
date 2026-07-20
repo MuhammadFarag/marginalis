@@ -1,6 +1,8 @@
 package dev.marginalis.plugin.ui.toolwindow
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.CommonActionsManager
+import com.intellij.ide.OccurenceNavigator
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -8,12 +10,9 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.fileEditor.FileEditorManager
-import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
@@ -30,7 +29,7 @@ import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.MarkdownRenderer
-import dev.marginalis.plugin.ui.ThreadInlayManager
+import dev.marginalis.plugin.ui.TourNavigator
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -53,8 +52,45 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
         val panel = MarginalisToolWindowPanel(project)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
         toolWindow.contentManager.addContent(content)
-        toolWindow.setTitleActions(listOf(ResolveAllAction(), ClearAllAction()))
+        // Walk the stops of a section like a tour: first/prev/next/last.
+        // Prev/next are platform occurrence actions, so they arrive with the
+        // standard icons and shortcuts (⌘⌥↑ / ⌘⌥↓).
+        val common = CommonActionsManager.getInstance()
+        toolWindow.setTitleActions(
+            listOf(
+                FirstStopAction(panel),
+                common.createPrevOccurenceAction(panel),
+                common.createNextOccurenceAction(panel),
+                LastStopAction(panel),
+                ResolveAllAction(),
+                ClearAllAction(),
+            ),
+        )
     }
+}
+
+/** Jump to a section's first stop; disabled when already there. */
+private class FirstStopAction(private val panel: MarginalisToolWindowPanel) :
+    AnAction("First Stop", "Go to the first stop in this section", AllIcons.Actions.Play_first) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = panel.canGoFirst()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) = panel.goFirst()
+}
+
+/** Jump to a section's last stop; disabled when already there. */
+private class LastStopAction(private val panel: MarginalisToolWindowPanel) :
+    AnAction("Last Stop", "Go to the last stop in this section", AllIcons.Actions.Play_last) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = panel.canGoLast()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) = panel.goLast()
 }
 
 /** Resolve every open/orphaned thread — the "consolidation is done" sweep. */
@@ -142,7 +178,8 @@ private class PathTrie {
     )
 }
 
-private class MarginalisToolWindowPanel(private val project: Project) : JPanel(BorderLayout()), UiDataProvider {
+private class MarginalisToolWindowPanel(private val project: Project) :
+    JPanel(BorderLayout()), UiDataProvider, OccurenceNavigator {
 
     private val tree = Tree()
 
@@ -181,13 +218,78 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
         return (node.userObject as? NodeData.ThreadNode)?.thread
     }
 
+    // ------------------------------------------------- stop-by-stop walking
+    //
+    // The tree selection is the cursor. The walk is scoped to the section
+    // (Guided A, Guided B, Open, …) holding the selection — a tour never
+    // bleeds into its neighbor — and runs in display order, which is tour
+    // order in Guided sections and file-then-line order elsewhere. With no
+    // selection, the walk starts at the first section's first stop.
+
+    /** Thread nodes of the active section in display order, plus the cursor index (-1 = before first). */
+    private fun stops(): Pair<List<DefaultMutableTreeNode>, Int> {
+        val none = emptyList<DefaultMutableTreeNode>() to -1
+        val root = tree.model.root as? DefaultMutableTreeNode ?: return none
+        val selected = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
+        val section = selected?.path?.getOrNull(1) as? DefaultMutableTreeNode
+            ?: root.children().asSequence().filterIsInstance<DefaultMutableTreeNode>().firstOrNull()
+            ?: return none
+        val walk = section.preorderEnumeration().asSequence()
+            .filterIsInstance<DefaultMutableTreeNode>()
+            .filter { it.userObject is NodeData.ThreadNode }
+            .toList()
+        val index = if (selected?.userObject is NodeData.ThreadNode) walk.indexOf(selected) else -1
+        return walk to index
+    }
+
+    private fun goTo(node: DefaultMutableTreeNode) {
+        val path = TreePath(node.path)
+        tree.selectionPath = path
+        tree.scrollPathToVisible(path)
+        (node.userObject as? NodeData.ThreadNode)?.thread?.let { navigateTo(it) }
+    }
+
+    override fun hasNextOccurence(): Boolean = stops().let { (walk, i) -> i < walk.size - 1 && walk.isNotEmpty() }
+
+    override fun hasPreviousOccurence(): Boolean = stops().second > 0
+
+    override fun goNextOccurence(): OccurenceNavigator.OccurenceInfo? {
+        val (walk, i) = stops()
+        val target = walk.getOrNull(i + 1) ?: return null
+        goTo(target)
+        return OccurenceNavigator.OccurenceInfo.position(i + 2, walk.size)
+    }
+
+    override fun goPreviousOccurence(): OccurenceNavigator.OccurenceInfo? {
+        val (walk, i) = stops()
+        val target = walk.getOrNull(i - 1) ?: return null
+        goTo(target)
+        return OccurenceNavigator.OccurenceInfo.position(i, walk.size)
+    }
+
+    override fun getNextOccurenceActionName(): String = "Next Stop"
+
+    override fun getPreviousOccurenceActionName(): String = "Previous Stop"
+
+    fun canGoFirst(): Boolean = stops().let { (walk, i) -> walk.isNotEmpty() && i != 0 }
+
+    fun canGoLast(): Boolean = stops().let { (walk, i) -> walk.isNotEmpty() && i != walk.size - 1 }
+
+    fun goFirst() {
+        stops().first.firstOrNull()?.let { goTo(it) }
+    }
+
+    fun goLast() {
+        stops().first.lastOrNull()?.let { goTo(it) }
+    }
+
     private fun rebuild() {
         val store = MarginalisStore.getInstance(project)
         val threads = store.threads.all()
         store.syncLines() // refresh live lines + orphan status from markers
 
         val root = DefaultMutableTreeNode()
-        addGuidedSection(root, threads.filter { it.status is ThreadStatus.Open && it.order != null })
+        addGuidedSection(root, threads)
         addOpenSection(root, threads.filter { it.status is ThreadStatus.Open })
         addFlatSection(root, "Orphaned", threads.filter { it.status is ThreadStatus.Orphaned })
         addFlatSection(root, "Resolved", threads.filter { it.status is ThreadStatus.Resolved })
@@ -204,17 +306,22 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
      * The tours: agent-ordered open threads, across files, in "look here
      * 1st, 2nd, …" sequence — the agent's answer to "where should I look?".
      * Several tours coexist via labels; positions render compactly as
-     * (1/4), or (A1/4) once more than one tour is present. Totals are
-     * derived live, so they shrink as stops resolve.
+     * (1/4), or (A1/4) once more than one tour is present. The total is
+     * fixed for the life of the tour — resolving stop 2 of 5 must not turn
+     * (4/5) into (4/4); a position only means something against a stable
+     * denominator — so it comes from every thread in the tour regardless
+     * of status.
      */
-    private fun addGuidedSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
-        if (threads.isEmpty()) return
-        val tours = threads.groupBy { it.tour ?: "" }.toSortedMap()
+    private fun addGuidedSection(root: DefaultMutableTreeNode, allThreads: List<CommentThread>) {
+        val openStops = allThreads.filter { it.status is ThreadStatus.Open && it.order != null }
+        if (openStops.isEmpty()) return
+        val tours = openStops.groupBy { it.tour ?: "" }.toSortedMap()
         val labelNeeded = tours.size > 1
         for ((label, tourThreads) in tours) {
             val title = if (label.isEmpty()) "Guided" else "Guided $label"
             val section = DefaultMutableTreeNode(NodeData.Section(title, tourThreads.size))
-            val total = tourThreads.size
+            val total = allThreads.filter { (it.tour ?: "") == label }.mapNotNull { it.order }.maxOrNull()
+                ?: tourThreads.size
             val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
             val trie = PathTrie().apply { tourThreads.forEach(::insert) }
             emitTrie(trie, section, prefixFor = { thread -> "($shownLabel${thread.order}/$total)" })
@@ -290,13 +397,7 @@ private class MarginalisToolWindowPanel(private val project: Project) : JPanel(B
         }
     }
 
-    private fun navigateTo(thread: CommentThread) {
-        val base = project.guessProjectDir() ?: return
-        val vFile = base.findFileByRelativePath(thread.file) ?: return
-        OpenFileDescriptor(project, vFile, MarginalisStore.getInstance(project).currentLine(thread), 0).navigate(true)
-        val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
-        ThreadInlayManager.open(project, editor, thread)
-    }
+    private fun navigateTo(thread: CommentThread) = TourNavigator.navigateTo(project, thread)
 }
 
 private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {

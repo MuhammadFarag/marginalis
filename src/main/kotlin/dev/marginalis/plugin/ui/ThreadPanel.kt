@@ -1,5 +1,11 @@
 package dev.marginalis.plugin.ui
 
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeManager
@@ -25,6 +31,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.swing.Box
 import javax.swing.BoxLayout
+import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -90,7 +97,9 @@ class ThreadPanel(
 
     private fun buildHeader(): JComponent {
         val header = JPanel(BorderLayout()).apply { isOpaque = false }
-        val title = JBLabel("Marginalis — ${thread.file}").apply {
+        // No file name in the title: the panel renders inside the file it
+        // annotates, so naming it would be redundant (operator feedback).
+        val title = JBLabel("Marginalis").apply {
             font = JBUI.Fonts.smallFont().asBold()
         }
         statusLabel.font = JBUI.Fonts.smallFont()
@@ -116,6 +125,8 @@ class ThreadPanel(
         val right = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
+            add(buildNavToolbar())
+            add(Box.createHorizontalStrut(JBUI.scale(8)))
             add(resolveButton)
             add(Box.createHorizontalStrut(JBUI.scale(4)))
             add(closeButton)
@@ -125,6 +136,54 @@ class ThreadPanel(
         header.add(right, BorderLayout.EAST)
         header.border = JBUI.Borders.emptyBottom(6)
         return header
+    }
+
+    /**
+     * Stop-by-stop navigation without leaving the panel — during a tour the
+     * mouse lives here, not in the tool window. Same walk semantics as the
+     * tool window's title buttons (TourNavigator); moving on closes this
+     * panel and opens the target's, one stop at a time.
+     */
+    private fun buildNavToolbar(): JComponent {
+        val group = DefaultActionGroup(
+            navAction("First Stop", AllIcons.Actions.Play_first) { walk, i ->
+                walk.firstOrNull().takeIf { i != 0 }
+            },
+            navAction("Previous Stop", AllIcons.Actions.PreviousOccurence) { walk, i ->
+                if (i > 0) walk[i - 1] else null
+            },
+            navAction("Next Stop", AllIcons.Actions.NextOccurence) { walk, i ->
+                walk.getOrNull(i + 1)
+            },
+            navAction("Last Stop", AllIcons.Actions.Play_last) { walk, i ->
+                walk.lastOrNull().takeIf { i != walk.size - 1 }
+            },
+        )
+        val toolbar = ActionManager.getInstance().createActionToolbar("MarginalisThreadPanel", group, true)
+        toolbar.targetComponent = this
+        toolbar.component.isOpaque = false
+        return toolbar.component
+    }
+
+    /** A nav button is enabled exactly when [target] yields a stop to go to. */
+    private fun navAction(
+        name: String,
+        icon: Icon,
+        target: (walk: List<CommentThread>, index: Int) -> CommentThread?,
+    ): AnAction = object : AnAction(name, null, icon) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            val (walk, i) = TourNavigator.walkFrom(project, thread)
+            e.presentation.isEnabled = target(walk, i) != null
+        }
+
+        override fun actionPerformed(e: AnActionEvent) {
+            val (walk, i) = TourNavigator.walkFrom(project, thread)
+            val destination = target(walk, i) ?: return
+            onClose()
+            TourNavigator.navigateTo(project, destination)
+        }
     }
 
     private fun buildReplyRow(): JComponent {
