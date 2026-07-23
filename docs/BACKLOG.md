@@ -28,6 +28,23 @@ once the token gains Issues scope.
 - **Agent self-identification** — model ready (`Author.Agent(name, id)`);
   transport still stamps "Claude": accept optional `author_name`/`author_id`
   on comment_add/comment_reply, default the display to "Agent".
+- **Segment comments, human-side** (designed 2026-07-23, unscheduled) —
+  the human selects a word/segment and ⌃⌥M anchors the thread to that
+  span; agents only READ segments, never create them (asymmetry is the
+  design: human gestures get precise, agent stays conversational).
+  Sketch agreed in conversation:
+  - Anchor = quote selector (exact + prefix/suffix context — W3C
+    TextQuoteSelector prior art), captured from the live selection at
+    creation, so it's never guessed.
+  - Re-anchoring degradation ladder in AnchorPolicy: segment → line →
+    ±window → orphan (a reworded span degrades to a line comment, not a
+    cliff).
+  - Character-range highlighter with a visible span tint; multiplicity
+    UX (several threads per line → combined gutter icon + chooser).
+  - Wire: comment_add unchanged; comment_list rows gain additive
+    `segment` field; skill gains "heed the span" line.
+  - AddCommentAction: use the selection when present, caret line
+    otherwise.
 - **Rendered heading sizes** — h1/h2 render at document scale inside margin
   panels; likely want scaling down. (Operator thread open in sample-project.)
 

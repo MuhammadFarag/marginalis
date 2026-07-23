@@ -103,13 +103,18 @@ IDE `options/marginalis.xml`), so the uninstall loses nothing.
 
 ## Margin protocol (LIVE — follow this when the operator's IDE is up)
 
-The plugin this project builds is also our working channel. When the host
-IDE is running (check: `curl -s http://127.0.0.1:63342/api/marginalis/ping`):
+The plugin this project builds is also our working channel. Use the skill's
+script (`~/plugins/mfarag-plugins/marginalis/scripts/marginalis.sh`) rather
+than raw curl — it scopes anchored calls to the cwd's project and attaches
+identity. When the host IDE is running (`marginalis.sh ping`):
 
-- **Start every turn** with
-  `curl -s 'http://127.0.0.1:63342/api/marginalis/comment_list?unread_only=true'`
-  — the operator leaves margin comments (⌃⌥M in their editor) and replies
-  there, born unread. This is the entire inbound channel; reading marks seen.
+- **Identify yourself FIRST**: `export MARGINALIS_AUTHOR="Claude"
+  MARGINALIS_AUTHOR_ID="claude-tenant-marginalis"` before any margin call.
+  Read receipts are per agent (since 0.1.7) — an anonymous sweep reads as
+  the shared "Agent" identity.
+- **Start every turn** with `marginalis.sh unread` — the operator leaves
+  margin comments (⌃⌥M in their editor) and replies there, born unread.
+  This is the entire inbound channel; reading marks seen for YOUR identity.
 - **Before editing any file**, check
   `comment_list?file=<path>&status=open` — the §3.1 invariant: never edit a
   file with open threads; resolve them first (conclusion → code change, or
@@ -138,5 +143,13 @@ IDE is running (check: `curl -s http://127.0.0.1:63342/api/marginalis/ping`):
   markers (MarginalisStore pairs core threads with live RangeHighlighters).
 - The built-in server port (63342) is the declared transport; `runIde`
   sandbox IDEs also use it.
-- Milestones live in the handover doc §9 — keep M-scope discipline; don't
-  gold-plate ahead of the current milestone (§12).
+- **Roadmap = `docs/BACKLOG.md`** (shipped / open / deferred / decision
+  log). Keep scope discipline; don't gold-plate ahead of the agreed item.
+- **Review workflow**: substantial batches get a review walkthrough in the
+  margin before commit (`add … <order>` steps; one walkthrough per project
+  — never span projects). Operator resolves silently = approved; replies =
+  change requests. Batch commit after review; release = tag `v*` (CI
+  builds the zip and publishes the GitHub Release; Marketplace publish
+  activates once the operator's four secrets exist).
+- Guided vocabulary is "walkthrough"/"steps" (renamed from tour/stops,
+  v0.1.3) — wire param `walkthrough`, UI actions First/…/Last Step.
