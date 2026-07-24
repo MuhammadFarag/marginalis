@@ -83,6 +83,10 @@ once the token gains Issues scope.
   = walk the blockers; empty state "No blockers". Skill 0.11.0:
   severity vocabulary (never in the body), call-path walk ordering.
   DECIDED: no severity-colored span tints.
+- ✅ Panel severity badges (v0.1.12, walkthrough feedback same day) —
+  the thread panel header wears a pill badge matching the gutter: red
+  "blocker", quiet-gray "nit"; replaces the too-easy-to-miss status-line
+  word. The panel was the one surface that only got the quiet treatment.
 
 ## Open — features
 

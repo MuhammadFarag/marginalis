@@ -27,7 +27,11 @@ import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Dimension
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.RenderingHints
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.time.ZoneId
@@ -140,6 +144,13 @@ class ThreadPanel(
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             add(title)
+            // The panel-side echo of the gutter badge (operator feedback:
+            // a word in the status line was too easy to miss): a pill in
+            // the same red as the gutter for blockers, quiet gray for nits.
+            thread.severity?.let { severity ->
+                add(Box.createHorizontalStrut(JBUI.scale(6)))
+                add(SeverityBadge(severity))
+            }
             add(Box.createHorizontalStrut(JBUI.scale(8)))
             add(statusLabel)
         }
@@ -352,14 +363,9 @@ class ThreadPanel(
     /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
         val isDraft = MarginalisStore.getInstance(project).threads.byId(thread.id) == null
-        val severityWord = when (thread.severity) {
-            Severity.BLOCKER -> " · blocker"
-            Severity.NIT -> " · nit"
-            null -> ""
-        }
         statusLabel.text = when {
             isDraft -> "new comment — unsent"
-            thread.status is ThreadStatus.Open -> "open$severityWord${walkPosition()}"
+            thread.status is ThreadStatus.Open -> "open${walkPosition()}"
             thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
             else -> "orphaned (anchor deleted)"
         }
@@ -445,6 +451,38 @@ class ThreadPanel(
         panel.add(metaRow, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)
         return panel
+    }
+
+    /**
+     * A pill naming the thread's severity, colored like its gutter
+     * counterpart: red and loud for a blocker, gray and quiet for a nit.
+     * Word + color, never color alone.
+     */
+    private class SeverityBadge(severity: Severity) : JBLabel(severity.name.lowercase()) {
+        private val pill = when (severity) {
+            Severity.BLOCKER -> JBColor(Color(0xDB, 0x58, 0x60), Color(0xC7, 0x54, 0x50))
+            Severity.NIT -> JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x4E, 0x51, 0x57))
+        }
+
+        init {
+            font = JBUI.Fonts.miniFont().asBold()
+            foreground = when (severity) {
+                Severity.BLOCKER -> JBColor(Color.WHITE, Color(0xF5, 0xE3, 0xE3))
+                Severity.NIT -> JBColor(Color(0x59, 0x59, 0x59), Color(0xBD, 0xBD, 0xBD))
+            }
+            border = JBUI.Borders.empty(1, 7)
+            isOpaque = false
+            maximumSize = preferredSize
+        }
+
+        override fun paintComponent(g: Graphics) {
+            val g2 = g.create() as Graphics2D
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g2.color = pill
+            g2.fillRoundRect(0, 0, width, height, height, height)
+            g2.dispose()
+            super.paintComponent(g)
+        }
     }
 
     private companion object {
