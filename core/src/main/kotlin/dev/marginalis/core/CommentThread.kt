@@ -24,6 +24,11 @@ class CommentThread(
     val order: Int? = null,
     /** Walkthrough label (e.g. "A") so several guided sequences can coexist. */
     val walkthrough: String? = null,
+    /**
+     * Span anchor within the line; null = whole-line thread. Human-created
+     * only (the selection gesture) — agents read segments, never write them.
+     */
+    val segment: Segment? = null,
 ) {
     private val messagesLock = Any()
     private val _messages = mutableListOf<Message>()

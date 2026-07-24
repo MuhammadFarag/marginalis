@@ -121,6 +121,10 @@ identity. When the host IDE is running (`marginalis.sh ping`):
   explicitly moot).
 - Reply with `comment_reply {thread_id, body}`; resolve with
   `comment_resolve {thread_id}`.
+- **Heed the span** (0.1.8+): a thread row may carry `segment {exact,
+  prefix?, suffix?}` — the operator selected that exact text (⌃⌥M on a
+  selection), so address the quoted span specifically, not the line in
+  general. Agents cannot create segments; `comment_add` is line-only.
 - **Resolution etiquette — the resolver is the completer.** RESOLVED means
   "the outcome is in the code (or decided moot)", and the gutter marker drops
   at that moment. So: approval is a *reply* ("do it"); the party who then

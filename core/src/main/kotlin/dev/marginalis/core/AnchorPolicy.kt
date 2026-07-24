@@ -15,6 +15,16 @@ import kotlin.math.abs
 object AnchorPolicy {
 
     const val SEARCH_WINDOW = 20
+    const val SEGMENT_CONTEXT = 32
+
+    /** Where a thread landed: a character span on a line, or just the line. */
+    sealed interface Anchor {
+        val line: Int
+
+        /** [start] inclusive, [endExclusive] exclusive, both within the line. */
+        data class Span(override val line: Int, val start: Int, val endExclusive: Int) : Anchor
+        data class Line(override val line: Int) : Anchor
+    }
 
     fun lineMatches(actualLineText: String, anchorText: String): Boolean {
         val actual = actualLineText.trim()
@@ -36,8 +46,67 @@ object AnchorPolicy {
         anchorText: String,
         window: Int = SEARCH_WINDOW,
     ): Int? =
+        candidateLines(lineCount, nearLine, window)
+            .firstOrNull { line -> lineMatches(lineTextAt(line), anchorText) }
+
+    /**
+     * Start of [segment] within one line's text (its end is always
+     * `start + exact.length`). Several occurrences of the exact text are
+     * disambiguated by context — full prefix+suffix beats one-sided beats
+     * bare, earliest occurrence breaks ties. Null when the exact text does
+     * not occur at all.
+     */
+    fun findSegmentStart(lineText: String, segment: Segment): Int? {
+        if (segment.exact.isEmpty()) return null
+        var bestStart = -1
+        var bestScore = -1
+        var from = 0
+        while (true) {
+            val at = lineText.indexOf(segment.exact, from)
+            if (at < 0) break
+            val end = at + segment.exact.length
+            var score = 0
+            if (segment.prefix.isNotEmpty() && lineText.take(at).endsWith(segment.prefix)) score++
+            if (segment.suffix.isNotEmpty() && lineText.substring(end).startsWith(segment.suffix)) score++
+            if (score > bestScore) {
+                bestScore = score
+                bestStart = at
+            }
+            from = at + 1
+        }
+        return bestStart.takeIf { it >= 0 }
+    }
+
+    /**
+     * The degradation ladder: the segment's quote near the hint, else the
+     * anchor line (hint first, then the window), else an honest null. A
+     * reworded span degrades to a line comment, not a cliff; only a vanished
+     * line is the caller's cue to orphan.
+     */
+    fun findAnchor(
+        lineCount: Int,
+        lineTextAt: (Int) -> String,
+        nearLine: Int,
+        anchorText: String,
+        segment: Segment? = null,
+        window: Int = SEARCH_WINDOW,
+    ): Anchor? {
+        if (segment != null) {
+            candidateLines(lineCount, nearLine, window)
+                .firstNotNullOfOrNull { line ->
+                    findSegmentStart(lineTextAt(line), segment)?.let { start ->
+                        Anchor.Span(line, start, start + segment.exact.length)
+                    }
+                }
+                ?.let { return it }
+        }
+        return findAnchorLine(lineCount, lineTextAt, nearLine, anchorText, window)
+            ?.let { Anchor.Line(it) }
+    }
+
+    /** The window's lines in preference order: nearest to the hint first. */
+    private fun candidateLines(lineCount: Int, nearLine: Int, window: Int): List<Int> =
         ((nearLine - window)..(nearLine + window))
             .filter { it in 0 until lineCount }
             .sortedBy { abs(it - nearLine) }
-            .firstOrNull { line -> lineMatches(lineTextAt(line), anchorText) }
 }

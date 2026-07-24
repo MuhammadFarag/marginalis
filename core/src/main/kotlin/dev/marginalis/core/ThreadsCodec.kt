@@ -31,6 +31,16 @@ object ThreadsCodec {
         addProperty("file", thread.file)
         addProperty("line", thread.line)
         addProperty("anchor_text", thread.anchorText)
+        thread.segment?.let { seg ->
+            add(
+                "segment",
+                JsonObject().apply {
+                    addProperty("exact", seg.exact)
+                    if (seg.prefix.isNotEmpty()) addProperty("prefix", seg.prefix)
+                    if (seg.suffix.isNotEmpty()) addProperty("suffix", seg.suffix)
+                },
+            )
+        }
         thread.order?.let { addProperty("order", it) }
         thread.walkthrough?.let { addProperty("walkthrough", it) }
         addProperty("status", thread.status.kind.name)
@@ -65,6 +75,16 @@ object ThreadsCodec {
             // "walkthrough"; pre-rename files wrote "tour" — both mean the label.
             walkthrough = (json.get("walkthrough") ?: json.get("tour"))
                 ?.takeIf { it.isJsonPrimitive }?.asString,
+            // Additive: pre-segment files simply have whole-line threads.
+            segment = json.get("segment")?.takeIf { it.isJsonObject }?.asJsonObject?.let { seg ->
+                seg.get("exact")?.takeIf { it.isJsonPrimitive }?.asString?.let { exact ->
+                    Segment(
+                        exact = exact,
+                        prefix = seg.get("prefix")?.takeIf { it.isJsonPrimitive }?.asString ?: "",
+                        suffix = seg.get("suffix")?.takeIf { it.isJsonPrimitive }?.asString ?: "",
+                    )
+                }
+            },
         )
         for (m in json.getAsJsonArray("messages")) {
             val msg = m.asJsonObject

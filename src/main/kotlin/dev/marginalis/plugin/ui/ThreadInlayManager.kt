@@ -5,9 +5,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.ex.EditorEx
-import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
-import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
@@ -49,10 +47,7 @@ object ThreadInlayManager {
         openPanel(project, editor, thread) {
             val store = MarginalisStore.getInstance(project)
             if (store.threads.byId(thread.id) == null) {
-                val markup = DocumentMarkupModel.forDocument(editor.document, project, true)
-                val highlighter = markup.addLineHighlighter(thread.line, HighlighterLayer.LAST, null)
-                highlighter.gutterIconRenderer = ThreadGutterIconRenderer(project, thread)
-                store.setMarker(thread, highlighter)
+                MarginalisMarkers.attach(project, thread, editor.document)
                 store.threads.add(thread)
             }
         }

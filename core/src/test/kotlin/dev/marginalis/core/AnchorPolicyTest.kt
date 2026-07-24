@@ -70,4 +70,65 @@ class AnchorPolicyTest {
     fun `hint outside the document still searches its window`() {
         assertEquals(6, find(near = 20, anchor = "return curr"))
     }
+
+    // ---------------------------------------------------------- segments
+
+    private fun anchor(near: Int, anchorText: String, segment: Segment?) =
+        AnchorPolicy.findAnchor(lines.size, { lines[it] }, near, anchorText, segment)
+
+    @Test
+    fun `unique segment resolves to its span`() {
+        val start = AnchorPolicy.findSegmentStart("    prev, curr = 0, 1", Segment("curr"))
+        assertEquals(10, start)
+    }
+
+    @Test
+    fun `context disambiguates repeated exact text`() {
+        // "curr" occurs three times; the suffix pins the middle one.
+        val text = "        prev, curr = curr, prev + curr"
+        assertEquals(21, AnchorPolicy.findSegmentStart(text, Segment("curr", prefix = "= ", suffix = ",")))
+        // Bare quote falls back to the earliest occurrence.
+        assertEquals(14, AnchorPolicy.findSegmentStart(text, Segment("curr")))
+    }
+
+    @Test
+    fun `one-sided context beats none`() {
+        val text = "        prev, curr = curr, prev + curr"
+        assertEquals(34, AnchorPolicy.findSegmentStart(text, Segment("curr", prefix = "prev + ")))
+    }
+
+    @Test
+    fun `absent exact text is an honest null`() {
+        assertNull(AnchorPolicy.findSegmentStart("    return curr", Segment("velocity")))
+        assertNull(AnchorPolicy.findSegmentStart("anything", Segment("")))
+    }
+
+    @Test
+    fun `ladder rung 1 - segment found near the hint`() {
+        val found = anchor(near = 3, anchorText = "prev, curr = 0, 1", segment = Segment("0, 1", prefix = "= "))
+        assertEquals(AnchorPolicy.Anchor.Span(line = 3, start = 17, endExclusive = 21), found)
+    }
+
+    @Test
+    fun `ladder rung 1 - segment survives a stale line hint`() {
+        val found = anchor(near = 0, anchorText = "prev, curr = 0, 1", segment = Segment("0, 1", prefix = "= "))
+        assertEquals(AnchorPolicy.Anchor.Span(line = 3, start = 17, endExclusive = 21), found)
+    }
+
+    @Test
+    fun `ladder rung 2 - reworded span degrades to the line, not a cliff`() {
+        // The span text is gone but the anchor line still matches.
+        val found = anchor(near = 3, anchorText = "prev, curr", segment = Segment("initial seed"))
+        assertEquals(AnchorPolicy.Anchor.Line(3), found)
+    }
+
+    @Test
+    fun `ladder rung 3 - nothing matches is an honest null`() {
+        assertNull(anchor(near = 0, anchorText = "vanished line", segment = Segment("vanished span")))
+    }
+
+    @Test
+    fun `no segment behaves exactly like the line ladder`() {
+        assertEquals(AnchorPolicy.Anchor.Line(4), anchor(near = 1, anchorText = "for _ in range(n - 1):", segment = null))
+    }
 }

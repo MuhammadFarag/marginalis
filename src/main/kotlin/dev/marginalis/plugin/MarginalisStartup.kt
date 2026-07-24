@@ -3,7 +3,6 @@ package dev.marginalis.plugin
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
-import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -16,7 +15,7 @@ import dev.marginalis.core.CommentThread
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisPersistence
 import dev.marginalis.plugin.store.MarginalisStore
-import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
+import dev.marginalis.plugin.ui.MarginalisMarkers
 
 /**
  * Project wiring:
@@ -60,13 +59,20 @@ class MarginalisStartup : ProjectActivity {
                     if (thread.status is ThreadStatus.Open) reanchor(project, thread)
                     store.threads.addSilently(thread)
                 }
+                // Attach assigns solo icons; group shared lines per file.
+                persisted.map { it.file }.distinct().forEach { MarginalisMarkers.refreshIcons(project, it) }
                 // One notification refreshes every UI surface after bulk load.
                 persisted.lastOrNull()?.let { store.threads.notifyChanged(it) }
             }
         }
     }
 
-    /** Re-anchor a rehydrated OPEN thread by content; orphan on no match. EDT. */
+    /**
+     * Re-anchor a rehydrated OPEN thread by content; orphan on no match.
+     * The ladder lives in AnchorPolicy: a segment that re-finds its quote
+     * spans it again, a reworded span degrades to its line, and only a
+     * vanished line orphans. EDT.
+     */
     private fun reanchor(project: Project, thread: CommentThread) {
         val base = project.guessProjectDir()
         val vFile = base?.findFileByRelativePath(thread.file)
@@ -75,36 +81,31 @@ class MarginalisStartup : ProjectActivity {
             thread.markOrphaned()
             return
         }
-        val found = AnchorPolicy.findAnchorLine(
+        val found = AnchorPolicy.findAnchor(
             lineCount = document.lineCount,
             lineTextAt = { lineText(document, it) },
             nearLine = thread.line,
             anchorText = thread.anchorText,
+            segment = thread.segment,
         )
         if (found == null) {
             thread.markOrphaned()
             return
         }
-        thread.line = found
-        attachMarker(project, thread, document)
+        thread.line = found.line
+        MarginalisMarkers.attach(project, thread, document)
     }
 
     private fun lineText(document: Document, line: Int): String =
         document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)))
 
-    private fun attachMarker(project: Project, thread: CommentThread, document: Document) {
-        val markup = DocumentMarkupModel.forDocument(document, project, true)
-        val highlighter = markup.addLineHighlighter(thread.line, HighlighterLayer.LAST, null)
-        highlighter.gutterIconRenderer = ThreadGutterIconRenderer(project, thread)
-        MarginalisStore.getInstance(project).setMarker(thread, highlighter)
-    }
-
     /**
      * One rule set for the collapsed state: deleted and resolved threads
      * carry no marker (a resolved thread's outcome is in the code — nothing
      * left to mark, and after edits a stale checkmark drifts onto unrelated
-     * lines); open threads always have a live one; everything else just
-     * refreshes its icon.
+     * lines); open threads always have a live one. Every outcome ends in an
+     * icon refresh for the file — with several threads on one line the
+     * combined icon's owner may just have changed.
      */
     private fun syncMarker(project: Project, thread: CommentThread) {
         val store = MarginalisStore.getInstance(project)
@@ -124,15 +125,9 @@ class MarginalisStartup : ProjectActivity {
                 val base = project.guessProjectDir() ?: return
                 val vFile = base.findFileByRelativePath(thread.file) ?: return
                 val document = FileDocumentManager.getInstance().getDocument(vFile) ?: return
-                thread.line = thread.line.coerceIn(0, document.lineCount - 1)
-                attachMarker(project, thread, document)
-            }
-
-            else -> {
-                if (marker != null && marker.isValid) {
-                    marker.gutterIconRenderer = ThreadGutterIconRenderer(project, thread)
-                }
+                MarginalisMarkers.attach(project, thread, document)
             }
         }
+        MarginalisMarkers.refreshIcons(project, thread.file)
     }
 }

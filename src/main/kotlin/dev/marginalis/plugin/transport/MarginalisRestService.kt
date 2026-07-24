@@ -6,8 +6,6 @@ import com.google.gson.JsonParser
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
-import com.intellij.openapi.editor.impl.DocumentMarkupModel
-import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
@@ -24,7 +22,7 @@ import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
-import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
+import dev.marginalis.plugin.ui.MarginalisMarkers
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.DefaultFullHttpResponse
@@ -199,14 +197,11 @@ class MarginalisRestService : RestService() {
             val line0 = placed.line0
             adjusted = placed.adjusted
 
+            // Agents never create segments — the selection gesture is human.
             val created = CommentThread(file, line0, lineText(document, line0), order = order, walkthrough = walkthroughLabel)
             created.addMessage(Message(agentAuthor(json), body))
-            val store = MarginalisStore.getInstance(project)
-            val markup = DocumentMarkupModel.forDocument(document, project, true)
-            val highlighter = markup.addLineHighlighter(line0, HighlighterLayer.LAST, null)
-            highlighter.gutterIconRenderer = ThreadGutterIconRenderer(project, created)
-            store.setMarker(created, highlighter)
-            store.threads.add(created)
+            MarginalisMarkers.attach(project, created, document)
+            MarginalisStore.getInstance(project).threads.add(created)
             thread = created
         }
 
@@ -412,6 +407,18 @@ class MarginalisRestService : RestService() {
                             addProperty("line", store.currentLine(thread) + 1)
                             addProperty("status", thread.status.kind.name.lowercase())
                             addProperty("created_at", timeFormat.format(thread.createdAt))
+                            // Additive: the human anchored this thread to a
+                            // span within the line, not the whole line.
+                            thread.segment?.let { seg ->
+                                add(
+                                    "segment",
+                                    JsonObject().apply {
+                                        addProperty("exact", seg.exact)
+                                        if (seg.prefix.isNotEmpty()) addProperty("prefix", seg.prefix)
+                                        if (seg.suffix.isNotEmpty()) addProperty("suffix", seg.suffix)
+                                    },
+                                )
+                            }
                             thread.order?.let { addProperty("order", it) }
                             thread.walkthrough?.let { addProperty("walkthrough", it) }
                             thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }

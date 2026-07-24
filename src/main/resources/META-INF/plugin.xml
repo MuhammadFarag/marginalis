@@ -19,7 +19,7 @@
                 class="dev.marginalis.plugin.actions.AddCommentAction"
                 text="Add Marginalis Comment"
                 icon="AllIcons.General.Balloon"
-                description="Start a margin thread on the current line for the agent to pick up">
+                description="Start a margin thread on the current line — or on the selected text — for the agent to pick up">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt M"/>
         </action>

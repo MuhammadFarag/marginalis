@@ -93,6 +93,26 @@ class ThreadsCodecTest {
     }
 
     @Test
+    fun `segment survives the trip and its absence stays absent`() {
+        val spanned = CommentThread("a.py", 1, "prev, curr = 0, 1", segment = Segment("curr", prefix = "prev, ", suffix = " ="))
+        val plain = CommentThread("b.py", 2, "y")
+        val decoded = ThreadsCodec.decode(ThreadsCodec.encode(listOf(spanned, plain)))
+        assertEquals(Segment("curr", prefix = "prev, ", suffix = " ="), decoded[0].segment)
+        assertEquals(null, decoded[1].segment)
+    }
+
+    @Test
+    fun `pre-segment files load as whole-line threads`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t4","file":"a.py","line":3,"anchor_text":"x = 1",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]
+            }]}
+        """.trimIndent()
+        assertEquals(null, ThreadsCodec.decode(legacy).single().segment)
+    }
+
+    @Test
     fun `agent identity survives the trip`() {
         val t = CommentThread("a.py", 1, "x")
         t.addMessage(Message(Author.Agent("Some Other Agent", id = "soa-42"), "hi"))
