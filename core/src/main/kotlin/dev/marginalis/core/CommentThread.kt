@@ -29,6 +29,8 @@ class CommentThread(
      * only (the selection gesture) — agents read segments, never write them.
      */
     val segment: Segment? = null,
+    /** What response this thread asks of its reader; null = ordinary comment. */
+    val severity: Severity? = null,
 ) {
     private val messagesLock = Any()
     private val _messages = mutableListOf<Message>()

@@ -20,6 +20,7 @@ import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Message
+import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
@@ -45,7 +46,7 @@ import java.time.format.DateTimeFormatter
  *
  * Endpoints:
  *   GET  /api/marginalis/ping             -> {status, ide, version, projects}
- *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, walkthrough?, project?}
+ *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
  *   POST /api/marginalis/comment_reopen   {thread_id}
@@ -178,6 +179,10 @@ class MarginalisRestService : RestService() {
         val order = json.intOrNull("order")
         val walkthroughLabel = json.stringOrNull("walkthrough")
         val projectFilter = json.stringOrNull("project")
+        val severity = when (val outcome = parseSeverity(json.stringOrNull("severity"))) {
+            is SeverityParse.Invalid -> return sendError(HttpResponseStatus.BAD_REQUEST, outcome.message, request, context)
+            is SeverityParse.Ok -> outcome.severity
+        }
 
         val (project, vFile) = ApplicationManager.getApplication()
             .runReadAction(Computable { resolveFile(file, projectFilter) })
@@ -206,7 +211,10 @@ class MarginalisRestService : RestService() {
             adjusted = placed.adjusted
 
             // Agents never create segments — the selection gesture is human.
-            val created = CommentThread(file, line0, lineText(document, line0), order = order, walkthrough = walkthroughLabel)
+            val created = CommentThread(
+                file, line0, lineText(document, line0),
+                order = order, walkthrough = walkthroughLabel, severity = severity,
+            )
             created.addMessage(Message(agentAuthor(json), body))
             MarginalisMarkers.attach(project, created, document)
             MarginalisStore.getInstance(project).threads.add(created)
@@ -228,6 +236,30 @@ class MarginalisRestService : RestService() {
 
     private fun lineText(document: Document, line: Int): String =
         document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)))
+
+    private sealed class SeverityParse {
+        class Ok(val severity: Severity?) : SeverityParse()
+        class Invalid(val message: String) : SeverityParse()
+    }
+
+    /**
+     * The severity vocabulary, with legacy tolerance: agents that grew up
+     * writing HIGH/MEDIUM/LOW keep working — high is a blocker, low is a
+     * nit, and medium normalizes to unmarked (the silent middle IS the
+     * medium). Garbage gets a teaching 400, not a silent unmarked thread.
+     */
+    private fun parseSeverity(raw: String?): SeverityParse {
+        if (raw == null) return SeverityParse.Ok(null)
+        return when (raw.lowercase()) {
+            "blocker", "high" -> SeverityParse.Ok(Severity.BLOCKER)
+            "nit", "low" -> SeverityParse.Ok(Severity.NIT)
+            "medium", "note", "none" -> SeverityParse.Ok(null)
+            else -> SeverityParse.Invalid(
+                "invalid severity '$raw' — use 'blocker' (act before proceeding) or 'nit' " +
+                    "(taste, dismissible); omit for an ordinary comment.",
+            )
+        }
+    }
 
     /** Outcome of placing a 1-based line hint + anchor text against a live document. */
     private sealed class AnchorOutcome {
@@ -429,6 +461,7 @@ class MarginalisRestService : RestService() {
                             }
                             thread.order?.let { addProperty("order", it) }
                             thread.walkthrough?.let { addProperty("walkthrough", it) }
+                            thread.severity?.let { addProperty("severity", it.name.lowercase()) }
                             thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
                             add("messages", messagesJson)
                         },

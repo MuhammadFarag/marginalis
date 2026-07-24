@@ -65,6 +65,25 @@ once the token gains Issues scope.
   stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
   bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
+## Shipped (2026-07-25)
+
+- ✅ Severity: blocker / nit (v0.1.11, designed and built same day) —
+  the agent's ad-hoc "HIGH:/MEDIUM:/LOW:" body prefixes lifted into the
+  channel, the walkthrough-order pattern again. Built to the agreed
+  sketch: two ends + silent middle (`severity: blocker|nit` on
+  comment_add, unmarked = ordinary; blocker = gate NOT importance —
+  importance stays in prose, see decision log); legacy high/low/medium
+  accepted on the wire, garbage gets a teaching 400; additive codec +
+  comment_list field, 2 new core tests (38/38). Visuals per "one loud
+  mark, one quiet mark, silence": red/grayed tree chips (word + color),
+  nit rows grayed whole, section blocker counts, gutter error-badge
+  precedence checkmark → orphan → blocker → unread, panel status word,
+  stripe badge red when blockers open. Resolve All / Clear All warn on
+  open blockers. "Blockers Only" funnel toggle — filter + step-walking
+  = walk the blockers; empty state "No blockers". Skill 0.11.0:
+  severity vocabulary (never in the body), call-path walk ordering.
+  DECIDED: no severity-colored span tints.
+
 ## Open — features
 
 (none — the feature backlog is clear; composer fence-interior highlighting
@@ -128,6 +147,15 @@ remains parked under "Deferred with analysis")
   sessions are routine.
 
 ## Decision log
+
+- **Importance dimension declined** (2026-07-25): severity stays
+  one-dimensional (blocker/nit + silent middle). Importance fails the
+  vocabulary test — no distinct reader behavior attaches to it — the
+  agent can't measure it honestly, a second chip breaks "one loud mark,
+  one quiet mark, silence", and the underlying need is served by
+  persistence (important non-blocking threads simply stay open; prose
+  argues the weight). Revisit only if real usage produces the want —
+  the comment_edit standard.
 
 - **Resolve is an agent verb** (2026-07-19, real-usage finding) — OVERTURNED
   later the same day: the operator resolves tour stops directly while

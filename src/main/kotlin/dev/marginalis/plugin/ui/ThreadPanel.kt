@@ -21,6 +21,7 @@ import com.intellij.util.ui.UIUtil
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Message
+import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
@@ -351,9 +352,14 @@ class ThreadPanel(
     /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
         val isDraft = MarginalisStore.getInstance(project).threads.byId(thread.id) == null
+        val severityWord = when (thread.severity) {
+            Severity.BLOCKER -> " · blocker"
+            Severity.NIT -> " · nit"
+            null -> ""
+        }
         statusLabel.text = when {
             isDraft -> "new comment — unsent"
-            thread.status is ThreadStatus.Open -> "open${walkPosition()}"
+            thread.status is ThreadStatus.Open -> "open$severityWord${walkPosition()}"
             thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
             else -> "orphaned (anchor deleted)"
         }

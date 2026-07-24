@@ -43,6 +43,7 @@ object ThreadsCodec {
         }
         thread.order?.let { addProperty("order", it) }
         thread.walkthrough?.let { addProperty("walkthrough", it) }
+        thread.severity?.let { addProperty("severity", it.name) }
         addProperty("status", thread.status.kind.name)
         addProperty("created_at", thread.createdAt.toString())
         thread.resolvedBy?.let { add("resolved_by", authorJson(it)) }
@@ -85,6 +86,10 @@ object ThreadsCodec {
                     )
                 }
             },
+            // Additive: pre-severity files are ordinary comments; unknown
+            // values load as unmarked rather than failing the whole file.
+            severity = json.get("severity")?.takeIf { it.isJsonPrimitive }?.asString
+                ?.let { name -> Severity.entries.find { it.name.equals(name, ignoreCase = true) } },
         )
         for (m in json.getAsJsonArray("messages")) {
             val msg = m.asJsonObject

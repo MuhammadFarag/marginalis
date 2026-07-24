@@ -102,6 +102,28 @@ class ThreadsCodecTest {
     }
 
     @Test
+    fun `severity survives the trip and its absence stays absent`() {
+        val blocker = CommentThread("a.py", 1, "x", severity = Severity.BLOCKER)
+        val nit = CommentThread("b.py", 2, "y", severity = Severity.NIT)
+        val plain = CommentThread("c.py", 3, "z")
+        val decoded = ThreadsCodec.decode(ThreadsCodec.encode(listOf(blocker, nit, plain)))
+        assertEquals(Severity.BLOCKER, decoded[0].severity)
+        assertEquals(Severity.NIT, decoded[1].severity)
+        assertEquals(null, decoded[2].severity)
+    }
+
+    @Test
+    fun `unknown severity values load as unmarked, not as failure`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t5","file":"a.py","line":3,"anchor_text":"x = 1","severity":"CRITICAL",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]
+            }]}
+        """.trimIndent()
+        assertEquals(null, ThreadsCodec.decode(legacy).single().severity)
+    }
+
+    @Test
     fun `pre-segment files load as whole-line threads`() {
         val legacy = """
             {"version":1,"threads":[{

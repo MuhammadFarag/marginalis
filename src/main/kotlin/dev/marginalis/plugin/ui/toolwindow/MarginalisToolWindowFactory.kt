@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataSink
+import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileTypes.FileTypeManager
@@ -26,6 +27,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
@@ -63,6 +65,7 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
                 common.createPrevOccurenceAction(panel),
                 common.createNextOccurenceAction(panel),
                 LastStepAction(panel),
+                BlockersOnlyAction(panel),
                 ResolveAllAction(),
                 ClearAllAction(),
             ),
@@ -73,9 +76,14 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
         // (the agent spoke last). The margin is turn-based; this is the turn
         // signal, not presence.
         val refreshBadge = {
-            val awaiting = MarginalisStore.getInstance(project).threads.all()
-                .count { it.status is ThreadStatus.Open && it.awaitsUser() }
-            toolWindow.setIcon(STRIPE_ICON.getInfoIcon(awaiting > 0))
+            val open = MarginalisStore.getInstance(project).threads.all()
+                .filter { it.status is ThreadStatus.Open }
+            val awaiting = open.count { it.awaitsUser() }
+            val blockers = open.count { it.severity == Severity.BLOCKER }
+            // Red = act, blue = read: open blockers outrank the turn signal.
+            toolWindow.setIcon(
+                if (blockers > 0) STRIPE_ICON.getErrorIcon(true) else STRIPE_ICON.getInfoIcon(awaiting > 0),
+            )
             content.displayName = if (awaiting > 0) "$awaiting awaiting you" else ""
         }
         MarginalisStore.getInstance(project).threads.addListener {
@@ -115,6 +123,18 @@ private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
     override fun actionPerformed(e: AnActionEvent) = panel.goLast()
 }
 
+/** The gate check: show only blockers; step-walking then walks the blockers. */
+private class BlockersOnlyAction(private val panel: MarginalisToolWindowPanel) :
+    ToggleAction("Blockers Only", "Show only blocker threads", AllIcons.General.Filter), DumbAware {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+    override fun isSelected(e: AnActionEvent): Boolean = panel.blockersOnly
+
+    override fun setSelected(e: AnActionEvent, state: Boolean) {
+        panel.blockersOnly = state
+    }
+}
+
 /** Resolve every open/orphaned thread — the "consolidation is done" sweep. */
 private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread resolved", AllIcons.Actions.Selectall) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -130,12 +150,15 @@ private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread
         val store = MarginalisStore.getInstance(project)
         val pending = store.threads.all().filter { it.status !is ThreadStatus.Resolved }
         if (pending.isEmpty()) return
+        val blockers = pending.count { it.severity == Severity.BLOCKER }
+        val blockerWarning =
+            if (blockers > 0) " $blockers of them are blockers — resolve only if their outcomes genuinely landed." else ""
         val answer = Messages.showYesNoDialog(
             project,
-            "Resolve all ${pending.size} open thread(s)? Their gutter markers will be removed; " +
+            "Resolve all ${pending.size} open thread(s)?$blockerWarning Their gutter markers will be removed; " +
                 "the threads remain in the Resolved log.",
             "Resolve All Margin Threads",
-            Messages.getQuestionIcon(),
+            if (blockers > 0) Messages.getWarningIcon() else Messages.getQuestionIcon(),
         )
         if (answer != Messages.YES) return
         for (thread in pending) {
@@ -159,9 +182,11 @@ private class ClearAllAction : AnAction("Clear All", "Delete all threads, includ
         val store = MarginalisStore.getInstance(project)
         val count = store.threads.all().size
         if (count == 0) return
+        val blockers = store.threads.all().count { it.status !is ThreadStatus.Resolved && it.severity == Severity.BLOCKER }
+        val blockerWarning = if (blockers > 0) " $blockers open blocker(s) are among them." else ""
         val answer = Messages.showYesNoDialog(
             project,
-            "Delete all $count margin thread(s), including the resolved log? This cannot be undone.",
+            "Delete all $count margin thread(s), including the resolved log?$blockerWarning This cannot be undone.",
             "Clear All Margin Threads",
             Messages.getWarningIcon(),
         )
@@ -171,7 +196,7 @@ private class ClearAllAction : AnAction("Clear All", "Delete all threads, includ
 }
 
 private sealed class NodeData {
-    class Section(val title: String, val count: Int) : NodeData()
+    class Section(val title: String, val count: Int, val blockers: Int = 0) : NodeData()
     class DirNode(val name: String, val count: Int) : NodeData()
     class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
     class ThreadNode(val thread: CommentThread, val walkthroughPrefix: String? = null) : NodeData()
@@ -305,10 +330,24 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         steps().first.lastOrNull()?.let { goTo(it) }
     }
 
-    private fun rebuild() {
+    /**
+     * The pre-merge gate check: filter the tree to blockers, and because
+     * step-walking follows the tree as displayed, first/next/prev/last
+     * become "walk the blockers" for free. The empty state is the answer
+     * everyone wants.
+     */
+    var blockersOnly: Boolean = false
+        set(value) {
+            field = value
+            rebuild()
+        }
+
+    fun rebuild() {
         val store = MarginalisStore.getInstance(project)
-        val threads = store.threads.all()
         store.syncLines() // refresh live lines + orphan status from markers
+        val threads = store.threads.all()
+            .filter { !blockersOnly || it.severity == Severity.BLOCKER }
+        tree.emptyText.text = if (blockersOnly) "No blockers" else "No margin threads yet"
 
         val root = DefaultMutableTreeNode()
         addGuidedSection(root, threads)
@@ -341,7 +380,9 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         val labelNeeded = walkthroughs.size > 1
         for ((label, walkthroughThreads) in walkthroughs) {
             val title = if (label.isEmpty()) "Guided" else "Guided $label"
-            val section = DefaultMutableTreeNode(NodeData.Section(title, walkthroughThreads.size))
+            val section = DefaultMutableTreeNode(
+                NodeData.Section(title, walkthroughThreads.size, walkthroughThreads.count { it.severity == Severity.BLOCKER }),
+            )
             val total = WalkthroughNavigator.stableTotal(project, walkthroughThreads.first())
                 ?: walkthroughThreads.size
             val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
@@ -353,7 +394,9 @@ private class MarginalisToolWindowPanel(private val project: Project) :
 
     private fun addOpenSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
         if (threads.isEmpty()) return
-        val section = DefaultMutableTreeNode(NodeData.Section("Open", threads.size))
+        val section = DefaultMutableTreeNode(
+            NodeData.Section("Open", threads.size, threads.count { it.severity == Severity.BLOCKER }),
+        )
         val trie = PathTrie().apply { threads.forEach(::insert) }
         emitTrie(trie, section)
         root.add(section)
@@ -437,6 +480,9 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
             is NodeData.Section -> {
                 append(data.title, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                if (data.blockers > 0) {
+                    append("  ·  ${data.blockers} blocker${if (data.blockers > 1) "s" else ""}", SimpleTextAttributes.ERROR_ATTRIBUTES)
+                }
             }
             is NodeData.DirNode -> {
                 icon = AllIcons.Nodes.Folder
@@ -469,8 +515,19 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     // Flat sections repeat the path; tree sections carry it in structure.
                     append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
+                // One loud mark, one quiet mark, silence: word + color, never
+                // color alone. A nit de-emphasizes its whole row.
+                when (thread.severity) {
+                    Severity.BLOCKER -> append("blocker  ", SimpleTextAttributes.ERROR_ATTRIBUTES)
+                    Severity.NIT -> append("nit  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    null -> {}
+                }
                 val preview = MarkdownRenderer.previewText(thread.messages.firstOrNull()?.body ?: "")
-                append(StringUtil.shortenTextWithEllipsis(preview, 70, 0))
+                append(
+                    StringUtil.shortenTextWithEllipsis(preview, 70, 0),
+                    if (thread.severity == Severity.NIT) SimpleTextAttributes.GRAYED_ATTRIBUTES
+                    else SimpleTextAttributes.REGULAR_ATTRIBUTES,
+                )
                 if (thread.status is ThreadStatus.Open) {
                     append(if (thread.awaitsUser()) "  ●" else "  ○", if (thread.awaitsUser()) VIOLET_ATTRS else BLUE_ATTRS)
                 }
