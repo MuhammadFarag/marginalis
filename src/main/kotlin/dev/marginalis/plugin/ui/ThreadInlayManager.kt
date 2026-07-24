@@ -113,15 +113,22 @@ object ThreadInlayManager {
 
     /**
      * One store listener per editor: refreshes any open panel when its thread
-     * changes (agent replies land while the human is looking at the thread).
+     * changes (agent replies land while the human is looking at the thread),
+     * and closes the panel when its thread is deleted (Clear All, remove) —
+     * a panel for a thread that no longer exists is a ghost.
      */
     private fun installStoreListener(project: Project, editor: Editor) {
         if (editor.getUserData(LISTENER_INSTALLED) == true) return
         editor.putUserData(LISTENER_INSTALLED, true)
-        MarginalisStore.getInstance(project).threads.addListener { thread ->
+        val store = MarginalisStore.getInstance(project)
+        store.threads.addListener { thread ->
             ApplicationManager.getApplication().invokeLater {
                 if (editor.isDisposed) return@invokeLater
-                editor.getUserData(OPEN_INLAYS)?.get(thread.id)?.second?.refresh()
+                if (store.threads.byId(thread.id) == null) {
+                    close(editor, thread.id)
+                } else {
+                    editor.getUserData(OPEN_INLAYS)?.get(thread.id)?.second?.refresh()
+                }
             }
         }
     }

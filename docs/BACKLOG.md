@@ -23,11 +23,19 @@ once the token gains Issues scope.
   tool window title (⌘⌥↑/⌘⌥↓ free via occurrence actions) and thread-panel
   header, TourNavigator shared walk, panel title de-redundified (`db11943`)
 
+## Shipped (2026-07-23)
+
+- ✅ QoL trio (operator feedback) — Clear All now closes open editor
+  panels (deleted thread → inlay disposed, not just refreshed); per-agent
+  author-name colors (identity-hashed six-color palette, anonymous
+  "Agent" keeps purple, user blue excluded); skill 0.9.1: `unread`/`list`
+  scoped to the cwd project so sweeps stop burning read receipts in
+  other projects, plus ranked `project_scope` containment (exact >
+  cwd-inside-project > project-inside-cwd — nested projects had matched
+  in ping order).
+
 ## Open — features
 
-- **Agent self-identification** — model ready (`Author.Agent(name, id)`);
-  transport still stamps "Claude": accept optional `author_name`/`author_id`
-  on comment_add/comment_reply, default the display to "Agent".
 - **Segment comments, human-side** (designed 2026-07-23, unscheduled) —
   the human selects a word/segment and ⌃⌥M anchors the thread to that
   span; agents only READ segments, never create them (asymmetry is the
@@ -50,6 +58,9 @@ once the token gains Issues scope.
 
 ## Shipped (2026-07-20)
 
+- ✅ Agent self-identification (v0.1.5) — optional `author_name`/`author_id`
+  on comment_add/comment_reply, anonymous default display "Agent"
+  (no more hardcoded "Claude"); resolver stamped by caller (`faff649`)
 - ✅ Marketplace publishing wiring + walkthrough vocabulary (v0.1.3) —
   signing/publishPlugin off CI secrets (workflow skips gracefully until
   they exist), refreshed listing description; tour → walkthrough rename
@@ -71,8 +82,8 @@ once the token gains Issues scope.
 
 ## Open — infrastructure
 
-- **JetBrains Marketplace publishing** — plugin-side wiring ~1hr (signing +
-  publishPlugin + beta channel); operator side: account, first manual upload
+- **JetBrains Marketplace publishing, operator side** — plugin-side wiring
+  shipped in v0.1.3 (`a9c8cfc`); remaining: account, first manual upload
   (creates the listing, ~2-business-day review), API token, four CI secrets.
 - **Issues migration** — grant the PAT Issues scope, move this file there.
 - **Skill source into repo** (deferred 2026-07-20, operator call) — move

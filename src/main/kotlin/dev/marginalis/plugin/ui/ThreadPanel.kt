@@ -305,11 +305,23 @@ class ThreadPanel(
         repaint()
     }
 
+    /**
+     * A stable color per agent identity, so concurrent agents are tellable
+     * apart at a glance. The anonymous "Agent" keeps the classic purple;
+     * introduced agents hash their receipt identity into a small palette
+     * (user blue is deliberately absent from it).
+     */
+    private fun agentColor(agent: Author.Agent): JBColor {
+        if (agent.id == null && agent.displayName == Authors.agent.displayName) return AGENT_PALETTE[0]
+        return AGENT_PALETTE[Math.floorMod(agent.receiptKey.hashCode(), AGENT_PALETTE.size)]
+    }
+
     private fun messageComponent(message: Message, timeFormat: DateTimeFormatter): JComponent {
         val panel = JPanel(BorderLayout()).apply { isOpaque = false }
-        val authorColor =
-            if (message.author is Author.Agent) JBColor(0x9C27B0, 0xCE93D8) // agent: purple
-            else JBColor(0x1565C0, 0x90CAF9) // user: blue
+        val authorColor = when (val author = message.author) {
+            is Author.Agent -> agentColor(author)
+            else -> JBColor(0x1565C0, 0x90CAF9) // user: blue
+        }
         val meta = JBLabel("${message.author.displayName} · ${timeFormat.format(message.createdAt)}").apply {
             font = JBUI.Fonts.smallFont().asBold()
             foreground = authorColor
@@ -348,6 +360,17 @@ class ThreadPanel(
         panel.add(metaRow, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)
         return panel
+    }
+
+    private companion object {
+        val AGENT_PALETTE = arrayOf(
+            JBColor(0x9C27B0, 0xCE93D8), // purple — the anonymous "Agent"
+            JBColor(0x00796B, 0x80CBC4), // teal
+            JBColor(0xE65100, 0xFFB74D), // orange
+            JBColor(0xC2185B, 0xF48FB1), // pink
+            JBColor(0x2E7D32, 0xA5D6A7), // green
+            JBColor(0x5D4037, 0xBCAAA4), // brown
+        )
     }
 
 }
