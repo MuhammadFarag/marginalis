@@ -77,7 +77,16 @@ object MarkdownRenderer {
             .replace(Regex("<img[^>]*>"), "[image]")
 
         val pane = JEditorPane()
-        pane.editorKit = HTMLEditorKitBuilder().withWordWrapViewFactory().build()
+        val kit = HTMLEditorKitBuilder().withWordWrapViewFactory().build()
+        // Margin-scale headings: the default HTML sizes are document scale,
+        // and a 2x h1 inside a margin panel towers over the code it
+        // annotates. Headings here mean structure, not volume — a notch
+        // above body text, bold carrying the rest.
+        val base = JBUI.Fonts.label().size
+        kit.styleSheet.addRule("h1 { font-size: ${(base * 1.2f).toInt()}pt; margin: 6px 0 2px 0; }")
+        kit.styleSheet.addRule("h2 { font-size: ${(base * 1.1f).toInt()}pt; margin: 5px 0 2px 0; }")
+        kit.styleSheet.addRule("h3, h4, h5, h6 { font-size: ${base}pt; margin: 4px 0 2px 0; }")
+        pane.editorKit = kit
         pane.isEditable = false
         pane.isOpaque = false
         pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, true)

@@ -61,11 +61,14 @@ once the token gains Issues scope.
   — capability detection stops being absence-based), skill 0.10.1.
   Chooser popup extracted to ThreadChooserPopup (shared by gutter and
   ⌃⌥M).
+- ✅ Rendered heading sizes (v0.1.10) — the render pane's HTML kit gains a
+  stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
+  bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
 ## Open — features
 
-- **Rendered heading sizes** — h1/h2 render at document scale inside margin
-  panels; likely want scaling down. (Operator thread open in sample-project.)
+(none — the feature backlog is clear; composer fence-interior highlighting
+remains parked under "Deferred with analysis")
 
 ## Shipped (2026-07-20)
 
