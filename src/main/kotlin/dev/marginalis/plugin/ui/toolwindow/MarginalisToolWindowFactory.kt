@@ -46,9 +46,10 @@ import javax.swing.tree.TreePath
 
 /**
  * The cross-file answer to "which files have notes?": every thread in the
- * project — Open as a directory tree (expanded), Orphaned, and Resolved
- * (folded; it doubles as the decision log). Double-click or F4 (Jump to
- * Source) navigates to the anchor line and opens the thread panel.
+ * project, each status section as a directory tree — Open expanded,
+ * Resolved folded (the session's record of what concluded, consulted by
+ * file). Double-click or F4 (Jump to Source) navigates to the anchor line
+ * and opens the thread panel.
  */
 class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -351,9 +352,9 @@ private class MarginalisToolWindowPanel(private val project: Project) :
 
         val root = DefaultMutableTreeNode()
         addGuidedSection(root, threads)
-        addOpenSection(root, threads.filter { it.status is ThreadStatus.Open })
-        addFlatSection(root, "Orphaned", threads.filter { it.status is ThreadStatus.Orphaned })
-        addFlatSection(root, "Resolved", threads.filter { it.status is ThreadStatus.Resolved })
+        addTreeSection(root, "Open", threads.filter { it.status is ThreadStatus.Open })
+        addTreeSection(root, "Orphaned", threads.filter { it.status is ThreadStatus.Orphaned })
+        addTreeSection(root, "Resolved", threads.filter { it.status is ThreadStatus.Resolved })
 
         tree.model = DefaultTreeModel(root)
         // Everything expanded by default except the Resolved log.
@@ -392,11 +393,17 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         }
     }
 
-    private fun addOpenSection(root: DefaultMutableTreeNode, threads: List<CommentThread>) {
+    /**
+     * Every status section shares the directory tree — Resolved included:
+     * real usage consults it by file ("what did we decide here?"), not by
+     * time, and it's cleared session-to-session anyway (operator finding).
+     * The blocker count only ever counts unresolved threads, so Resolved
+     * never alarms in red about gates already passed.
+     */
+    private fun addTreeSection(root: DefaultMutableTreeNode, title: String, threads: List<CommentThread>) {
         if (threads.isEmpty()) return
-        val section = DefaultMutableTreeNode(
-            NodeData.Section("Open", threads.size, threads.count { it.severity == Severity.BLOCKER }),
-        )
+        val blockers = threads.count { it.status !is ThreadStatus.Resolved && it.severity == Severity.BLOCKER }
+        val section = DefaultMutableTreeNode(NodeData.Section(title, threads.size, blockers))
         val trie = PathTrie().apply { threads.forEach(::insert) }
         emitTrie(trie, section)
         root.add(section)
@@ -446,15 +453,6 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         }
     }
 
-    private fun addFlatSection(root: DefaultMutableTreeNode, title: String, threads: List<CommentThread>) {
-        if (threads.isEmpty()) return
-        val section = DefaultMutableTreeNode(NodeData.Section(title, threads.size))
-        for (thread in threads.sortedBy { it.createdAt }) {
-            section.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread)))
-        }
-        root.add(section)
-    }
-
     private fun expandRecursively(node: DefaultMutableTreeNode) {
         tree.expandPath(TreePath(node.path))
         for (i in 0 until node.childCount) {
@@ -495,8 +493,11 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 icon = FileTypeManager.getInstance().getFileTypeByFileName(data.name).icon
                     ?: AllIcons.FileTypes.Any_type
                 append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                val needsYou = data.threads.count { it.awaitsUser() }
-                val onClaude = data.threads.size - needsYou
+                // Turn dots are for live conversations only — under Resolved
+                // they'd be noise about turns already over.
+                val open = data.threads.filter { it.status is ThreadStatus.Open }
+                val needsYou = open.count { it.awaitsUser() }
+                val onClaude = open.size - needsYou
                 if (needsYou > 0) append("  ●$needsYou", VIOLET_ATTRS)
                 if (onClaude > 0) append("  ○$onClaude", BLUE_ATTRS)
             }
@@ -511,10 +512,6 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     append("${data.walkthroughPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
                 append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                if (thread.status !is ThreadStatus.Open) {
-                    // Flat sections repeat the path; tree sections carry it in structure.
-                    append("${thread.file}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                }
                 // One loud mark, one quiet mark, silence: word + color, never
                 // color alone. A nit de-emphasizes its whole row.
                 when (thread.severity) {

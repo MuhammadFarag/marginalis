@@ -65,8 +65,14 @@ once the token gains Issues scope.
   stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
   bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
-## Shipped (2026-07-25)
-
+- ✅ Grouped Resolved/Orphaned sections (v0.1.13, operator ask) — every
+  status section now shares the directory tree; the flat lists and their
+  per-row path repetition are gone, and file-node turn dots count only
+  live conversations. Chronology traded away knowingly: real usage
+  consults Resolved by file and clears it per session (operator finding —
+  the section is a session record, not an archive; timestamps stay in
+  the threads). Blocker counts never count resolved threads, so Resolved
+  never alarms about gates already passed.
 - ✅ Severity: blocker / nit (v0.1.11, designed and built same day) —
   the agent's ad-hoc "HIGH:/MEDIUM:/LOW:" body prefixes lifted into the
   channel, the walkthrough-order pattern again. Built to the agreed
@@ -83,7 +89,7 @@ once the token gains Issues scope.
   = walk the blockers; empty state "No blockers". Skill 0.11.0:
   severity vocabulary (never in the body), call-path walk ordering.
   DECIDED: no severity-colored span tints.
-- ✅ Panel severity badges (v0.1.12, walkthrough feedback same day) —
+- ✅ Panel severity badges (v0.1.12, walkthrough feedback same day, 2026-07-24) —
   the thread panel header wears a pill badge matching the gutter: red
   "blocker", quiet-gray "nit"; replaces the too-easy-to-miss status-line
   word. The panel was the one surface that only got the quiet treatment.
@@ -152,7 +158,7 @@ remains parked under "Deferred with analysis")
 
 ## Decision log
 
-- **Importance dimension declined** (2026-07-25): severity stays
+- **Importance dimension declined** (2026-07-24): severity stays
   one-dimensional (blocker/nit + silent middle). Importance fails the
   vocabulary test — no distinct reader behavior attaches to it — the
   agent can't measure it honestly, a second chip breaks "one loud mark,
