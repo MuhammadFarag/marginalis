@@ -6,8 +6,10 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.fileTypes.PlainTextFileType
@@ -62,7 +64,6 @@ class ThreadPanel(
 
     private val messagesBox = Box.createVerticalBox()
     private val statusLabel = JBLabel()
-    private val resolveLink = ActionLink("") { toggleResolved() }
     private val sendButton = JButton()
     private val cancelEditLink = ActionLink("Cancel") {
         editingMessageId = null
@@ -168,18 +169,10 @@ class ThreadPanel(
             add(statusLabel)
         }
 
-        resolveLink.font = JBUI.Fonts.smallFont()
-        val closeLink = ActionLink("Close") { closeAndRefocus() }.apply {
-            font = JBUI.Fonts.smallFont()
-        }
         val right = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
-            add(buildNavToolbar())
-            add(Box.createHorizontalStrut(JBUI.scale(8)))
-            add(resolveLink)
-            add(Box.createHorizontalStrut(JBUI.scale(10)))
-            add(closeLink)
+            add(buildHeaderToolbar())
         }
 
         header.add(left, BorderLayout.WEST)
@@ -208,13 +201,13 @@ class ThreadPanel(
     }
 
     /**
-     * Step-by-step navigation without leaving the panel — during a
-     * walkthrough the mouse lives here, not in the tool window. Same walk
-     * semantics as the tool window's title buttons (WalkthroughNavigator);
-     * moving on closes this panel and opens the target's, one step at a
-     * time.
+     * The header's one idiom: step navigation, then the thread's lifecycle
+     * verbs, all as toolbar icons (links next to an icon toolbar were a
+     * mixed metaphor — operator finding). Resolve previews its outcome:
+     * the same green checkmark the gutter will show, flipping to the
+     * balloon when the click would reopen.
      */
-    private fun buildNavToolbar(): JComponent {
+    private fun buildHeaderToolbar(): JComponent {
         val group = DefaultActionGroup(
             navAction("First Step", AllIcons.Actions.Play_first) { walk, i ->
                 walk.firstOrNull().takeIf { i != 0 }
@@ -228,11 +221,68 @@ class ThreadPanel(
             navAction("Last Step", AllIcons.Actions.Play_last) { walk, i ->
                 walk.lastOrNull().takeIf { i != walk.size - 1 }
             },
+            Separator.getInstance(),
+            resolveAction(),
+            deleteAction(),
+            closeAction(),
         )
         val toolbar = ActionManager.getInstance().createActionToolbar("MarginalisThreadPanel", group, true)
         toolbar.targetComponent = this
         toolbar.component.isOpaque = false
         return toolbar.component
+    }
+
+    private fun isDraft(): Boolean = MarginalisStore.getInstance(project).threads.byId(thread.id) == null
+
+    private fun resolveAction(): AnAction = object : AnAction() {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabledAndVisible = !isDraft() // nothing to resolve before the first send
+            if (thread.status is ThreadStatus.Open) {
+                e.presentation.text = "Resolve"
+                e.presentation.icon = AllIcons.General.GreenCheckmark
+            } else {
+                e.presentation.text = "Reopen"
+                e.presentation.icon = AllIcons.General.Balloon
+            }
+        }
+
+        override fun actionPerformed(e: AnActionEvent) = toggleResolved()
+    }
+
+    /**
+     * The single-thread eraser — until now Clear All was the only one.
+     * Deletion is not resolution: no outcome, no log entry, the thread
+     * never happened. Irreversible, so it always confirms.
+     */
+    private fun deleteAction(): AnAction = object : AnAction("Delete Thread", null, AllIcons.Actions.GC) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabledAndVisible = !isDraft() // an unsent draft just closes
+        }
+
+        override fun actionPerformed(e: AnActionEvent) {
+            val answer = Messages.showYesNoDialog(
+                project,
+                "Delete this thread (${thread.messages.size} message(s))? " +
+                    "Unlike resolving, deletion keeps no record. This cannot be undone.",
+                "Delete Margin Thread",
+                Messages.getWarningIcon(),
+            )
+            if (answer != Messages.YES) return
+            // The store listener does the rest: marker removed, this panel
+            // closed, icons regrouped (the deleted-thread branch).
+            MarginalisStore.getInstance(project).threads.remove(thread.id)
+            editor.contentComponent.requestFocusInWindow()
+        }
+    }
+
+    private fun closeAction(): AnAction = object : AnAction("Close", null, AllIcons.Actions.Close) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+        override fun actionPerformed(e: AnActionEvent) = closeAndRefocus()
     }
 
     /** A nav button is enabled exactly when [target] yields a step to go to. */
@@ -271,9 +321,9 @@ class ThreadPanel(
         sendButton.font = JBUI.Fonts.smallFont()
         sendButton.addActionListener { sendReply() }
         cancelEditLink.font = JBUI.Fonts.smallFont()
-        val quoteLink = ActionLink("Quote code") { quoteIntoReply() }.apply {
-            font = JBUI.Fonts.smallFont()
-            toolTipText = "Insert the editor selection (or this thread's anchor) as a code block"
+        val quoteLink = ActionLink("") { quoteIntoReply() }.apply {
+            icon = AllIcons.Actions.MenuPaste
+            toolTipText = "Quote code: insert the editor selection (or this thread's anchor) as a code block"
         }
         val composerHolder = object : JPanel(BorderLayout()) {
             override fun getPreferredSize(): Dimension {
@@ -387,16 +437,12 @@ class ThreadPanel(
 
     /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
-        val isDraft = MarginalisStore.getInstance(project).threads.byId(thread.id) == null
         statusLabel.text = when {
-            isDraft -> "new comment — unsent"
+            isDraft() -> "new comment — unsent"
             thread.status is ThreadStatus.Open -> "open${walkPosition()}"
             thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
             else -> "orphaned (anchor deleted)"
         }
-        resolveLink.text = if (thread.status is ThreadStatus.Open) "Resolve" else "Reopen"
-        resolveLink.isVisible = !isDraft // nothing to resolve before the first send
-
         // The affordance follows state — and "Submit" over "Send": nothing is
         // transmitted anywhere, the message lands in the local store awaiting
         // the agent's next read. While editing, the composer becomes the
@@ -462,6 +508,10 @@ class ThreadPanel(
                 foreground = authorColor
             }
             metaRow.add(meta, BorderLayout.WEST)
+        } else {
+            // A grouped message's own time is suppressed with its meta line;
+            // hover recovers it (operator ask — invisible until wanted).
+            panel.toolTipText = "${message.author.displayName} · ${timeFormat.format(message.createdAt)}"
         }
 
         // The read receipt is the edit window: your message is revisable
@@ -492,7 +542,10 @@ class ThreadPanel(
             metaRow.add(
                 JBLabel("✓ seen").apply {
                     font = JBUI.Fonts.smallFont()
-                    foreground = UIUtil.getContextHelpForeground()
+                    // Green, matching the resolve checkmark family — the
+                    // receipt is good news and may as well feel like it
+                    // (operator request, verbatim: "for the dopamine hit").
+                    foreground = JBColor(Color(0x2E, 0x7D, 0x32), Color(0xA5, 0xD6, 0xA7))
                     toolTipText = seenByNames(message)
                 },
                 BorderLayout.EAST,

@@ -65,6 +65,16 @@ once the token gains Issues scope.
   stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
   bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
+- ✅ Icons + delete round (v0.1.15, walkthrough feedback) — the header
+  became one toolbar: step arrows · Resolve / Delete / Close as icons
+  (links beside an icon toolbar were a mixed idiom); Resolve previews
+  its outcome (gutter checkmark ↔ balloon); Quote code is the paste
+  icon; Submit stays the one button. NEW: single-thread delete (trash,
+  always confirms — deletion keeps no record, unlike resolve); "Clear
+  All" renamed "Delete All" (UI only, wire stays comment_clear_all).
+  ✓ seen turned green (operator request, "for the dopamine"); grouped
+  messages reveal author · time on hover. DECLINED for now: message/
+  composer background tints (operator withdrew — busy-ness risk).
 - ✅ Panel polish round (v0.1.14, designed in conversation) — the accent
   rail: panel's left edge names its kind (blocker red / nit gray / brand
   purple); per-message author rails in the existing author colors +

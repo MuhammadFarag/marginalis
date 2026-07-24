@@ -170,7 +170,7 @@ private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread
 }
 
 /** Delete everything, including the resolved log. Destructive; confirms first. */
-private class ClearAllAction : AnAction("Clear All", "Delete all threads, including resolved ones", AllIcons.Actions.GC) {
+private class ClearAllAction : AnAction("Delete All", "Delete all threads, including resolved ones", AllIcons.Actions.GC) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
@@ -188,7 +188,7 @@ private class ClearAllAction : AnAction("Clear All", "Delete all threads, includ
         val answer = Messages.showYesNoDialog(
             project,
             "Delete all $count margin thread(s), including the resolved log?$blockerWarning This cannot be undone.",
-            "Clear All Margin Threads",
+            "Delete All Margin Threads",
             Messages.getWarningIcon(),
         )
         if (answer != Messages.YES) return
