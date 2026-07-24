@@ -65,6 +65,17 @@ once the token gains Issues scope.
   stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
   bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
+- ✅ Panel polish round (v0.1.14, designed in conversation) — the accent
+  rail: panel's left edge names its kind (blocker red / nit gray / brand
+  purple); per-message author rails in the existing author colors +
+  consecutive agent messages group under one meta line (user messages
+  always keep theirs — Edit and the seen-check live there); header
+  de-redundified again ("Marginalis" title dropped, Resolve/Close are
+  links now, step arrows kept per operator call); composer full-width
+  with a right-aligned action row beneath and a two-line minimum; "✓
+  seen" receipt on read user messages (tooltip names the agents) — the
+  edit-window promise made visible. Declined for now: prose measure cap
+  (operator call: no width cap).
 - ✅ Grouped Resolved/Orphaned sections (v0.1.13, operator ask) — every
   status section now shares the directory tree; the flat lists and their
   per-row path repetition are gone, and file-node turn dots count only

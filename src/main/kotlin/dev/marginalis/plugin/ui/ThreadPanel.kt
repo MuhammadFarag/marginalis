@@ -29,6 +29,7 @@ import dev.marginalis.plugin.store.MarginalisStore
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
@@ -61,9 +62,13 @@ class ThreadPanel(
 
     private val messagesBox = Box.createVerticalBox()
     private val statusLabel = JBLabel()
-    private val resolveButton = JButton()
+    private val resolveLink = ActionLink("") { toggleResolved() }
     private val sendButton = JButton()
-    private val cancelEditButton = JButton("Cancel")
+    private val cancelEditLink = ActionLink("Cancel") {
+        editingMessageId = null
+        replyArea.text = ""
+        refresh()
+    }
 
     // Markdown-aware composer: the IDE's own Markdown lexer highlights as you
     // type (plain text when the Markdown plugin is absent). Same input, same
@@ -89,8 +94,19 @@ class ThreadPanel(
     private var editingMessageId: String? = null
 
     init {
+        // The accent rail: the panel's left edge names its kind at a glance —
+        // blocker red, nit gray, brand purple otherwise — and visually ties
+        // the unfolded conversation to the margin it came from.
+        val accent = when (thread.severity) {
+            Severity.BLOCKER -> JBColor(Color(0xDB, 0x58, 0x60), Color(0xC7, 0x54, 0x50))
+            Severity.NIT -> JBColor(Color(0xB8, 0xB8, 0xB8), Color(0x5E, 0x61, 0x64))
+            null -> JBColor(Color(0x9C, 0x27, 0xB0), Color(0xCE, 0x93, 0xD8))
+        }
         border = JBUI.Borders.compound(
-            JBUI.Borders.customLine(JBColor.border(), 1),
+            JBUI.Borders.compound(
+                JBUI.Borders.customLine(JBColor.border(), 1, 0, 1, 1),
+                JBUI.Borders.customLine(accent, 0, 3, 0, 0),
+            ),
             JBUI.Borders.empty(8),
         )
         background = UIUtil.getPanelBackground()
@@ -132,65 +148,63 @@ class ThreadPanel(
 
     private fun buildHeader(): JComponent {
         val header = JPanel(BorderLayout()).apply { isOpaque = false }
-        // No file name in the title: the panel renders inside the file it
-        // annotates, so naming it would be redundant (operator feedback).
-        val title = JBLabel("Marginalis").apply {
-            font = JBUI.Fonts.smallFont().asBold()
-        }
+        // No title at all anymore: the panel IS Marginalis — branding every
+        // panel was the file-name-in-the-title mistake again (same operator
+        // instinct, second application). The severity pill and status line
+        // carry the header.
         statusLabel.font = JBUI.Fonts.smallFont()
         statusLabel.foreground = UIUtil.getContextHelpForeground()
 
         val left = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
-            add(title)
             // The panel-side echo of the gutter badge (operator feedback:
             // a word in the status line was too easy to miss): a pill in
             // the same red as the gutter for blockers, quiet gray for nits.
             thread.severity?.let { severity ->
-                add(Box.createHorizontalStrut(JBUI.scale(6)))
                 add(SeverityBadge(severity))
+                add(Box.createHorizontalStrut(JBUI.scale(8)))
             }
-            add(Box.createHorizontalStrut(JBUI.scale(8)))
             add(statusLabel)
         }
 
-        resolveButton.font = JBUI.Fonts.smallFont()
-        resolveButton.addActionListener {
-            if (thread.status is ThreadStatus.Open) {
-                // Auto-advance: capture the next step BEFORE resolving — the
-                // walk only contains open threads, so afterwards this thread
-                // has no position in it.
-                val next = nextStepIfAutoAdvancing()
-                thread.resolve(Authors.user)
-                MarginalisStore.getInstance(project).threads.notifyChanged(thread)
-                if (next != null) {
-                    onClose()
-                    WalkthroughNavigator.navigateTo(project, next)
-                }
-            } else {
-                thread.reopen()
-                MarginalisStore.getInstance(project).threads.notifyChanged(thread)
-            }
-        }
-        val closeButton = JButton("Close").apply {
+        resolveLink.font = JBUI.Fonts.smallFont()
+        val closeLink = ActionLink("Close") { closeAndRefocus() }.apply {
             font = JBUI.Fonts.smallFont()
-            addActionListener { onClose() }
         }
         val right = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             add(buildNavToolbar())
             add(Box.createHorizontalStrut(JBUI.scale(8)))
-            add(resolveButton)
-            add(Box.createHorizontalStrut(JBUI.scale(4)))
-            add(closeButton)
+            add(resolveLink)
+            add(Box.createHorizontalStrut(JBUI.scale(10)))
+            add(closeLink)
         }
 
         header.add(left, BorderLayout.WEST)
         header.add(right, BorderLayout.EAST)
         header.border = JBUI.Borders.emptyBottom(6)
         return header
+    }
+
+    /** Resolve/reopen from the header link — extracted so the link is declarative. */
+    private fun toggleResolved() {
+        if (thread.status is ThreadStatus.Open) {
+            // Auto-advance: capture the next step BEFORE resolving — the
+            // walk only contains open threads, so afterwards this thread
+            // has no position in it.
+            val next = nextStepIfAutoAdvancing()
+            thread.resolve(Authors.user)
+            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+            if (next != null) {
+                onClose()
+                WalkthroughNavigator.navigateTo(project, next)
+            }
+        } else {
+            thread.reopen()
+            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+        }
     }
 
     /**
@@ -242,6 +256,13 @@ class ThreadPanel(
         }
     }
 
+    /**
+     * The composer gets the full panel width — writing is the panel's main
+     * verb, and the old right-hand button stack was stealing measure from
+     * it. Actions live in a slim row underneath, right-aligned, the layout
+     * every commenting UI has taught hands already. Two-line minimum
+     * height: a one-line box invites one-line thoughts.
+     */
     private fun buildReplyRow(): JComponent {
         val row = JPanel(BorderLayout()).apply {
             isOpaque = false
@@ -249,25 +270,29 @@ class ThreadPanel(
         }
         sendButton.font = JBUI.Fonts.smallFont()
         sendButton.addActionListener { sendReply() }
-        cancelEditButton.font = JBUI.Fonts.smallFont()
-        cancelEditButton.addActionListener {
-            editingMessageId = null
-            replyArea.text = ""
-            refresh()
-        }
+        cancelEditLink.font = JBUI.Fonts.smallFont()
         val quoteLink = ActionLink("Quote code") { quoteIntoReply() }.apply {
             font = JBUI.Fonts.smallFont()
             toolTipText = "Insert the editor selection (or this thread's anchor) as a code block"
         }
-        val buttons = JPanel().apply {
+        val composerHolder = object : JPanel(BorderLayout()) {
+            override fun getPreferredSize(): Dimension {
+                val computed = super.getPreferredSize()
+                return Dimension(computed.width, computed.height.coerceAtLeast(JBUI.scale(52)))
+            }
+        }.apply {
             isOpaque = false
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            add(sendButton)
-            add(cancelEditButton)
-            add(quoteLink)
+            add(replyArea, BorderLayout.CENTER)
         }
-        row.add(replyArea, BorderLayout.CENTER)
-        row.add(buttons, BorderLayout.EAST)
+        val actions = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
+            isOpaque = false
+            border = JBUI.Borders.emptyTop(4)
+            add(quoteLink)
+            add(cancelEditLink)
+            add(sendButton)
+        }
+        row.add(composerHolder, BorderLayout.CENTER)
+        row.add(actions, BorderLayout.SOUTH)
         return row
     }
 
@@ -369,8 +394,8 @@ class ThreadPanel(
             thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
             else -> "orphaned (anchor deleted)"
         }
-        resolveButton.text = if (thread.status is ThreadStatus.Open) "Resolve" else "Reopen"
-        resolveButton.isVisible = !isDraft // nothing to resolve before the first send
+        resolveLink.text = if (thread.status is ThreadStatus.Open) "Resolve" else "Reopen"
+        resolveLink.isVisible = !isDraft // nothing to resolve before the first send
 
         // The affordance follows state — and "Submit" over "Send": nothing is
         // transmitted anywhere, the message lands in the local store awaiting
@@ -381,16 +406,24 @@ class ThreadPanel(
             thread.messages.isEmpty() -> "Submit"
             else -> "Reply"
         }
-        cancelEditButton.isVisible = editingMessageId != null
+        cancelEditLink.isVisible = editingMessageId != null
         replyArea.setPlaceholder(
             if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to submit)" else "Reply… (⌘⏎ to submit)",
         )
 
         messagesBox.removeAll()
         val timeFormat = messageTimeFormatter()
+        // Consecutive agent messages group under one meta line — the second
+        // "Claude · 14:02" in a row is noise. User messages always keep
+        // theirs: the meta row is where Edit and the seen-check live.
+        var previousAuthor: Author? = null
         for (message in thread.messages) {
-            messagesBox.add(messageComponent(message, timeFormat))
-            messagesBox.add(Box.createVerticalStrut(JBUI.scale(6)))
+            val grouped = message.author is Author.Agent && message.author == previousAuthor
+            if (messagesBox.componentCount > 0) {
+                messagesBox.add(Box.createVerticalStrut(JBUI.scale(if (grouped) 2 else 8)))
+            }
+            messagesBox.add(messageComponent(message, timeFormat, showMeta = !grouped))
+            previousAuthor = message.author
         }
         revalidate()
         repaint()
@@ -407,22 +440,34 @@ class ThreadPanel(
         return AGENT_PALETTE[Math.floorMod(agent.receiptKey.hashCode(), AGENT_PALETTE.size)]
     }
 
-    private fun messageComponent(message: Message, timeFormat: DateTimeFormatter): JComponent {
-        val panel = JPanel(BorderLayout()).apply { isOpaque = false }
+    private fun messageComponent(message: Message, timeFormat: DateTimeFormatter, showMeta: Boolean): JComponent {
         val authorColor = when (val author = message.author) {
             is Author.Agent -> agentColor(author)
             else -> JBColor(0x1565C0, 0x90CAF9) // user: blue
         }
-        val meta = JBLabel("${message.author.displayName} · ${timeFormat.format(message.createdAt)}").apply {
-            font = JBUI.Fonts.smallFont().asBold()
-            foreground = authorColor
+        // Each message wears a thin rail in its author's color — enough for
+        // the eye to separate turns without reading names, without becoming
+        // a chat bubble.
+        val panel = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border = JBUI.Borders.compound(
+                JBUI.Borders.customLine(authorColor, 0, 2, 0, 0),
+                JBUI.Borders.emptyLeft(7),
+            )
         }
         val metaRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        metaRow.add(meta, BorderLayout.WEST)
+        if (showMeta) {
+            val meta = JBLabel("${message.author.displayName} · ${timeFormat.format(message.createdAt)}").apply {
+                font = JBUI.Fonts.smallFont().asBold()
+                foreground = authorColor
+            }
+            metaRow.add(meta, BorderLayout.WEST)
+        }
 
         // The read receipt is the edit window: your message is revisable
-        // until the agent reads it, immutable record after. Editing happens
-        // in the same composer the message was written in.
+        // until the agent reads it, immutable record after — and once read,
+        // the receipt itself becomes visible: the promise "the agent will
+        // see this" is only trustworthy if you can see it kept.
         if (message.author is Author.User && !message.seenByAnyAgent && editingMessageId == null) {
             val editLink = ActionLink("Edit") {
                 editingMessageId = message.id
@@ -443,6 +488,15 @@ class ThreadPanel(
             // The text has MOVED to the composer — don't show it twice.
             panel.add(metaRow, BorderLayout.NORTH)
             return panel
+        } else if (message.author is Author.User && message.seenByAnyAgent) {
+            metaRow.add(
+                JBLabel("✓ seen").apply {
+                    font = JBUI.Fonts.smallFont()
+                    foreground = UIUtil.getContextHelpForeground()
+                    toolTipText = seenByNames(message)
+                },
+                BorderLayout.EAST,
+            )
         }
         // Markdown-lite body: paragraphs as wrapped HTML panes, fenced code
         // as native highlighted editor fragments. Measured at a conservative
@@ -451,6 +505,13 @@ class ThreadPanel(
         panel.add(metaRow, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)
         return panel
+    }
+
+    /** "Seen by Claude" — receipt keys mapped back to display names where the thread knows them. */
+    private fun seenByNames(message: Message): String {
+        val agents = thread.messages.map { it.author }.filterIsInstance<Author.Agent>().distinct()
+        val names = message.seenBy.sorted().map { key -> agents.find { it.receiptKey == key }?.displayName ?: key }
+        return "Seen by ${names.joinToString(", ")}"
     }
 
     /**
