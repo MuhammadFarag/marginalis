@@ -12,6 +12,9 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Segment
+import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.ThreadChooserPopup
 import dev.marginalis.plugin.ui.ThreadInlayManager
 
 /**
@@ -47,6 +50,29 @@ class AddCommentAction : AnAction() {
             segment != null -> document.getLineNumber(editor.selectionModel.selectionStart)
             else -> editor.caretModel.logicalPosition.line.coerceIn(0, document.lineCount - 1)
         }
+
+        // Bare ⌃⌥M on a line that already has live threads means "open the
+        // conversation here", not "start a duplicate". A selection always
+        // drafts — a new span thread next to an old one is the normal way
+        // to raise a second point on the same line.
+        if (segment == null) {
+            val store = MarginalisStore.getInstance(project)
+            val existing = store.threads.all().filter { thread ->
+                thread.file == relPath &&
+                    thread.status !is ThreadStatus.Resolved &&
+                    store.markerOf(thread)?.isValid == true &&
+                    store.currentLine(thread) == line
+            }
+            existing.singleOrNull()?.let {
+                ThreadInlayManager.open(project, editor, it)
+                return
+            }
+            if (existing.size > 1) {
+                ThreadChooserPopup.show(project, editor, existing)
+                return
+            }
+        }
+
         val anchorText = document.getText(
             TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)),
         )

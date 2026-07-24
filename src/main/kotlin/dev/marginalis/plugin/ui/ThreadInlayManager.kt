@@ -9,7 +9,6 @@ import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
-import com.intellij.util.ui.JBUI
 import dev.marginalis.core.CommentThread
 import dev.marginalis.plugin.store.MarginalisStore
 
@@ -61,12 +60,7 @@ object ThreadInlayManager {
         val open = openInlays(editor)
         if (open.containsKey(thread.id)) return
 
-        // Fit within what the editor can actually show: visible width minus
-        // room for the gutter/inlay x-offset, clamped to something readable.
-        val visibleWidth = editor.scrollingModel.visibleArea.width
-        val panelWidth = (visibleWidth - JBUI.scale(120))
-            .coerceIn(JBUI.scale(360), JBUI.scale(800))
-        val panel = ThreadPanel(project, thread, panelWidth, ensureStored) { close(editor, thread.id) }
+        val panel = ThreadPanel(project, editor, thread, ensureStored) { close(editor, thread.id) }
         val line = MarginalisStore.getInstance(project).currentLine(thread)
             .coerceAtMost(editor.document.lineCount - 1)
         val offset = editor.document.getLineEndOffset(line.coerceAtLeast(0))
@@ -82,6 +76,15 @@ object ThreadInlayManager {
                 offset,
             ),
         ) ?: return
+        // The panel computes its width from the live viewport; re-render on
+        // width changes so an editor resize reflows open panels (scrolling
+        // also fires visible-area events — same width, filtered out).
+        editor.scrollingModel.addVisibleAreaListener(
+            { event ->
+                if (event.newRectangle.width != event.oldRectangle?.width) panel.refresh()
+            },
+            inlay,
+        )
         open[thread.id] = inlay to panel
         installStoreListener(project, editor)
         ApplicationManager.getApplication().invokeLater { panel.focusReply() }

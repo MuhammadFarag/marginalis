@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeManager
@@ -37,16 +38,18 @@ import javax.swing.Icon
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.KeyStroke
 
 /**
  * Expanded state of a thread: messages with author attribution, an inline
  * reply field — the user's entire outbound channel, one click and one
- * keystroke away — and a resolve button on the header.
+ * keystroke away — and a resolve button on the header. Esc closes and
+ * returns focus to the editor it lives in.
  */
 class ThreadPanel(
     private val project: Project,
+    private val editor: Editor,
     private val thread: CommentThread,
-    private val panelWidth: Int,
     private val ensureStored: () -> Unit,
     private val onClose: () -> Unit,
 ) : JPanel(BorderLayout()) {
@@ -62,13 +65,17 @@ class ThreadPanel(
     // colors you'll see rendered after submitting.
     private val replyArea = EditorTextField("", project, composerFileType()).apply {
         setOneLineMode(false)
-        addSettingsProvider { editor ->
-            editor.settings.isUseSoftWraps = true
-            editor.contentComponent.addKeyListener(object : KeyAdapter() {
+        addSettingsProvider { composerEditor ->
+            composerEditor.settings.isUseSoftWraps = true
+            composerEditor.contentComponent.addKeyListener(object : KeyAdapter() {
                 override fun keyPressed(e: KeyEvent) {
                     if (e.keyCode == KeyEvent.VK_ENTER && (e.isMetaDown || e.isControlDown)) {
                         e.consume()
                         sendReply()
+                    }
+                    if (e.keyCode == KeyEvent.VK_ESCAPE) {
+                        e.consume()
+                        closeAndRefocus()
                     }
                 }
             })
@@ -86,16 +93,37 @@ class ThreadPanel(
         add(buildHeader(), BorderLayout.NORTH)
         add(messagesBox, BorderLayout.CENTER)
         add(buildReplyRow(), BorderLayout.SOUTH)
+        // Esc anywhere in the panel (buttons, links) closes it; the composer
+        // handles its own Esc above because the editor consumes key events.
+        registerKeyboardAction(
+            { closeAndRefocus() },
+            KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+            WHEN_ANCESTOR_OF_FOCUSED_COMPONENT,
+        )
         refresh()
     }
 
-    // Width adapted to the editor at open time, height computed. Never set
-    // preferredSize directly — an explicit value freezes the height at
-    // construction time and the inlay squashes to a single line.
+    /** Close is a round trip: the margin folds away, the code gets focus back. */
+    private fun closeAndRefocus() {
+        onClose()
+        editor.contentComponent.requestFocusInWindow()
+    }
+
+    /**
+     * Width follows the editor viewport (clamped to stay readable), height
+     * computed. Never set preferredSize directly — an explicit value freezes
+     * the height at construction time and the inlay squashes to a single
+     * line. Live rather than captured: resizing the window used to leave
+     * panels frozen at their open-time width.
+     */
     override fun getPreferredSize(): Dimension {
         val computed = super.getPreferredSize()
-        return Dimension(panelWidth, computed.height)
+        return Dimension(panelWidth(), computed.height)
     }
+
+    private fun panelWidth(): Int =
+        (editor.scrollingModel.visibleArea.width - JBUI.scale(120))
+            .coerceIn(JBUI.scale(360), JBUI.scale(800))
 
     private fun buildHeader(): JComponent {
         val header = JPanel(BorderLayout()).apply { isOpaque = false }
@@ -117,8 +145,21 @@ class ThreadPanel(
 
         resolveButton.font = JBUI.Fonts.smallFont()
         resolveButton.addActionListener {
-            if (thread.status is ThreadStatus.Open) thread.resolve(Authors.user) else thread.reopen()
-            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+            if (thread.status is ThreadStatus.Open) {
+                // Auto-advance: capture the next step BEFORE resolving — the
+                // walk only contains open threads, so afterwards this thread
+                // has no position in it.
+                val next = nextStepIfAutoAdvancing()
+                thread.resolve(Authors.user)
+                MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+                if (next != null) {
+                    onClose()
+                    WalkthroughNavigator.navigateTo(project, next)
+                }
+            } else {
+                thread.reopen()
+                MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+            }
         }
         val closeButton = JButton("Close").apply {
             font = JBUI.Fonts.smallFont()
@@ -202,15 +243,41 @@ class ThreadPanel(
             replyArea.text = ""
             refresh()
         }
+        val quoteLink = ActionLink("Quote code") { quoteIntoReply() }.apply {
+            font = JBUI.Fonts.smallFont()
+            toolTipText = "Insert the editor selection (or this thread's anchor) as a code block"
+        }
         val buttons = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             add(sendButton)
             add(cancelEditButton)
+            add(quoteLink)
         }
         row.add(replyArea, BorderLayout.CENTER)
         row.add(buttons, BorderLayout.EAST)
         return row
+    }
+
+    /**
+     * Drop code into the conversation: the current editor selection when one
+     * exists, else what this thread anchors to (its span, or its line) — as
+     * a fenced block tagged with the file's extension, so it renders
+     * natively highlighted like every other fence.
+     */
+    private fun quoteIntoReply() {
+        val quoted = editor.selectionModel.selectedText
+            ?: thread.segment?.exact
+            ?: thread.anchorText.trim()
+        if (quoted.isBlank()) return
+        val lang = thread.file.substringAfterLast('.', "")
+        val fence = "```$lang\n$quoted\n```\n"
+        replyArea.text = when {
+            replyArea.text.isBlank() -> fence
+            replyArea.text.endsWith("\n") -> replyArea.text + fence
+            else -> replyArea.text + "\n" + fence
+        }
+        focusReply()
     }
 
     private fun composerFileType(): FileType {
@@ -243,6 +310,18 @@ class ThreadPanel(
 
     fun focusReply() {
         replyArea.requestFocusInWindow()
+    }
+
+    /**
+     * The step to open after resolving this one, or null when not
+     * applicable: only guided walkthrough steps auto-advance, only while
+     * the setting allows it. Ordinary threads resolve in place.
+     */
+    private fun nextStepIfAutoAdvancing(): CommentThread? {
+        if (thread.order == null) return null
+        if (!MarginalisSettings.getInstance().state.walkthroughAutoAdvance) return null
+        val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
+        return if (i >= 0) walk.getOrNull(i + 1) else null
     }
 
     /** Timestamp style is the user's call; "auto" lets the locale decide 12h vs 24h. */
@@ -356,7 +435,7 @@ class ThreadPanel(
         // Markdown-lite body: paragraphs as wrapped HTML panes, fenced code
         // as native highlighted editor fragments. Measured at a conservative
         // width so heights only overestimate, never clip.
-        val body = MarkdownRenderer.render(project, message.body, panelWidth - JBUI.scale(64))
+        val body = MarkdownRenderer.render(project, message.body, panelWidth() - JBUI.scale(64))
         panel.add(metaRow, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)
         return panel

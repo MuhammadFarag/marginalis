@@ -18,6 +18,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.pom.Navigatable
+import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
@@ -66,6 +67,27 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
                 ClearAllAction(),
             ),
         )
+
+        // "Is it my turn?" answered from anywhere: a badge on the stripe icon
+        // and a count next to the title whenever open threads await the user
+        // (the agent spoke last). The margin is turn-based; this is the turn
+        // signal, not presence.
+        val refreshBadge = {
+            val awaiting = MarginalisStore.getInstance(project).threads.all()
+                .count { it.status is ThreadStatus.Open && it.awaitsUser() }
+            toolWindow.setIcon(STRIPE_ICON.getInfoIcon(awaiting > 0))
+            content.displayName = if (awaiting > 0) "$awaiting awaiting you" else ""
+        }
+        MarginalisStore.getInstance(project).threads.addListener {
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed && !toolWindow.isDisposed) refreshBadge()
+            }
+        }
+        refreshBadge()
+    }
+
+    private companion object {
+        val STRIPE_ICON = BadgeIconSupplier(AllIcons.Toolwindows.ToolWindowMessages)
     }
 }
 

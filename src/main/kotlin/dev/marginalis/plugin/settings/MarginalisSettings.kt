@@ -27,6 +27,9 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
 
         /** Message timestamps: "AUTO" (locale decides), "12", or "24". */
         var timeFormat: String = "AUTO"
+
+        /** Resolving a walkthrough step from its panel jumps to the next step. */
+        var walkthroughAutoAdvance: Boolean = true
     }
 
     private var state = State()

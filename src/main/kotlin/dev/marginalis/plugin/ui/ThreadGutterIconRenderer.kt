@@ -4,12 +4,10 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.BadgeIconSupplier
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.ThreadStatus
 import javax.swing.Icon
@@ -30,7 +28,9 @@ class ThreadGutterIconRenderer(
     override fun getIcon(): Icon = when {
         threads.all { it.status is ThreadStatus.Resolved } -> AllIcons.General.GreenCheckmark
         threads.any { it.status is ThreadStatus.Orphaned } -> AllIcons.General.Warning
-        threads.any { it.unreadCount() > 0 } -> AllIcons.General.BalloonInformation
+        // A badge dot, not a different balloon: the BalloonInformation swap
+        // was too subtle to spot and leaned on color alone.
+        threads.any { it.unreadCount() > 0 } -> UNREAD_ICON
         else -> AllIcons.General.Balloon
     }
 
@@ -64,29 +64,12 @@ class ThreadGutterIconRenderer(
                 ThreadInlayManager.toggle(project, editor, it)
                 return
             }
-            chooseThread(editor)
+            ThreadChooserPopup.show(project, editor, threads)
         }
     }
 
-    /**
-     * The multiplicity chooser: one row per thread — a segment thread shows
-     * its quoted span, a line thread its first words — pick one to open.
-     */
-    private fun chooseThread(editor: Editor) {
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(threads)
-            .setTitle("Threads on This Line")
-            .setRenderer(
-                SimpleListCellRenderer.create("") { thread ->
-                    val who = thread.messages.firstOrNull()?.author?.displayName ?: "?"
-                    val what = thread.segment?.exact?.let { "“$it”" }
-                        ?: MarkdownRenderer.previewText(thread.messages.firstOrNull()?.body ?: "")
-                    "$who · " + StringUtil.shortenTextWithEllipsis(what, 60, 0)
-                },
-            )
-            .setItemChosenCallback { thread -> ThreadInlayManager.open(project, editor, thread) }
-            .createPopup()
-            .showInBestPositionFor(editor)
+    private companion object {
+        val UNREAD_ICON = BadgeIconSupplier(AllIcons.General.Balloon).infoIcon
     }
 
     override fun equals(other: Any?): Boolean =

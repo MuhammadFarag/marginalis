@@ -33,6 +33,11 @@ class MarginalisConfigurable : Configurable {
                     .columns(24)
                     .bindText(state::displayName)
             }
+            row {
+                checkBox("Jump to the next step after resolving")
+                    .comment("While walking a guided walkthrough, resolving a step opens the next one.")
+                    .bindSelected(state::walkthroughAutoAdvance)
+            }
             row("Time format:") {
                 comboBox(listOf("Auto (system)", "12-hour", "24-hour"))
                     .comment("Message timestamps in thread panels.")

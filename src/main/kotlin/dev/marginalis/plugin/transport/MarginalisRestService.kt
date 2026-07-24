@@ -3,7 +3,9 @@ package dev.marginalis.plugin.transport
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.application.ApplicationInfo
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -42,7 +44,7 @@ import java.time.format.DateTimeFormatter
  * port up).
  *
  * Endpoints:
- *   GET  /api/marginalis/ping             -> {status, ide, projects}
+ *   GET  /api/marginalis/ping             -> {status, ide, version, projects}
  *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, walkthrough?, project?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
@@ -108,6 +110,12 @@ class MarginalisRestService : RestService() {
         addProperty("status", "ok")
         val appInfo = ApplicationInfo.getInstance()
         addProperty("ide", "${appInfo.versionName} ${appInfo.fullVersion}")
+        // The plugin's own version — the installed truth, read from the
+        // plugin manager, never a hardcoded constant. Capability detection
+        // for agents: absence of a field can finally be told apart from an
+        // old server that never heard of it.
+        PluginManagerCore.getPlugin(PluginId.getId("dev.marginalis.plugin"))?.version
+            ?.let { addProperty("version", it) }
         ApplicationManager.getApplication().runReadAction {
             add("projects", openProjectsJson())
         }

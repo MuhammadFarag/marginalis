@@ -45,6 +45,23 @@ once the token gains Issues scope.
   comment_add untouched; skill 0.10.0 "Heed the span". Within-line
   selections only — multi-line falls back to a line thread.
 
+## Shipped (2026-07-24)
+
+- ✅ UX round (v0.1.9, from the operator-perspective review) — turn signal:
+  tool-window stripe badge + "N awaiting you" title when open threads have
+  the agent's last word; unread gutter icons wear a badge dot (the
+  BalloonInformation swap was too subtle); bare ⌃⌥M on a line with live
+  threads opens the conversation (or the chooser) instead of drafting a
+  duplicate — a selection still always drafts; Esc closes the panel and
+  refocuses the editor; resolving a walkthrough step auto-advances to the
+  next (setting, default on); "Quote code" composer link inserts the
+  selection (or the thread's anchor) as a language-tagged fence; panel
+  width follows the editor viewport instead of freezing at open; `ping`
+  gains the plugin's own `version` (installed truth via PluginManagerCore
+  — capability detection stops being absence-based), skill 0.10.1.
+  Chooser popup extracted to ThreadChooserPopup (shared by gutter and
+  ⌃⌥M).
+
 ## Open — features
 
 - **Rendered heading sizes** — h1/h2 render at document scale inside margin
