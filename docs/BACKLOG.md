@@ -216,13 +216,14 @@ remains parked under "Deferred with analysis")
   again but package-relocated (shaded) so it stops colliding with the IDE
   package.
 
-- **JetBrains Marketplace publishing, operator side** — plugin-side wiring
-  shipped in v0.1.3 (`a9c8cfc`). 2026-07-25: repo public (Apache-2.0,
-  pre-public sweep `6831c1d`), first manual upload done — listing exists,
-  hidden in the EAP channel pending JetBrains review. CI now pins
-  publishing to the `eap` channel (PUBLISH_CHANNEL=default flips to
-  stable). Remaining: API token, four CI secrets; then every `v*` tag
-  auto-publishes to EAP.
+- ✅ **JetBrains Marketplace publishing — DONE end-to-end** (2026-07-25):
+  repo public (Apache-2.0), listing created (hidden, EAP channel), four
+  CI secrets added, and v0.1.23 was the first fully automated release —
+  tag → build → sign → publish-to-EAP → GitHub Release. CHANGELOG.md
+  drives the What's New tab via org.jetbrains.changelog. Remaining
+  operator calls, no code: upload the screenshots to the listing, flip
+  listing visibility when ready, and eventually release once with
+  `PUBLISH_CHANNEL=default` to enter the stable channel.
 - **Issues migration** — grant the PAT Issues scope, move this file there.
 - **Skill source into repo** (deferred 2026-07-20, operator call) — move
   SKILL.md + marginalis.sh into an inert `skill/` dir here, one-way
