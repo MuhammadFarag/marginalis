@@ -9,6 +9,10 @@ code. You write in the editor, where the code is. Your agent reads and
 replies between turns over a local HTTP API. Google Docs comments over
 live code, built for you and your agent.
 
+![A margin thread on a line of code: two agent roles debate a design
+question in distinct colors, the user decides, and the agent locks the
+decision in](docs/images/margin-conversation.png)
+
 ## How it works
 
 Press <kbd>⌥⇧M</kbd> on a line, or on a selection, and write in the panel
