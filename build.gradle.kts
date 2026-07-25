@@ -12,6 +12,17 @@ plugins {
 group = "dev.marginalis"
 version = "0.1.23"
 
+// Stamp the build version into a resource ping can serve: the platform's
+// plugin-manager lookups (PluginManagerCore.getPlugin AND
+// PluginManager.findEnabledPlugin) are both internal API per the verifier.
+tasks.processResources {
+    val pluginVersion = version.toString()
+    inputs.property("pluginVersion", pluginVersion)
+    filesMatching("marginalis/plugin-version.properties") {
+        expand("version" to pluginVersion)
+    }
+}
+
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -107,6 +118,12 @@ intellijPlatform {
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+            // Promoted from advisory after the Marketplace flagged what CI had
+            // only whispered: internal and scheduled-for-removal usages now
+            // fail the build. DEPRECATED stays advisory — the markdown lib's
+            // deprecations vary by IDE version (accepted, see BACKLOG).
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.SCHEDULED_FOR_REMOVAL_API_USAGES,
         )
         ides {
             recommended()

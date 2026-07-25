@@ -3,12 +3,10 @@ package dev.marginalis.plugin.transport
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.intellij.ide.plugins.PluginManager
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationInfo
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VfsUtilCore
@@ -46,6 +44,7 @@ import io.netty.handler.codec.http.QueryStringDecoder
 import org.jetbrains.ide.RestService
 import java.nio.file.Path
 import java.time.format.DateTimeFormatter
+import java.util.Properties
 
 /**
  * The agent's transport: JSON endpoints on the IDE's built-in HTTP server
@@ -77,6 +76,12 @@ import java.time.format.DateTimeFormatter
  * the EDT, document/VFS reads take read actions.
  */
 class MarginalisRestService : RestService() {
+
+    private val pluginVersion: String? by lazy {
+        javaClass.classLoader.getResourceAsStream("marginalis/plugin-version.properties")?.use { stream ->
+            Properties().apply { load(stream) }.getProperty("version")?.takeIf { it.isNotBlank() }
+        }
+    }
 
     override fun getServiceName(): String = "marginalis"
 
@@ -121,12 +126,12 @@ class MarginalisRestService : RestService() {
         addProperty("status", "ok")
         val appInfo = ApplicationInfo.getInstance()
         addProperty("ide", "${appInfo.versionName} ${appInfo.fullVersion}")
-        // The plugin's own version — the installed truth, read from the
-        // plugin manager, never a hardcoded constant. Capability detection
-        // for agents: absence of a field can finally be told apart from an
-        // old server that never heard of it.
-        PluginManager.getInstance().findEnabledPlugin(PluginId.getId("dev.marginalis.plugin"))?.version
-            ?.let { addProperty("version", it) }
+        // The plugin's own version — the installed truth, stamped into the
+        // jar at build time (processResources), never a hardcoded constant.
+        // Capability detection for agents: absence of a field can finally be
+        // told apart from an old server that never heard of it. Not read from
+        // the plugin manager: both platform lookups are internal API.
+        pluginVersion?.let { addProperty("version", it) }
         ApplicationManager.getApplication().runReadAction {
             add("projects", openProjectsJson())
         }

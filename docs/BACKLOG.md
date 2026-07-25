@@ -205,6 +205,17 @@ remains parked under "Deferred with analysis")
 
 ## Open — infrastructure
 
+- **Accepted: MarkdownParser deprecation warnings** (2026-07-25). The
+  verifier flags `MarkdownParser(flavour)` + `buildMarkdownTreeFromString
+  (String)` as deprecated, but the *non-deprecated* replacements
+  (CharSequence overloads, CancellationToken ctor) don't exist or are
+  experimental in every bundled markdown-lib version across our supported
+  IDE range — there is no signature that is clean everywhere. Accepted as
+  advisory (DEPRECATED excluded from verifier failureLevel); revisit when
+  the 2025.2 floor moves. Escape hatch if it ever breaks: bundle the lib
+  again but package-relocated (shaded) so it stops colliding with the IDE
+  package.
+
 - **JetBrains Marketplace publishing, operator side** — plugin-side wiring
   shipped in v0.1.3 (`a9c8cfc`). 2026-07-25: repo public (Apache-2.0,
   pre-public sweep `6831c1d`), first manual upload done — listing exists,
