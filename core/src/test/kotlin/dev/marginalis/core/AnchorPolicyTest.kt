@@ -71,6 +71,37 @@ class AnchorPolicyTest {
         assertEquals(6, find(near = 20, anchor = "return curr"))
     }
 
+    // ------------------------------------------------- the hint contract
+
+    private fun resolve(hint: Int, anchor: String?) =
+        AnchorPolicy.resolveHint(lines.size, { lines[it] }, hint, anchor)
+
+    @Test
+    fun `matching hint places as hinted`() {
+        assertEquals(AnchorPolicy.HintResolution.Placed(0, adjusted = false), resolve(0, "def fib(n: int) -> int:"))
+    }
+
+    @Test
+    fun `no anchor text takes an in-range hint at its word`() {
+        assertEquals(AnchorPolicy.HintResolution.Placed(3, adjusted = false), resolve(3, null))
+    }
+
+    @Test
+    fun `stale hint that matches nearby places adjusted`() {
+        assertEquals(AnchorPolicy.HintResolution.Placed(4, adjusted = true), resolve(1, "for _ in range(n - 1):"))
+    }
+
+    @Test
+    fun `hint outside the document is out of range, with or without anchor text`() {
+        assertEquals(AnchorPolicy.HintResolution.OutOfRange(lines.size), resolve(lines.size, "return curr"))
+        assertEquals(AnchorPolicy.HintResolution.OutOfRange(lines.size), resolve(-1, null))
+    }
+
+    @Test
+    fun `nothing in the window is an honest no-match`() {
+        assertEquals(AnchorPolicy.HintResolution.NoMatch, resolve(0, "this text is nowhere"))
+    }
+
     // ---------------------------------------------------------- segments
 
     private fun anchor(near: Int, anchorText: String, segment: Segment?) =

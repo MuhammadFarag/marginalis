@@ -28,7 +28,9 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
+import dev.marginalis.core.AggregateState
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.PathTrie
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.Authors
@@ -38,8 +40,6 @@ import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import java.util.SortedMap
-import java.util.TreeMap
 import javax.swing.JMenuItem
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
@@ -84,10 +84,11 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
             val open = MarginalisStore.getInstance(project).threads.all()
                 .filter { it.status is ThreadStatus.Open }
             val awaiting = open.count { it.awaitsUser() }
-            val blockers = open.count { it.severity == Severity.BLOCKER }
-            // Red = act, blue = read: open blockers outrank the turn signal.
+            // Red = act, blue = read: open blockers outrank the turn signal
+            // (core's AggregateState precedence, mapped to stripe icons).
             toolWindow.setIcon(
-                if (blockers > 0) STRIPE_ICON.getErrorIcon(true) else STRIPE_ICON.getInfoIcon(awaiting > 0),
+                if (AggregateState.of(open) == AggregateState.OPEN_BLOCKER) STRIPE_ICON.getErrorIcon(true)
+                else STRIPE_ICON.getInfoIcon(awaiting > 0),
             )
             content.displayName = if (awaiting > 0) "$awaiting awaiting you" else ""
         }
@@ -222,29 +223,6 @@ private sealed class NodeData {
     class DirNode(val name: String, val count: Int) : NodeData()
     class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
     class ThreadNode(val thread: CommentThread, val walkthroughPrefix: String? = null) : NodeData()
-}
-
-
-
-/** Path trie for the Open section's directory tree. */
-private class PathTrie {
-    val dirs: SortedMap<String, PathTrie> = TreeMap()
-    val files: SortedMap<String, MutableList<CommentThread>> = TreeMap()
-
-    fun insert(thread: CommentThread) {
-        val parts = thread.file.split('/')
-        var node = this
-        for (dir in parts.dropLast(1)) node = node.dirs.getOrPut(dir) { PathTrie() }
-        node.files.getOrPut(parts.last()) { mutableListOf() }.add(thread)
-    }
-
-    fun threadCount(): Int = files.values.sumOf { it.size } + dirs.values.sumOf { it.threadCount() }
-
-    /** Earliest walkthrough step beneath this node — lets guided trees read in walkthrough order. */
-    fun minOrder(): Int = minOf(
-        files.values.flatten().mapNotNull { it.order }.minOrNull() ?: Int.MAX_VALUE,
-        dirs.values.minOfOrNull { it.minOrder() } ?: Int.MAX_VALUE,
-    )
 }
 
 private class MarginalisToolWindowPanel(private val project: Project) :

@@ -86,10 +86,10 @@ object ThreadsCodec {
                     )
                 }
             },
-            // Additive: pre-severity files are ordinary comments; unknown
+            // Additive: pre-severity files are ordinary comments; the one
+            // shared vocabulary (Severity.parse), leniently — unknown
             // values load as unmarked rather than failing the whole file.
-            severity = json.get("severity")?.takeIf { it.isJsonPrimitive }?.asString
-                ?.let { name -> Severity.entries.find { it.name.equals(name, ignoreCase = true) } },
+            severity = Severity.parseLenient(json.get("severity")?.takeIf { it.isJsonPrimitive }?.asString),
         )
         for (m in json.getAsJsonArray("messages")) {
             val msg = m.asJsonObject
@@ -123,7 +123,11 @@ object ThreadsCodec {
         msg.get("seen_by")?.takeIf { it.isJsonArray }?.let { keys ->
             return keys.asJsonArray.mapNotNull { el -> el.takeIf { it.isJsonPrimitive }?.asString }.toSet()
         }
-        return if (msg.get("seen_by_agent")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) setOf("Agent") else emptySet()
+        return if (msg.get("seen_by_agent")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) {
+            setOf(Author.Agent.ANONYMOUS_NAME)
+        } else {
+            emptySet()
+        }
     }
 
     private fun authorJson(author: Author): JsonObject = JsonObject().apply {

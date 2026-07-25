@@ -66,6 +66,21 @@ class CommentThread(
         status = ThreadStatus.Orphaned
     }
 
+    /**
+     * Orphan rescue: move to a verified new anchor and reopen, atomically.
+     * Only an orphaned thread may move — a live anchor doesn't. The fresh
+     * [anchorText] fingerprint is mandatory: a rescue that kept its old one
+     * would re-orphan on the next restart.
+     */
+    fun rescueTo(line: Int, anchorText: String) {
+        check(status is ThreadStatus.Orphaned) {
+            "only an orphaned thread can be re-anchored; this one is ${status.kind.name.lowercase()}"
+        }
+        this.line = line
+        this.anchorText = anchorText
+        status = ThreadStatus.Open
+    }
+
     /** Rehydration only: restore persisted status without lifecycle semantics. */
     fun restoreStatus(status: ThreadStatus) {
         this.status = status

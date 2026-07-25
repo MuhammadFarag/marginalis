@@ -189,9 +189,10 @@ class MarginalisRestService : RestService() {
         val order = json.intOrNull("order")
         val walkthroughLabel = json.stringOrNull("walkthrough")
         val projectFilter = json.stringOrNull("project")
-        val severity = when (val outcome = parseSeverity(json.stringOrNull("severity"))) {
-            is SeverityParse.Invalid -> return sendError(HttpResponseStatus.BAD_REQUEST, outcome.message, request, context)
-            is SeverityParse.Ok -> outcome.severity
+        // Garbage gets a teaching 400, not a silent unmarked thread.
+        val severity = when (val parsed = Severity.parse(json.stringOrNull("severity"))) {
+            is Severity.Parsed.Invalid -> return sendError(HttpResponseStatus.BAD_REQUEST, parsed.reason, request, context)
+            is Severity.Parsed.Ok -> parsed.severity
         }
 
         val (project, vFile) = ApplicationManager.getApplication()
@@ -280,30 +281,6 @@ class MarginalisRestService : RestService() {
         }
     }
 
-    private sealed class SeverityParse {
-        class Ok(val severity: Severity?) : SeverityParse()
-        class Invalid(val message: String) : SeverityParse()
-    }
-
-    /**
-     * The severity vocabulary, with legacy tolerance: agents that grew up
-     * writing HIGH/MEDIUM/LOW keep working — high is a blocker, low is a
-     * nit, and medium normalizes to unmarked (the silent middle IS the
-     * medium). Garbage gets a teaching 400, not a silent unmarked thread.
-     */
-    private fun parseSeverity(raw: String?): SeverityParse {
-        if (raw == null) return SeverityParse.Ok(null)
-        return when (raw.lowercase()) {
-            "blocker", "high" -> SeverityParse.Ok(Severity.BLOCKER)
-            "nit", "low" -> SeverityParse.Ok(Severity.NIT)
-            "medium", "note", "none" -> SeverityParse.Ok(null)
-            else -> SeverityParse.Invalid(
-                "invalid severity '$raw' — use 'blocker' (act before proceeding) or 'nit' " +
-                    "(taste, dismissible); omit for an ordinary comment.",
-            )
-        }
-    }
-
     /** Outcome of placing a 1-based line hint + anchor text against a live document. */
     private sealed class AnchorOutcome {
         class Placed(val line0: Int, val adjusted: Boolean) : AnchorOutcome()
@@ -312,29 +289,28 @@ class MarginalisRestService : RestService() {
 
     /**
      * The anchoring contract, shared by every endpoint that takes {file,
-     * line, anchor_text}: the agent's line numbers may be stale; anchor text
-     * is the truth. Stale means 409 — the caller should re-read the file,
-     * never land somewhere wrong silently.
+     * line, anchor_text}, is core's AnchorPolicy.resolveHint; this maps its
+     * outcomes to transport terms. Stale means 409 — the caller should
+     * re-read the file, never land somewhere wrong silently.
      */
-    private fun resolveAnchoredLine(document: Document, file: String, line1: Int, anchorText: String?): AnchorOutcome {
-        val line0 = line1 - 1
-        if (line0 < 0 || line0 >= document.lineCount) {
-            return AnchorOutcome.Stale("line $line1 out of range: '$file' has ${document.lineCount} lines. Re-read the file.")
-        }
-        if (anchorText != null && !AnchorPolicy.lineMatches(lineText(document, line0), anchorText)) {
-            val found = AnchorPolicy.findAnchorLine(
+    private fun resolveAnchoredLine(document: Document, file: String, line1: Int, anchorText: String?): AnchorOutcome =
+        when (
+            val resolved = AnchorPolicy.resolveHint(
                 lineCount = document.lineCount,
                 lineTextAt = { lineText(document, it) },
-                nearLine = line0,
+                hintLine = line1 - 1,
                 anchorText = anchorText,
-            ) ?: return AnchorOutcome.Stale(
+            )
+        ) {
+            is AnchorPolicy.HintResolution.Placed -> AnchorOutcome.Placed(resolved.line, resolved.adjusted)
+            is AnchorPolicy.HintResolution.OutOfRange -> AnchorOutcome.Stale(
+                "line $line1 out of range: '$file' has ${resolved.lineCount} lines. Re-read the file.",
+            )
+            AnchorPolicy.HintResolution.NoMatch -> AnchorOutcome.Stale(
                 "anchor_text does not match line $line1 or the ±${AnchorPolicy.SEARCH_WINDOW} lines " +
                     "around it. The file has probably changed — re-read it.",
             )
-            return AnchorOutcome.Placed(found, adjusted = true)
         }
-        return AnchorOutcome.Placed(line0, adjusted = false)
-    }
 
     // -------------------------------------------------------------- reply
 
@@ -423,10 +399,7 @@ class MarginalisRestService : RestService() {
                 }
                 is AnchorOutcome.Placed -> outcome
             }
-            thread.line = placed.line0
-            // Fresh fingerprint, or the next restart re-orphans the rescue.
-            thread.anchorText = lineText(document, placed.line0)
-            thread.reopen()
+            thread.rescueTo(placed.line0, lineText(document, placed.line0))
             MarginalisMarkers.attach(project, thread, document)
             MarginalisStore.getInstance(project).threads.notifyChanged(thread)
             landed = placed.line0

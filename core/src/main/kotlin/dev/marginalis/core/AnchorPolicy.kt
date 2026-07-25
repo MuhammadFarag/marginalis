@@ -104,6 +104,40 @@ object AnchorPolicy {
             ?.let { Anchor.Line(it) }
     }
 
+    /** Outcome of [resolveHint] — where the hint landed, or why it honestly couldn't. */
+    sealed interface HintResolution {
+        /** [adjusted]: the anchor was found, but not where the hint said. */
+        data class Placed(val line: Int, val adjusted: Boolean) : HintResolution
+        data class OutOfRange(val lineCount: Int) : HintResolution
+        data object NoMatch : HintResolution
+    }
+
+    /**
+     * The full anchoring contract for a (line hint, anchor text) pair, as
+     * used by every operation that places or moves a thread: the hint may
+     * be stale, anchor text is the truth. In range and matching (or no
+     * anchor text to verify against — an in-range hint is then taken at
+     * its word): placed as hinted. Matching elsewhere in the window:
+     * placed with [HintResolution.Placed.adjusted]. Otherwise the caller
+     * gets an honest failure to relay — never a silent wrong line.
+     * [hintLine] is 0-based.
+     */
+    fun resolveHint(
+        lineCount: Int,
+        lineTextAt: (Int) -> String,
+        hintLine: Int,
+        anchorText: String?,
+        window: Int = SEARCH_WINDOW,
+    ): HintResolution {
+        if (hintLine < 0 || hintLine >= lineCount) return HintResolution.OutOfRange(lineCount)
+        if (anchorText != null && !lineMatches(lineTextAt(hintLine), anchorText)) {
+            val found = findAnchorLine(lineCount, lineTextAt, hintLine, anchorText, window)
+                ?: return HintResolution.NoMatch
+            return HintResolution.Placed(found, adjusted = true)
+        }
+        return HintResolution.Placed(hintLine, adjusted = false)
+    }
+
     /** The window's lines in preference order: nearest to the hint first. */
     private fun candidateLines(lineCount: Int, nearLine: Int, window: Int): List<Int> =
         ((nearLine - window)..(nearLine + window))

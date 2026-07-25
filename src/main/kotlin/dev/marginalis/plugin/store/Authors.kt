@@ -11,7 +11,7 @@ import dev.marginalis.plugin.settings.MarginalisSettings
  * display name, falling back to the OS account.
  */
 object Authors {
-    val agent: Author.Agent = Author.Agent("Agent")
+    val agent: Author.Agent = Author.Agent.ANONYMOUS
 
     val user: Author.User
         get() {

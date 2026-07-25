@@ -13,5 +13,16 @@ sealed interface Author {
     data class Agent(override val displayName: String, val id: String? = null) : Author {
         /** Read-receipt identity: the stable id when the agent has one, else its name. */
         val receiptKey: String get() = id ?: displayName
+
+        companion object {
+            /**
+             * What an agent is called when it doesn't introduce itself —
+             * also the receipt key that legacy single-agent files map to.
+             * One constant, because a renamed anonymous would silently
+             * mismatch old receipts.
+             */
+            const val ANONYMOUS_NAME = "Agent"
+            val ANONYMOUS = Agent(ANONYMOUS_NAME)
+        }
     }
 }

@@ -8,9 +8,8 @@ import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.BadgeIconSupplier
+import dev.marginalis.core.AggregateState
 import dev.marginalis.core.CommentThread
-import dev.marginalis.core.Severity
-import dev.marginalis.core.ThreadStatus
 import javax.swing.Icon
 
 /**
@@ -26,19 +25,15 @@ class ThreadGutterIconRenderer(
     private val threads: List<CommentThread>,
 ) : GutterIconRenderer() {
 
-    override fun getIcon(): Icon = when {
-        threads.all { it.status is ThreadStatus.Resolved } -> AllIcons.General.GreenCheckmark
-        // Anchor integrity outranks content weight: a broken anchor needs
-        // attention before triage means anything.
-        threads.any { it.status is ThreadStatus.Orphaned } -> AllIcons.General.Warning
-        // Red implies act, so a blocker outranks the unread dot; nits
-        // deliberately change nothing here — a nitpick doesn't shout from
-        // the gutter.
-        threads.any { it.status is ThreadStatus.Open && it.severity == Severity.BLOCKER } -> BLOCKER_ICON
-        // A badge dot, not a different balloon: the BalloonInformation swap
-        // was too subtle to spot and leaned on color alone.
-        threads.any { it.unreadCount() > 0 } -> UNREAD_ICON
-        else -> AllIcons.General.Balloon
+    // A badge dot for unread, not a different balloon: the
+    // BalloonInformation swap was too subtle to spot and leaned on color
+    // alone. The precedence itself is core's AggregateState.
+    override fun getIcon(): Icon = when (AggregateState.of(threads)) {
+        AggregateState.RESOLVED -> AllIcons.General.GreenCheckmark
+        AggregateState.ORPHANED -> AllIcons.General.Warning
+        AggregateState.OPEN_BLOCKER -> BLOCKER_ICON
+        AggregateState.UNREAD -> UNREAD_ICON
+        AggregateState.OPEN -> AllIcons.General.Balloon
     }
 
     override fun getTooltipText(): String {

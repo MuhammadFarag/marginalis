@@ -2,6 +2,7 @@ package dev.marginalis.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -38,6 +39,26 @@ class ThreadLifecycleTest {
         t.reopen()
         assertIs<ThreadStatus.Open>(t.status)
         assertNull(t.resolvedBy)
+    }
+
+    @Test
+    fun `orphan rescue moves the anchor and reopens, atomically`() {
+        val t = thread()
+        t.markOrphaned()
+        t.rescueTo(7, "def g():")
+        assertIs<ThreadStatus.Open>(t.status)
+        assertEquals(7, t.line)
+        assertEquals("def g():", t.anchorText)
+    }
+
+    @Test
+    fun `live anchors don't move — rescue demands an orphan`() {
+        val t = thread()
+        assertFailsWith<IllegalStateException> { t.rescueTo(7, "elsewhere") }
+        t.resolve(user)
+        assertFailsWith<IllegalStateException> { t.rescueTo(7, "elsewhere") }
+        assertEquals(3, t.line)
+        assertEquals("def f():", t.anchorText)
     }
 
     @Test
