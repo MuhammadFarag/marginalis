@@ -45,7 +45,10 @@ is running the plugin:
   module, ever. The plugin module is adapters: transport, Swing/editor
   UI, VFS + file I/O, markers (MarginalisStore pairs core threads with
   live RangeHighlighters).
-- Roadmap discipline: `docs/BACKLOG.md` holds shipped/open/deferred and
-  the decision log. Don't gold-plate ahead of the agreed item.
+- Roadmap discipline: open work lives in GitHub issues (`gh issue list`)
+  — check there before starting, file new findings there, and close the
+  issue when the work lands. `docs/BACKLOG.md` is the historical shipped
+  record and decision log, append-only. Don't gold-plate ahead of the
+  agreed item.
 - Guided vocabulary is "walkthrough"/"steps" (wire param `walkthrough`,
   UI actions First/Previous/Next/Last Step).
