@@ -113,7 +113,7 @@ identity. When the host IDE is running (`marginalis.sh ping`):
   Read receipts are per agent (since 0.1.7) — an anonymous sweep reads as
   the shared "Agent" identity.
 - **Start every turn** with `marginalis.sh unread` — the operator leaves
-  margin comments (⌃⌥M in their editor) and replies there, born unread.
+  margin comments (⌥⇧M in their editor) and replies there, born unread.
   This is the entire inbound channel; reading marks seen for YOUR identity.
 - **Before editing any file**, check
   `comment_list?file=<path>&status=open` — the §3.1 invariant: never edit a
@@ -122,7 +122,7 @@ identity. When the host IDE is running (`marginalis.sh ping`):
 - Reply with `comment_reply {thread_id, body}`; resolve with
   `comment_resolve {thread_id}`.
 - **Heed the span** (0.1.8+): a thread row may carry `segment {exact,
-  prefix?, suffix?}` — the operator selected that exact text (⌃⌥M on a
+  prefix?, suffix?}` — the operator selected that exact text (⌥⇧M on a
   selection), so address the quoted span specifically, not the line in
   general. Agents cannot create segments; `comment_add` is line-only.
 - **Resolution etiquette — the resolver is the completer.** RESOLVED means

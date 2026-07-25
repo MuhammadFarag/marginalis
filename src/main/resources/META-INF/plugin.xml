@@ -22,7 +22,10 @@
                 icon="AllIcons.General.Balloon"
                 description="Start a margin thread on the current line — or on the selected text — for the agent to pick up">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt M"/>
+            <!-- alt shift M: the ctrl-alt row is refactoring territory on the
+                 default keymap (ctrl alt M = Extract Method) and meta shift M
+                 was taken in real use — operator-picked replacement. -->
+            <keyboard-shortcut keymap="$default" first-keystroke="alt shift M"/>
         </action>
     </actions>
 

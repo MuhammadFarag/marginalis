@@ -11,7 +11,7 @@ for the human–agent pair.
 
 ## How it works
 
-**You** press <kbd>⌃⌥M</kbd> on a line (or on a selection, to anchor to that
+**You** press <kbd>⌥⇧M</kbd> on a line (or on a selection, to anchor to that
 exact span) and write in the panel that unfolds. Threads show as gutter
 icons; a tool window lists every thread as a directory tree with
 first/prev/next/last walking. Resolving a thread means *its outcome is in

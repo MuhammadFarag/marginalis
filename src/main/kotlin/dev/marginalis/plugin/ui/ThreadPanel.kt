@@ -5,11 +5,14 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.impl.ContextMenuPopupHandler
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.fileTypes.FileType
@@ -129,6 +132,19 @@ class ThreadPanel(
         add(buildHeader(), BorderLayout.NORTH)
         add(messagesBox, BorderLayout.CENTER)
         add(buildReplyRow(), BorderLayout.SOUTH)
+        // Submit must be a REGISTERED shortcut, not a KeyListener: the IDE's
+        // key dispatcher routes ⌘⏎ to editor actions (Split Line on several
+        // keymaps) before the component ever sees the event. A component-
+        // local shortcut outranks the keymap while the composer has focus.
+        object : DumbAwareAction() {
+            override fun actionPerformed(e: AnActionEvent) = sendReply()
+        }.registerCustomShortcutSet(
+            CustomShortcutSet(
+                KeyboardShortcut(KeyStroke.getKeyStroke("meta ENTER"), null),
+                KeyboardShortcut(KeyStroke.getKeyStroke("control ENTER"), null),
+            ),
+            replyArea,
+        )
         // Draft preservation: whatever is typed survives the panel — saved
         // on every keystroke, restored on reopen, cleared on send. Esc is
         // one key; three paragraphs shouldn't be.

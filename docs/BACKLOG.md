@@ -65,6 +65,14 @@ once the token gains Issues scope.
   stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
   bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
+- ✅ Keyboard fixes (v0.1.20, operator findings) — ⌘⏎ submit actually
+  works now: it was a raw KeyListener, and the IDE's key dispatcher
+  routes ⌘⏎ to editor actions (Split Line) before the component sees
+  it — replaced with a component-registered shortcut, which outranks
+  the keymap while the composer has focus. Add-comment default moved
+  ⌃⌥M → ⌥⇧M (ctrl-alt is refactoring territory on the default keymap:
+  Extract Method collision; ⌘⇧M taken in real use — operator-picked).
+  Shortcut swept through README, CLAUDE.md, skill 0.12.1.
 - ✅ Resolve folds the panel + docs refresh (v0.1.19) — resolved threads
   now close their editor panels like deleted ones (one rule: only open
   threads hold editor real estate; Resolve All used to leave a wall of
