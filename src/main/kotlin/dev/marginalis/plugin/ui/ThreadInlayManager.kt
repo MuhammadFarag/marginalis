@@ -10,6 +10,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisStore
 
 /**
@@ -112,8 +113,11 @@ object ThreadInlayManager {
     /**
      * One store listener per editor: refreshes any open panel when its thread
      * changes (agent replies land while the human is looking at the thread),
-     * and closes the panel when its thread is deleted (Clear All, remove) —
-     * a panel for a thread that no longer exists is a ghost.
+     * and closes the panel when its thread is deleted OR resolved — one
+     * rule: only open threads hold editor real estate. A deleted thread's
+     * panel is a ghost; a resolved one's is a conversation that already
+     * folded (its marker drops at the same moment, and Resolve All used to
+     * leave a wall of concluded panels behind — operator finding).
      */
     private fun installStoreListener(project: Project, editor: Editor) {
         if (editor.getUserData(LISTENER_INSTALLED) == true) return
@@ -122,7 +126,7 @@ object ThreadInlayManager {
         store.threads.addListener { thread ->
             ApplicationManager.getApplication().invokeLater {
                 if (editor.isDisposed) return@invokeLater
-                if (store.threads.byId(thread.id) == null) {
+                if (store.threads.byId(thread.id) == null || thread.status is ThreadStatus.Resolved) {
                     close(editor, thread.id)
                 } else {
                     editor.getUserData(OPEN_INLAYS)?.get(thread.id)?.second?.refresh()

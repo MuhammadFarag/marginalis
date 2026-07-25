@@ -5,11 +5,12 @@
     <description><![CDATA[
         Code conversations with your AI coding agent, in the margins of your editor.
         <br/><br/>
-        Comment threads anchor to lines, survive edits and restarts, and resolve when
-        their outcome lands in code. Your agent reads and replies between turns, guides
-        you through changes with step-by-step walkthroughs, and takes you to the code
-        in question when you ask — Google Docs comments over live code, built for the
-        human-agent pair.
+        Comment threads anchor to lines — or to the exact words you select — survive
+        edits and restarts, and resolve when their outcome lands in code. Your agent
+        reads and replies between turns, marks review findings as blockers or nitpicks
+        so you can filter to what actually gates the merge, guides you through changes
+        with step-by-step walkthroughs, and takes you to the code in question when you
+        ask — Google Docs comments over live code, built for the human-agent pair.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

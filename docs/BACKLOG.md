@@ -65,6 +65,13 @@ once the token gains Issues scope.
   stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
   bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
+- ✅ Resolve folds the panel + docs refresh (v0.1.19) — resolved threads
+  now close their editor panels like deleted ones (one rule: only open
+  threads hold editor real estate; Resolve All used to leave a wall of
+  concluded panels — operator finding). README rewritten (was still
+  describing M0 to a public repo); Marketplace description gains spans
+  + severity before the first upload; icon deliberately unchanged (it
+  predicted the product's color vocabulary).
 - ✅ QoL round 2 (v0.1.17, agreed list) — draft preservation (composer
   text survives close/Esc per thread, in-memory, cleared on send/delete
   — Esc-close had made discard a single keystroke); tree right-click
