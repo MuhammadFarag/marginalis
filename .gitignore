@@ -5,3 +5,7 @@ build/
 *.iml
 .kotlin/
 /image.png
+
+# Private-audience docs: this machine's sandbox/operator setup, not the project
+/tenant-environment.md
+/CLAUDE.local.md
