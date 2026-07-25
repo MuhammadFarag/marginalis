@@ -21,6 +21,13 @@ class MarginalisStore {
 
     val threads = ThreadStore()
 
+    /**
+     * Unsent composer text per thread, so closing a panel mid-thought (one
+     * Esc away) loses nothing: reopen and the words are back. Deliberately
+     * in-memory — a draft is a thought in progress, not a record.
+     */
+    val drafts = ConcurrentHashMap<String, String>()
+
     private val markers = ConcurrentHashMap<String, RangeHighlighter>()
 
     fun markerOf(thread: CommentThread): RangeHighlighter? = markers[thread.id]

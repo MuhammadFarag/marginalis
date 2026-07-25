@@ -45,6 +45,8 @@
                     factoryClass="dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindowFactory"/>
         <!-- At-a-glance: tab-title glyph for files with open threads. -->
         <editorTabTitleProvider implementation="dev.marginalis.plugin.ui.MarginalisTabTitleProvider"/>
+        <!-- The turn signal's long arm: agent posts in unfocused files. -->
+        <notificationGroup id="Marginalis" displayType="BALLOON"/>
         <!-- Navigation consent + display name; app-level, these follow the user. -->
         <applicationConfigurable parentId="tools" id="dev.marginalis.settings"
                                  displayName="Marginalis"

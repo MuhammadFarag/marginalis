@@ -6,8 +6,10 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.impl.ContextMenuPopupHandler
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.fileTypes.FileType
@@ -78,6 +80,18 @@ class ThreadPanel(
         setOneLineMode(false)
         addSettingsProvider { composerEditor ->
             composerEditor.settings.isUseSoftWraps = true
+            // Same right-click the rendered messages got: undiscoverable
+            // clipboard actions barely exist.
+            composerEditor.installPopupHandler(
+                ContextMenuPopupHandler.Simple(
+                    DefaultActionGroup(
+                        ActionManager.getInstance().getAction(IdeActions.ACTION_EDITOR_CUT),
+                        ActionManager.getInstance().getAction(IdeActions.ACTION_EDITOR_COPY),
+                        ActionManager.getInstance().getAction(IdeActions.ACTION_EDITOR_PASTE),
+                        ActionManager.getInstance().getAction(IdeActions.ACTION_SELECT_ALL),
+                    ),
+                ),
+            )
             composerEditor.contentComponent.addKeyListener(object : KeyAdapter() {
                 override fun keyPressed(e: KeyEvent) {
                     if (e.keyCode == KeyEvent.VK_ENTER && (e.isMetaDown || e.isControlDown)) {
@@ -115,6 +129,18 @@ class ThreadPanel(
         add(buildHeader(), BorderLayout.NORTH)
         add(messagesBox, BorderLayout.CENTER)
         add(buildReplyRow(), BorderLayout.SOUTH)
+        // Draft preservation: whatever is typed survives the panel — saved
+        // on every keystroke, restored on reopen, cleared on send. Esc is
+        // one key; three paragraphs shouldn't be.
+        MarginalisStore.getInstance(project).drafts[thread.id]?.let { replyArea.text = it }
+        replyArea.document.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
+            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
+                if (editingMessageId != null) return // edits restore the original on cancel, not a draft
+                val store = MarginalisStore.getInstance(project)
+                val text = replyArea.text
+                if (text.isBlank()) store.drafts.remove(thread.id) else store.drafts[thread.id] = text
+            }
+        })
         // Esc anywhere in the panel (buttons, links) closes it; the composer
         // handles its own Esc above because the editor consumes key events.
         registerKeyboardAction(
@@ -392,6 +418,7 @@ class ThreadPanel(
         ensureStored() // draft threads materialize on first send
         thread.addMessage(Message(Authors.user, body))
         replyArea.text = ""
+        MarginalisStore.getInstance(project).drafts.remove(thread.id)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
     }
 

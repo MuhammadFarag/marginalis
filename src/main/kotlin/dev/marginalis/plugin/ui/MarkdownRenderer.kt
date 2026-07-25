@@ -1,7 +1,11 @@
 package dev.marginalis.plugin.ui
 
 import com.intellij.ide.BrowserUtil
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.impl.ContextMenuPopupHandler
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.fileTypes.PlainTextFileType
@@ -18,7 +22,11 @@ import java.awt.Component
 import javax.swing.Box
 import javax.swing.JComponent
 import javax.swing.JEditorPane
+import javax.swing.JMenuItem
+import javax.swing.JPopupMenu
 import javax.swing.event.HyperlinkEvent
+import javax.swing.event.PopupMenuEvent
+import javax.swing.event.PopupMenuListener
 
 /**
  * Markdown-lite rendering for message bodies: bold, italic, inline code,
@@ -97,6 +105,21 @@ object MarkdownRenderer {
                 e.url?.let { BrowserUtil.browse(it) }
             }
         }
+        // Selectable text deserves a right-click: Swing installs no context
+        // menu on its own, so "copy" was undiscoverable (operator finding).
+        pane.componentPopupMenu = JPopupMenu().also { menu ->
+            val copy = JMenuItem("Copy").apply { addActionListener { pane.copy() } }
+            val selectAll = JMenuItem("Select All").apply { addActionListener { pane.selectAll() } }
+            menu.add(copy)
+            menu.add(selectAll)
+            menu.addPopupMenuListener(object : PopupMenuListener {
+                override fun popupMenuWillBecomeVisible(e: PopupMenuEvent) {
+                    copy.isEnabled = !pane.selectedText.isNullOrEmpty()
+                }
+                override fun popupMenuWillBecomeInvisible(e: PopupMenuEvent) {}
+                override fun popupMenuCanceled(e: PopupMenuEvent) {}
+            })
+        }
         // Measure at the target width so preferred height reflects wrapping
         // (the recurring inlay-sizing dragon; see ThreadPanel).
         pane.setSize(wrapWidth, Int.MAX_VALUE)
@@ -108,6 +131,16 @@ object MarkdownRenderer {
     private fun codeBlock(project: Project, langTag: String, code: String): JComponent {
         val document = EditorFactory.getInstance().createDocument(code)
         val field = EditorTextField(document, project, fileTypeFor(langTag), true, false)
+        field.addSettingsProvider { editor ->
+            editor.installPopupHandler(
+                ContextMenuPopupHandler.Simple(
+                    DefaultActionGroup(
+                        ActionManager.getInstance().getAction(IdeActions.ACTION_EDITOR_COPY),
+                        ActionManager.getInstance().getAction(IdeActions.ACTION_SELECT_ALL),
+                    ),
+                ),
+            )
+        }
         field.border = JBUI.Borders.customLine(JBColor.border(), 1)
         field.alignmentX = Component.LEFT_ALIGNMENT
         return field

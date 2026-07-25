@@ -30,6 +30,9 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
 
         /** Resolving a walkthrough step from its panel jumps to the next step. */
         var walkthroughAutoAdvance: Boolean = true
+
+        /** Balloon when an agent posts to a file you don't have focused. */
+        var notifyOnAgentReply: Boolean = true
     }
 
     private var state = State()

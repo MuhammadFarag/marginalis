@@ -16,8 +16,13 @@ class CommentThread(
     val file: String,
     /** 0-based, last known good. */
     var line: Int,
-    /** Text of the anchor line at creation; how the thread re-finds its place. */
-    val anchorText: String,
+    /**
+     * Text of the anchor line; how the thread re-finds its place. Set at
+     * creation, rewritten only by orphan rescue (comment_reanchor) — a
+     * rescued thread that kept its old fingerprint would re-orphan on the
+     * next restart.
+     */
+    var anchorText: String,
     val id: String = UUID.randomUUID().toString(),
     val createdAt: Instant = Instant.now(),
     /** Step position in a guided walkthrough ("look here Nth"); null = not part of one. */

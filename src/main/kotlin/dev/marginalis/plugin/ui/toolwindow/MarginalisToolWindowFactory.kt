@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataSink
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.application.ApplicationManager
@@ -21,6 +22,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.pom.Navigatable
 import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.ColoredTreeCellRenderer
+import com.intellij.ui.PopupHandler
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
@@ -38,7 +40,9 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.util.SortedMap
 import java.util.TreeMap
+import javax.swing.JMenuItem
 import javax.swing.JPanel
+import javax.swing.JPopupMenu
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
@@ -66,7 +70,7 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
                 common.createPrevOccurenceAction(panel),
                 common.createNextOccurenceAction(panel),
                 LastStepAction(panel),
-                BlockersOnlyAction(panel),
+                FilterMenuAction(panel),
                 ResolveAllAction(),
                 ClearAllAction(),
             ),
@@ -124,15 +128,32 @@ private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
     override fun actionPerformed(e: AnActionEvent) = panel.goLast()
 }
 
-/** The gate check: show only blockers; step-walking then walks the blockers. */
-private class BlockersOnlyAction(private val panel: MarginalisToolWindowPanel) :
-    ToggleAction("Blockers Only", "Show only blocker threads", AllIcons.General.Filter), DumbAware {
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+private enum class TreeFilter(val title: String) {
+    ALL("All"),
+    BLOCKERS("Blockers Only"),
+    AWAITING("Awaiting You"),
+}
 
-    override fun isSelected(e: AnActionEvent): Boolean = panel.blockersOnly
+/**
+ * The funnel, generalized: one filter, three lenses. Walking follows the
+ * filtered tree, so each lens is also a walk.
+ */
+private class FilterMenuAction(private val panel: MarginalisToolWindowPanel) :
+    DefaultActionGroup("Filter", "Filter the tree", AllIcons.General.Filter), DumbAware {
+    init {
+        isPopup = true
+        templatePresentation.isPerformGroup = false
+        TreeFilter.entries.forEach { lens ->
+            add(object : ToggleAction(lens.title), DumbAware {
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
-    override fun setSelected(e: AnActionEvent, state: Boolean) {
-        panel.blockersOnly = state
+                override fun isSelected(e: AnActionEvent): Boolean = panel.filter == lens
+
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    if (state) panel.filter = lens
+                }
+            })
+        }
     }
 }
 
@@ -241,6 +262,17 @@ private class MarginalisToolWindowPanel(private val project: Project) :
                 if (e.clickCount == 2) selectedThread()?.let { navigateTo(it) }
             }
         })
+        // Right-click triage: the same discoverability rule the message
+        // panes got — and scoped: a thread row acts on itself, a file or
+        // directory node acts on everything beneath it.
+        tree.addMouseListener(object : PopupHandler() {
+            override fun invokePopup(comp: java.awt.Component, x: Int, y: Int) {
+                val path = tree.getPathForLocation(x, y) ?: return
+                tree.selectionPath = path
+                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                buildContextMenu(node)?.show(comp, x, y)
+            }
+        })
         add(JBScrollPane(tree), BorderLayout.CENTER)
 
         MarginalisStore.getInstance(project).threads.addListener {
@@ -264,6 +296,92 @@ private class MarginalisToolWindowPanel(private val project: Project) :
     private fun selectedThread(): CommentThread? {
         val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return null
         return (node.userObject as? NodeData.ThreadNode)?.thread
+    }
+
+    // ------------------------------------------------- right-click triage
+
+    /** All threads at or beneath [node] — a thread itself, a file's list, a subtree's everything. */
+    private fun threadsUnder(node: DefaultMutableTreeNode): List<CommentThread> =
+        node.preorderEnumeration().asSequence()
+            .filterIsInstance<DefaultMutableTreeNode>()
+            .mapNotNull { (it.userObject as? NodeData.ThreadNode)?.thread }
+            .distinctBy { it.id }
+            .toList()
+
+    private fun buildContextMenu(node: DefaultMutableTreeNode): JPopupMenu? {
+        val data = node.userObject as? NodeData ?: return null
+        val menu = JPopupMenu()
+        when (data) {
+            is NodeData.ThreadNode -> {
+                val thread = data.thread
+                menu.add(JMenuItem("Navigate").apply { addActionListener { navigateTo(thread) } })
+                if (thread.status is ThreadStatus.Resolved) {
+                    menu.add(JMenuItem("Reopen").apply {
+                        addActionListener {
+                            thread.reopen()
+                            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+                        }
+                    })
+                } else {
+                    menu.add(JMenuItem("Resolve").apply {
+                        addActionListener {
+                            thread.resolve(Authors.user)
+                            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+                        }
+                    })
+                }
+                menu.add(JMenuItem("Delete…").apply { addActionListener { deleteThreads(listOf(thread)) } })
+            }
+            is NodeData.FileNode, is NodeData.DirNode -> {
+                val threads = threadsUnder(node)
+                val open = threads.filter { it.status !is ThreadStatus.Resolved }
+                if (open.isNotEmpty()) {
+                    menu.add(JMenuItem("Resolve ${open.size} Open Thread(s)…").apply {
+                        addActionListener { resolveThreads(open) }
+                    })
+                }
+                menu.add(JMenuItem("Delete ${threads.size} Thread(s)…").apply {
+                    addActionListener { deleteThreads(threads) }
+                })
+            }
+            else -> return null
+        }
+        return menu
+    }
+
+    /** Scoped Resolve All: same blocker manners as the title action. */
+    private fun resolveThreads(threads: List<CommentThread>) {
+        val blockers = threads.count { it.severity == Severity.BLOCKER }
+        val blockerWarning =
+            if (blockers > 0) " $blockers of them are blockers — resolve only if their outcomes genuinely landed." else ""
+        val answer = Messages.showYesNoDialog(
+            project,
+            "Resolve ${threads.size} open thread(s)?$blockerWarning",
+            "Resolve Threads",
+            if (blockers > 0) Messages.getWarningIcon() else Messages.getQuestionIcon(),
+        )
+        if (answer != Messages.YES) return
+        val store = MarginalisStore.getInstance(project)
+        for (thread in threads) {
+            thread.resolve(Authors.user)
+            store.threads.notifyChanged(thread)
+        }
+    }
+
+    /** Scoped delete: always confirms — deletion keeps no record. */
+    private fun deleteThreads(threads: List<CommentThread>) {
+        val blockers = threads.count { it.status !is ThreadStatus.Resolved && it.severity == Severity.BLOCKER }
+        val blockerWarning = if (blockers > 0) " $blockers open blocker(s) are among them." else ""
+        val answer = Messages.showYesNoDialog(
+            project,
+            "Delete ${threads.size} thread(s)?$blockerWarning Unlike resolving, deletion keeps no record. " +
+                "This cannot be undone.",
+            "Delete Threads",
+            Messages.getWarningIcon(),
+        )
+        if (answer != Messages.YES) return
+        val store = MarginalisStore.getInstance(project)
+        for (thread in threads) store.threads.remove(thread.id)
     }
 
     // ------------------------------------------------- step-by-step walking
@@ -332,12 +450,13 @@ private class MarginalisToolWindowPanel(private val project: Project) :
     }
 
     /**
-     * The pre-merge gate check: filter the tree to blockers, and because
-     * step-walking follows the tree as displayed, first/next/prev/last
-     * become "walk the blockers" for free. The empty state is the answer
-     * everyone wants.
+     * Display filters — and because step-walking follows the tree as
+     * displayed, each filter turns the walk into a purposeful sweep:
+     * BLOCKERS + next-step is the pre-merge gate check, AWAITING +
+     * next-step is "walk what needs me". Each empty state is the answer
+     * everyone wants to read.
      */
-    var blockersOnly: Boolean = false
+    var filter: TreeFilter = TreeFilter.ALL
         set(value) {
             field = value
             rebuild()
@@ -346,9 +465,18 @@ private class MarginalisToolWindowPanel(private val project: Project) :
     fun rebuild() {
         val store = MarginalisStore.getInstance(project)
         store.syncLines() // refresh live lines + orphan status from markers
-        val threads = store.threads.all()
-            .filter { !blockersOnly || it.severity == Severity.BLOCKER }
-        tree.emptyText.text = if (blockersOnly) "No blockers" else "No margin threads yet"
+        val threads = store.threads.all().filter { thread ->
+            when (filter) {
+                TreeFilter.ALL -> true
+                TreeFilter.BLOCKERS -> thread.severity == Severity.BLOCKER
+                TreeFilter.AWAITING -> thread.status is ThreadStatus.Open && thread.awaitsUser()
+            }
+        }
+        tree.emptyText.text = when (filter) {
+            TreeFilter.ALL -> "No margin threads yet"
+            TreeFilter.BLOCKERS -> "No blockers"
+            TreeFilter.AWAITING -> "Nothing awaiting you"
+        }
 
         val root = DefaultMutableTreeNode()
         addGuidedSection(root, threads)

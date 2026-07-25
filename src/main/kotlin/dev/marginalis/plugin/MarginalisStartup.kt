@@ -112,6 +112,7 @@ class MarginalisStartup : ProjectActivity {
         val marker = store.markerOf(thread)
         when {
             store.threads.byId(thread.id) == null || thread.status is ThreadStatus.Resolved -> {
+                if (store.threads.byId(thread.id) == null) store.drafts.remove(thread.id)
                 if (marker != null) {
                     if (marker.isValid) {
                         DocumentMarkupModel.forDocument(marker.document, project, false)

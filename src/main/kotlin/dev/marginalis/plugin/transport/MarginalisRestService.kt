@@ -4,8 +4,14 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.notification.NotificationAction
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -26,6 +32,8 @@ import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.MarginalisMarkers
+import dev.marginalis.plugin.ui.MarkdownRenderer
+import dev.marginalis.plugin.ui.WalkthroughNavigator
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.DefaultFullHttpResponse
@@ -51,6 +59,7 @@ import java.time.format.DateTimeFormatter
  *   POST /api/marginalis/comment_resolve  {thread_id}
  *   POST /api/marginalis/comment_reopen   {thread_id}
  *   POST /api/marginalis/comment_resolve_all  {file?}
+ *   POST /api/marginalis/comment_reanchor {thread_id, line, anchor_text?}
  *   POST /api/marginalis/comment_clear_all    {file?}
  *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&project=&author_name=&author_id=
  *   POST /api/marginalis/navigate         {file, line, anchor_text?, project?}
@@ -94,6 +103,7 @@ class MarginalisRestService : RestService() {
             "comment_resolve" -> post(request, context) { handleStatusChange(it, request, context, resolve = true) }
             "comment_reopen" -> post(request, context) { handleStatusChange(it, request, context, resolve = false) }
             "comment_resolve_all" -> post(request, context) { handleResolveAll(it, request, context) }
+            "comment_reanchor" -> post(request, context) { handleReanchor(it, request, context) }
             "comment_clear_all" -> post(request, context) { handleClearAll(it, request, context) }
             "comment_list" -> handleCommentList(urlDecoder, request, context)
             "navigate" -> post(request, context) { handleNavigate(it, request, context) }
@@ -215,9 +225,11 @@ class MarginalisRestService : RestService() {
                 file, line0, lineText(document, line0),
                 order = order, walkthrough = walkthroughLabel, severity = severity,
             )
-            created.addMessage(Message(agentAuthor(json), body))
+            val author = agentAuthor(json)
+            created.addMessage(Message(author, body))
             MarginalisMarkers.attach(project, created, document)
             MarginalisStore.getInstance(project).threads.add(created)
+            maybeNotify(project, created, author, body)
             thread = created
         }
 
@@ -236,6 +248,37 @@ class MarginalisRestService : RestService() {
 
     private fun lineText(document: Document, line: Int): String =
         document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)))
+
+    /**
+     * The turn signal's long arm: a balloon when an agent message lands in
+     * a file the human doesn't have in front of them (the gutter and tab
+     * glyph already cover the visible file). One notification per message,
+     * click to open the thread; the settings page holds the off-switch.
+     */
+    private fun maybeNotify(project: Project, thread: CommentThread, author: Author, body: String) {
+        if (!MarginalisSettings.getInstance().state.notifyOnAgentReply) return
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            val selectedFile = FileEditorManager.getInstance(project).selectedTextEditor
+                ?.let { FileDocumentManager.getInstance().getFile(it.document) }
+            val selectedRel = selectedFile?.let { file ->
+                project.guessProjectDir()?.let { base -> VfsUtilCore.getRelativePath(file, base) }
+            }
+            if (selectedRel == thread.file) return@invokeLater // already on screen
+            NotificationGroupManager.getInstance().getNotificationGroup("Marginalis")
+                .createNotification(
+                    "${author.displayName} · ${thread.file}:${thread.line + 1}",
+                    StringUtil.shortenTextWithEllipsis(MarkdownRenderer.previewText(body), 120, 0),
+                    NotificationType.INFORMATION,
+                )
+                .addAction(
+                    NotificationAction.createSimpleExpiring("Open Thread") {
+                        WalkthroughNavigator.navigateTo(project, thread)
+                    },
+                )
+                .notify(project)
+        }
+    }
 
     private sealed class SeverityParse {
         class Ok(val severity: Severity?) : SeverityParse()
@@ -302,6 +345,7 @@ class MarginalisRestService : RestService() {
         val message = Message(agentAuthor(json), body)
         thread.addMessage(message)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+        maybeNotify(project, thread, message.author, body)
         sendJson(
             JsonObject().apply {
                 addProperty("message_id", message.id)
@@ -326,6 +370,74 @@ class MarginalisRestService : RestService() {
         sendJson(
             JsonObject().apply {
                 addProperty("thread_id", thread.id)
+                addProperty("status", thread.status.kind.name.lowercase())
+            },
+            request, context,
+        )
+    }
+
+    /**
+     * Orphan rescue — agent-side, per the asymmetry: the human never does
+     * anchor surgery. Only ORPHANED threads may be re-anchored (a live
+     * anchor doesn't move: 409), same file only for now, and the target is
+     * verified with the same anchoring contract as comment_add — a rescued
+     * thread reopens with a fresh marker, never lands somewhere guessed.
+     */
+    private fun handleReanchor(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val (project, thread) = lookupThread(json, request, context) ?: return
+        val line1 = json.intOrNull("line")
+            ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing or non-integer 'line' (1-based)", request, context)
+        if (thread.status !is ThreadStatus.Orphaned) {
+            return sendError(
+                HttpResponseStatus.CONFLICT,
+                "thread '${thread.id}' is ${thread.status.kind.name.lowercase()}, not orphaned — live anchors don't move.",
+                request, context,
+            )
+        }
+        json.stringOrNull("file")?.takeIf { it != thread.file }?.let {
+            return sendError(
+                HttpResponseStatus.BAD_REQUEST,
+                "cross-file re-anchor isn't supported (yet) — the thread belongs to '${thread.file}'.",
+                request, context,
+            )
+        }
+        val anchorText = json.stringOrNull("anchor_text")
+        val vFile = ApplicationManager.getApplication()
+            .runReadAction(Computable { resolveFile(thread.file, json.stringOrNull("project"))?.second })
+            ?: return sendResolutionError(resolutionFailure(thread.file, json.stringOrNull("project")), request, context)
+
+        var error: String? = null
+        var errorStatus = HttpResponseStatus.BAD_REQUEST
+        var landed = -1
+        ApplicationManager.getApplication().invokeAndWait {
+            val document = FileDocumentManager.getInstance().getDocument(vFile)
+            if (document == null) {
+                error = "'${thread.file}' has no text document (binary or too large?)"
+                return@invokeAndWait
+            }
+            val placed = when (val outcome = resolveAnchoredLine(document, thread.file, line1, anchorText)) {
+                is AnchorOutcome.Stale -> {
+                    error = outcome.message
+                    errorStatus = HttpResponseStatus.CONFLICT
+                    return@invokeAndWait
+                }
+                is AnchorOutcome.Placed -> outcome
+            }
+            thread.line = placed.line0
+            // Fresh fingerprint, or the next restart re-orphans the rescue.
+            thread.anchorText = lineText(document, placed.line0)
+            thread.reopen()
+            MarginalisMarkers.attach(project, thread, document)
+            MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+            landed = placed.line0
+        }
+        if (error != null || landed < 0) {
+            return sendError(errorStatus, error ?: "internal error", request, context)
+        }
+        sendJson(
+            JsonObject().apply {
+                addProperty("thread_id", thread.id)
+                addProperty("line", landed + 1)
                 addProperty("status", thread.status.kind.name.lowercase())
             },
             request, context,

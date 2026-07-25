@@ -65,6 +65,26 @@ once the token gains Issues scope.
   stylesheet: h1 = 1.2× body, h2 = 1.1×, h3+ = body size, tight margins;
   bold carries the hierarchy. Closes the 07-19 "shouty headings" finding.
 
+- ✅ QoL round 2 (v0.1.17, agreed list) — draft preservation (composer
+  text survives close/Esc per thread, in-memory, cleared on send/delete
+  — Esc-close had made discard a single keystroke); tree right-click
+  triage with SCOPED bulk ops (thread: navigate/resolve/delete; file
+  and directory nodes: resolve-all/delete-all beneath, blocker warnings
+  at every scope — operator extension); the funnel generalized to a
+  filter menu (All / Blockers Only / Awaiting You — each lens is also a
+  walk, per-lens empty states); agent-reply balloon when the file isn't
+  on screen (click opens thread; settings off-switch, default on);
+  comment_reanchor — orphan rescue is AGENT-side per operator call
+  (orphans only, 409 for live anchors, same-file v1, verified anchor,
+  fresh anchorText so the rescue survives restart — anchorText became
+  var for this). Script `reanchor` cmd; skill 0.12.0 orphan etiquette.
+- ✅ Right-click clipboard menus (v0.1.16, operator finding) — rendered
+  prose panes (Copy enabled on selection / Select All), code fences
+  (editor Copy / Select All via popup handler), and the composer
+  (Cut / Copy / Paste / Select All). Selection worked but Swing installs
+  no context menu on its own — an affordance you can't discover barely
+  exists. Note: uses impl-package ContextMenuPopupHandler (advisory in
+  verifier; public interface is EditorPopupHandler).
 - ✅ Icons + delete round (v0.1.15, walkthrough feedback) — the header
   became one toolbar: step arrows · Resolve / Delete / Close as icons
   (links beside an icon toolbar were a mixed idiom); Resolve previews

@@ -38,6 +38,14 @@ class MarginalisConfigurable : Configurable {
                     .comment("While walking a guided walkthrough, resolving a step opens the next one.")
                     .bindSelected(state::walkthroughAutoAdvance)
             }
+            row {
+                checkBox("Notify when the agent posts elsewhere")
+                    .comment(
+                        "A balloon when an agent message lands in a file you don't have open in front " +
+                            "of you. Turn-taking, not presence: one notification per message, nothing pulses.",
+                    )
+                    .bindSelected(state::notifyOnAgentReply)
+            }
             row("Time format:") {
                 comboBox(listOf("Auto (system)", "12-hour", "24-hour"))
                     .comment("Message timestamps in thread panels.")
