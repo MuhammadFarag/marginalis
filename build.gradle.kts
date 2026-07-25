@@ -5,10 +5,12 @@ plugins {
     // because the shared JDK is Java 25, which needs Gradle 9.1+).
     id("org.jetbrains.kotlin.jvm") version "2.3.21"
     id("org.jetbrains.intellij.platform") version "2.18.1"
+    // CHANGELOG.md -> Marketplace change notes (see pluginConfiguration).
+    id("org.jetbrains.changelog") version "2.2.1"
 }
 
 group = "dev.marginalis"
-version = "0.1.22"
+version = "0.1.23"
 
 repositories {
     mavenCentral()
@@ -59,6 +61,20 @@ intellijPlatform {
             // Omit until-build entirely: the host IDE that installs the zip may
             // be any version ≥ 2025.2, and JetBrains discourages upper bounds.
             untilBuild = provider { null }
+        }
+        // The Marketplace "What's New" tab: the CHANGELOG.md section matching
+        // this build's version, rendered to HTML — release notes live in one
+        // reviewable file, never inline in the build. Falls back to
+        // [Unreleased] so snapshot builds show work-in-progress notes.
+        changeNotes = provider {
+            with(changelog) {
+                renderItem(
+                    (getOrNull(project.version.toString()) ?: getUnreleased())
+                        .withHeader(false)
+                        .withEmptySections(false),
+                    org.jetbrains.changelog.Changelog.OutputType.HTML,
+                )
+            }
         }
     }
 
