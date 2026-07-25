@@ -206,8 +206,12 @@ remains parked under "Deferred with analysis")
 ## Open — infrastructure
 
 - **JetBrains Marketplace publishing, operator side** — plugin-side wiring
-  shipped in v0.1.3 (`a9c8cfc`); remaining: account, first manual upload
-  (creates the listing, ~2-business-day review), API token, four CI secrets.
+  shipped in v0.1.3 (`a9c8cfc`). 2026-07-25: repo public (Apache-2.0,
+  pre-public sweep `6831c1d`), first manual upload done — listing exists,
+  hidden in the EAP channel pending JetBrains review. CI now pins
+  publishing to the `eap` channel (PUBLISH_CHANNEL=default flips to
+  stable). Remaining: API token, four CI secrets; then every `v*` tag
+  auto-publishes to EAP.
 - **Issues migration** — grant the PAT Issues scope, move this file there.
 - **Skill source into repo** (deferred 2026-07-20, operator call) — move
   SKILL.md + marginalis.sh into an inert `skill/` dir here, one-way

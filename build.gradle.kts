@@ -73,6 +73,13 @@ intellijPlatform {
 
     publishing {
         token = providers.environmentVariable("PUBLISH_TOKEN")
+        // EAP until the listing goes public: without this, publishPlugin
+        // targets the stable channel and would leapfrog the hidden EAP
+        // channel the moment the CI secrets exist. Flip to stable later by
+        // setting PUBLISH_CHANNEL=default on the release run.
+        channels = providers.environmentVariable("PUBLISH_CHANNEL")
+            .map { listOf(it) }
+            .orElse(listOf("eap"))
     }
 
     pluginVerification {
