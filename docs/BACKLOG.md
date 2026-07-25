@@ -1,7 +1,10 @@
-# Marginalis — roadmap & backlog
+# Marginalis — shipped record and decision log
 
-Captured from operator feedback during real use. Move items to GitHub issues
-once the token gains Issues scope.
+Open work lives in
+[GitHub issues](https://github.com/MuhammadFarag/marginalis/issues)
+(migrated 2026-07-25). This file keeps the shipped history and the
+decision log — the record of what was built and what was deliberately
+declined, captured from real use.
 
 ## Shipped (2026-07-19)
 
@@ -150,12 +153,13 @@ once the token gains Issues scope.
   "blocker", quiet-gray "nit"; replaces the too-easy-to-miss status-line
   word. The panel was the one surface that only got the quiet treatment.
 
-## Open — features
-
-(none — the feature backlog is clear; composer fence-interior highlighting
-remains parked under "Deferred with analysis")
-
 ## Shipped (2026-07-25)
+
+- ✅ JetBrains Marketplace publishing, end to end — repo public
+  (Apache-2.0), listing created (hidden, EAP channel), four CI secrets,
+  and v0.1.23 as the first fully automated release: tag → build → sign →
+  publish-to-EAP → GitHub Release. CHANGELOG.md drives the What's New
+  tab. Remaining operator steps tracked in issue #7.
 
 - ✅ Collapsing composer (operator UX) — idle panels fold the reply box to
   one prompt row ("Reply… ⌘⏎ submits" inline); it expands on click, on a
@@ -202,55 +206,6 @@ remains parked under "Deferred with analysis")
   Platform finding: one-step install-over-existing ALWAYS restarts
   (`PluginInstaller.installFromDisk` hard-codes it); the two-step flow is
   the reload loop — documented in CLAUDE.md.
-
-## Open — infrastructure
-
-- **Accepted: MarkdownParser deprecation warnings** (2026-07-25). The
-  verifier flags `MarkdownParser(flavour)` + `buildMarkdownTreeFromString
-  (String)` as deprecated, but the *non-deprecated* replacements
-  (CharSequence overloads, CancellationToken ctor) don't exist or are
-  experimental in every bundled markdown-lib version across our supported
-  IDE range — there is no signature that is clean everywhere. Accepted as
-  advisory (DEPRECATED excluded from verifier failureLevel); revisit when
-  the 2025.2 floor moves. Escape hatch if it ever breaks: bundle the lib
-  again but package-relocated (shaded) so it stops colliding with the IDE
-  package.
-
-- ✅ **JetBrains Marketplace publishing — DONE end-to-end** (2026-07-25):
-  repo public (Apache-2.0), listing created (hidden, EAP channel), four
-  CI secrets added, and v0.1.23 was the first fully automated release —
-  tag → build → sign → publish-to-EAP → GitHub Release. CHANGELOG.md
-  drives the What's New tab via org.jetbrains.changelog. Remaining
-  operator calls, no code: upload the screenshots to the listing, flip
-  listing visibility when ready, and eventually release once with
-  `PUBLISH_CHANNEL=default` to enter the stable channel.
-- **Issues migration** — grant the PAT Issues scope, move this file there.
-- **Skill source into repo** (deferred 2026-07-20, operator call) — move
-  SKILL.md + marginalis.sh into an inert `skill/` dir here, one-way
-  sync script → mfarag-plugins (plugin.json stays operator-owned);
-  optional later: `.claude-plugin/marketplace.json` makes the repo itself
-  an installable Claude Code marketplace. Design agreed, build skipped
-  for now.
-- **Skill trigger evals** — only if the `marginalis` skill under-triggers in
-  other sessions (skill-creator's optimization loop is ready when needed).
-
-## Deferred with analysis
-
-- **Fence-interior highlighting while typing** — the composer is lexer-only;
-  the real fix is a custom layered highlighter (markdown lexer delegating
-  fence regions to each language's SyntaxHighlighter), ~half a day of
-  bespoke lexer code; daemon/injection on a text field is worse. Rendered
-  messages already show fences fully highlighted, so typing-time interior
-  color is cosmetic.
-- **Project-view tree badges** — ranked least useful of the visibility trio
-  (tool window and tab glyphs cover the need).
-
-## Future era
-
-- **Multi-agent, remaining halves** — message addressing (@agent) and
-  per-agent resolution authority. The read map shipped in v0.1.7
-  (per-agent `seen_by` receipts); build the rest when concurrent agent
-  sessions are routine.
 
 ## Decision log
 
