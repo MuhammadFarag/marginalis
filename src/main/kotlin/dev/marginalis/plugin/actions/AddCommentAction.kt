@@ -80,18 +80,20 @@ class AddCommentAction : AnAction() {
     }
 
     /**
-     * The selection as a quote selector — captured live, never guessed. Only
-     * a within-line selection becomes a span (the context that re-finds it is
-     * line-scoped); multi-line or empty selections stay whole-line threads.
+     * The selection as a quote selector — captured live, never guessed.
+     * Segments stay line-scoped (the context that re-finds them is the
+     * line), so a multi-line selection clamps to its first line: the
+     * gesture still earns a quoted span instead of silently degrading to
+     * a whole-line thread (operator finding). Empty selections — or ones
+     * whose first-line portion is blank — stay whole-line threads.
      */
     private fun captureSegment(editor: Editor): Segment? {
         val selection = editor.selectionModel
         if (!selection.hasSelection()) return null
         val document = editor.document
         val start = selection.selectionStart
-        val end = selection.selectionEnd
         val line = document.getLineNumber(start)
-        if (line != document.getLineNumber(end)) return null
+        val end = minOf(selection.selectionEnd, document.getLineEndOffset(line))
         val exact = document.getText(TextRange(start, end))
         if (exact.isBlank()) return null
         val lineStart = document.getLineStartOffset(line)

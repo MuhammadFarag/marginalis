@@ -70,9 +70,18 @@ class ThreadPanel(
     private val messagesBox = Box.createVerticalBox()
     private val statusLabel = JBLabel()
     private val sendButton = JButton()
+    private val replyRow = JPanel(BorderLayout()).apply {
+        isOpaque = false
+        border = JBUI.Borders.emptyTop(4)
+    }
+    private lateinit var composerHolder: JComponent
+    private lateinit var composerActions: JComponent
+    private lateinit var collapsedReply: JComponent
+    private var composerExpanded = false
     private val cancelEditLink = ActionLink("Cancel") {
         editingMessageId = null
         replyArea.text = ""
+        setComposerExpanded(false)
         refresh()
     }
 
@@ -145,10 +154,16 @@ class ThreadPanel(
             ),
             replyArea,
         )
+        // Reading mode needs a focus home for Esc and the walk shortcuts.
+        isFocusable = true
         // Draft preservation: whatever is typed survives the panel — saved
         // on every keystroke, restored on reopen, cleared on send. Esc is
-        // one key; three paragraphs shouldn't be.
-        MarginalisStore.getInstance(project).drafts[thread.id]?.let { replyArea.text = it }
+        // one key; three paragraphs shouldn't be. A restored draft reopens
+        // the composer it was typed in.
+        MarginalisStore.getInstance(project).drafts[thread.id]?.let {
+            replyArea.text = it
+            setComposerExpanded(true)
+        }
         replyArea.document.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
             override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
                 if (editingMessageId != null) return // edits restore the original on cancel, not a draft
@@ -250,19 +265,34 @@ class ThreadPanel(
      * balloon when the click would reopen.
      */
     private fun buildHeaderToolbar(): JComponent {
+        val firstStep = navAction("First Step", AllIcons.Actions.Play_first) { walk, i ->
+            walk.firstOrNull().takeIf { i != 0 }
+        }
+        val previousStep = navAction("Previous Step", AllIcons.Actions.PreviousOccurence) { walk, i ->
+            if (i > 0) walk[i - 1] else null
+        }
+        val nextStep = navAction("Next Step", AllIcons.Actions.NextOccurence) { walk, i ->
+            walk.getOrNull(i + 1)
+        }
+        val lastStep = navAction("Last Step", AllIcons.Actions.Play_last) { walk, i ->
+            walk.lastOrNull().takeIf { i != walk.size - 1 }
+        }
+        // The walk must not require the tool window: the platform's
+        // occurrence shortcuts (⌘⌥↑/⌘⌥↓ on the default keymap — user
+        // remaps follow along) drive prev/next while focus is anywhere in
+        // this panel, matching what the skill has promised all along.
+        val actionManager = ActionManager.getInstance()
+        previousStep.registerCustomShortcutSet(
+            actionManager.getAction(IdeActions.ACTION_PREVIOUS_OCCURENCE).shortcutSet, this,
+        )
+        nextStep.registerCustomShortcutSet(
+            actionManager.getAction(IdeActions.ACTION_NEXT_OCCURENCE).shortcutSet, this,
+        )
         val group = DefaultActionGroup(
-            navAction("First Step", AllIcons.Actions.Play_first) { walk, i ->
-                walk.firstOrNull().takeIf { i != 0 }
-            },
-            navAction("Previous Step", AllIcons.Actions.PreviousOccurence) { walk, i ->
-                if (i > 0) walk[i - 1] else null
-            },
-            navAction("Next Step", AllIcons.Actions.NextOccurence) { walk, i ->
-                walk.getOrNull(i + 1)
-            },
-            navAction("Last Step", AllIcons.Actions.Play_last) { walk, i ->
-                walk.lastOrNull().takeIf { i != walk.size - 1 }
-            },
+            firstStep,
+            previousStep,
+            nextStep,
+            lastStep,
             Separator.getInstance(),
             resolveAction(),
             deleteAction(),
@@ -353,13 +383,12 @@ class ThreadPanel(
      * verb, and the old right-hand button stack was stealing measure from
      * it. Actions live in a slim row underneath, right-aligned, the layout
      * every commenting UI has taught hands already. Two-line minimum
-     * height: a one-line box invites one-line thoughts.
+     * height while writing: a one-line box invites one-line thoughts. But
+     * idle, the composer folds to a single prompt row — an empty two-line
+     * box plus an action row was reserving real estate the reader never
+     * asked for (operator finding) — and the first click unfolds it.
      */
     private fun buildReplyRow(): JComponent {
-        val row = JPanel(BorderLayout()).apply {
-            isOpaque = false
-            border = JBUI.Borders.emptyTop(6)
-        }
         sendButton.font = JBUI.Fonts.smallFont()
         sendButton.addActionListener { sendReply() }
         cancelEditLink.font = JBUI.Fonts.smallFont()
@@ -367,7 +396,7 @@ class ThreadPanel(
             icon = AllIcons.Actions.MenuPaste
             toolTipText = "Quote code: insert the editor selection (or this thread's anchor) as a code block"
         }
-        val composerHolder = object : JPanel(BorderLayout()) {
+        composerHolder = object : JPanel(BorderLayout()) {
             override fun getPreferredSize(): Dimension {
                 val computed = super.getPreferredSize()
                 return Dimension(computed.width, computed.height.coerceAtLeast(JBUI.scale(52)))
@@ -376,16 +405,49 @@ class ThreadPanel(
             isOpaque = false
             add(replyArea, BorderLayout.CENTER)
         }
-        val actions = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
+        composerActions = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
             isOpaque = false
-            border = JBUI.Borders.emptyTop(4)
+            border = JBUI.Borders.emptyTop(2)
             add(quoteLink)
             add(cancelEditLink)
             add(sendButton)
         }
-        row.add(composerHolder, BorderLayout.CENTER)
-        row.add(actions, BorderLayout.SOUTH)
-        return row
+        collapsedReply = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(
+                JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+                    isOpaque = false
+                    add(ActionLink("Reply…") { focusReply() }.apply { font = JBUI.Fonts.smallFont() })
+                    add(
+                        JBLabel("⌘⏎ submits").apply {
+                            font = JBUI.Fonts.smallFont()
+                            foreground = UIUtil.getContextHelpForeground()
+                            border = JBUI.Borders.emptyLeft(8)
+                        },
+                    )
+                },
+                BorderLayout.WEST,
+            )
+        }
+        setComposerExpanded(false)
+        return replyRow
+    }
+
+    /**
+     * Idle ↔ writing. The inlay tracks the panel's preferred size, so the
+     * toggle just swaps rows and revalidates.
+     */
+    private fun setComposerExpanded(expanded: Boolean) {
+        composerExpanded = expanded
+        replyRow.removeAll()
+        if (expanded) {
+            replyRow.add(composerHolder, BorderLayout.CENTER)
+            replyRow.add(composerActions, BorderLayout.SOUTH)
+        } else {
+            replyRow.add(collapsedReply, BorderLayout.CENTER)
+        }
+        replyRow.revalidate()
+        replyRow.repaint()
     }
 
     /**
@@ -427,6 +489,7 @@ class ThreadPanel(
                 editing.body = body
             }
             replyArea.text = ""
+            setComposerExpanded(false)
             MarginalisStore.getInstance(project).threads.notifyChanged(thread)
             return
         }
@@ -434,21 +497,34 @@ class ThreadPanel(
         ensureStored() // draft threads materialize on first send
         thread.addMessage(Message(Authors.user, body))
         replyArea.text = ""
+        setComposerExpanded(false)
         MarginalisStore.getInstance(project).drafts.remove(thread.id)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
     }
 
     fun focusReply() {
+        if (!composerExpanded) setComposerExpanded(true)
         replyArea.requestFocusInWindow()
     }
 
     /**
-     * The step to open after resolving this one, or null when not
-     * applicable: only guided walkthrough steps auto-advance, only while
-     * the setting allows it. Ordinary threads resolve in place.
+     * Focus on open: drafts and restored compositions land in the composer;
+     * reading mode keeps the composer folded and focuses the panel itself,
+     * so Esc and the walk shortcuts work without a click.
+     */
+    fun focusDefault() {
+        if (isDraft() || replyArea.text.isNotBlank()) focusReply() else requestFocusInWindow()
+    }
+
+    /**
+     * The step to open after resolving this one, or null when the setting
+     * forbids it or the walk has nothing further. Every thread advances
+     * along its own walk — a walkthrough step through its walkthrough,
+     * an ordinary thread through the open threads in tree order — the
+     * same walk the header arrows drive (operator finding: resolve used
+     * to advance only in guided walkthroughs, stranding review-by-panel).
      */
     private fun nextStepIfAutoAdvancing(): CommentThread? {
-        if (thread.order == null) return null
         if (!MarginalisSettings.getInstance().state.walkthroughAutoAdvance) return null
         val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
         return if (i >= 0) walk.getOrNull(i + 1) else null

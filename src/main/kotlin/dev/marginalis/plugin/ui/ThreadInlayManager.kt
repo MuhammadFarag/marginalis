@@ -27,8 +27,11 @@ object ThreadInlayManager {
     fun toggle(project: Project, editor: Editor, thread: CommentThread) {
         val open = openInlays(editor)
         open.remove(thread.id)?.let { (inlay, _) ->
+            // A stale entry (inlay disposed by a document reload, not by us)
+            // is not an open panel — fall through and open for real.
+            val wasOpen = inlay.isValid
             Disposer.dispose(inlay)
-            return
+            if (wasOpen) return
         }
         openPanel(project, editor, thread, ensureStored = {})
     }
@@ -59,7 +62,12 @@ object ThreadInlayManager {
 
     private fun openPanel(project: Project, editor: Editor, thread: CommentThread, ensureStored: () -> Unit) {
         val open = openInlays(editor)
-        if (open.containsKey(thread.id)) return
+        open[thread.id]?.let { (inlay, _) ->
+            // Document reloads (external file changes) dispose inlays behind
+            // our back; a stale map entry must not veto reopening forever.
+            if (inlay.isValid) return
+            open.remove(thread.id)
+        }
 
         val panel = ThreadPanel(project, editor, thread, ensureStored) { close(editor, thread.id) }
         val line = MarginalisStore.getInstance(project).currentLine(thread)
@@ -88,7 +96,7 @@ object ThreadInlayManager {
         )
         open[thread.id] = inlay to panel
         installStoreListener(project, editor)
-        ApplicationManager.getApplication().invokeLater { panel.focusReply() }
+        ApplicationManager.getApplication().invokeLater { panel.focusDefault() }
     }
 
     private fun close(editor: Editor, threadId: String) {

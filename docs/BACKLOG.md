@@ -155,6 +155,30 @@ once the token gains Issues scope.
 (none — the feature backlog is clear; composer fence-interior highlighting
 remains parked under "Deferred with analysis")
 
+## Shipped (2026-07-25)
+
+- ✅ Collapsing composer (operator UX) — idle panels fold the reply box to
+  one prompt row ("Reply… ⌘⏎ submits" inline); it expands on click, on a
+  restored draft, and for new-comment drafts; folds again after submit.
+  Panels now open in reading mode with focus on the panel (Esc + walk
+  shortcuts work without a click), composers only steal focus when there
+  is something to write.
+- ✅ Multi-line selection anchoring (operator UX) — a selection spanning
+  lines clamps its segment to the first line and keeps the quote instead
+  of silently degrading to an unquoted whole-line thread.
+- ✅ Stale-inlay fix — document reloads (external file edits) disposed
+  open panels behind the bookkeeping map's back; navigation then moved
+  the caret but refused to reopen the "already open" panel, and gutter
+  clicks ate the first click. Stale entries are now detected
+  (`inlay.isValid`) and cleared in both `openPanel` and `toggle`.
+- ✅ Resolve auto-advances every walk (operator finding) — previously only
+  guided walkthrough steps advanced; now ordinary threads advance through
+  the open-threads-in-tree-order walk too, same setting, same walk as the
+  header arrows.
+- ✅ Panel walk shortcuts — ⌘⌥↑/⌘⌥↓ (the platform occurrence shortcuts,
+  keymap-remap-aware) drive Previous/Next Step while focus is anywhere in
+  the thread panel, as the skill always claimed.
+
 ## Shipped (2026-07-20)
 
 - ✅ Agent self-identification (v0.1.5) — optional `author_name`/`author_id`
