@@ -21,13 +21,12 @@ dependencies {
     // The domain core: model, lifecycle, anchoring policy, persistence codec.
     implementation(project(":core"))
 
-    // Markdown parsing for message bodies (markdown-lite rendering scope).
-    // The platform bundles the Kotlin stdlib — don't ship a second copy.
-    implementation("org.jetbrains:markdown:0.7.7") {
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
-    }
-
     intellijPlatform {
+        // Markdown parsing for message bodies comes from the IDE's bundled
+        // Markdown plugin (org.intellij.markdown lives inside it) — declared
+        // as a real plugin dependency instead of bundling our own copy of an
+        // IDE package, per the Marketplace verifier.
+        bundledPlugin("org.intellij.plugins.markdown")
         // Default: compile against the oldest supported target (the honest
         // floor; CI uses this). Environments that can't reach the JetBrains
         // CDN — like the tenant sandbox — set `marginalis.localIde` in their

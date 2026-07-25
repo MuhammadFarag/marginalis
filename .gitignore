@@ -9,3 +9,5 @@ build/
 # Private-audience docs: this machine's sandbox/operator setup, not the project
 /tenant-environment.md
 /CLAUDE.local.md
+
+.features

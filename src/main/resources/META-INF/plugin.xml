@@ -41,6 +41,10 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <!-- Supplies org.intellij.markdown (message rendering) and the Markdown
+         file type the composer highlights with. Bundled in every JetBrains
+         IDE; a dependency instead of shipping our own copy of an IDE package. -->
+    <depends>org.intellij.plugins.markdown</depends>
 
     <actions>
         <action id="marginalis.addComment"

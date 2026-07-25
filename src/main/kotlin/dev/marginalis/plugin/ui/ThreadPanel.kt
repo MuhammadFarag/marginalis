@@ -164,7 +164,7 @@ class ThreadPanel(
             replyArea.text = it
             setComposerExpanded(true)
         }
-        replyArea.document.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
+        replyArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
             override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
                 if (editingMessageId != null) return // edits restore the original on cancel, not a draft
                 val store = MarginalisStore.getInstance(project)

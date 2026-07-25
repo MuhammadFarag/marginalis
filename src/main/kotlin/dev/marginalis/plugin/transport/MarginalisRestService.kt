@@ -3,7 +3,7 @@ package dev.marginalis.plugin.transport
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginManager
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -125,7 +125,7 @@ class MarginalisRestService : RestService() {
         // plugin manager, never a hardcoded constant. Capability detection
         // for agents: absence of a field can finally be told apart from an
         // old server that never heard of it.
-        PluginManagerCore.getPlugin(PluginId.getId("dev.marginalis.plugin"))?.version
+        PluginManager.getInstance().findEnabledPlugin(PluginId.getId("dev.marginalis.plugin"))?.version
             ?.let { addProperty("version", it) }
         ApplicationManager.getApplication().runReadAction {
             add("projects", openProjectsJson())
