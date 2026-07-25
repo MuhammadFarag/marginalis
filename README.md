@@ -13,6 +13,9 @@ live code, built for you and your agent.
 question in distinct colors, the user decides, and the agent locks the
 decision in](docs/images/margin-conversation.png)
 
+<sub>Captured on v0.1.22. More in the
+[screenshot tour](docs/screenshots.md).</sub>
+
 ## How it works
 
 Press <kbd>⌥⇧M</kbd> on a line, or on a selection, and write in the panel
