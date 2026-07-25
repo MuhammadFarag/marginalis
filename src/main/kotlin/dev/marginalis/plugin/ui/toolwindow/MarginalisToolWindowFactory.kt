@@ -252,6 +252,24 @@ private class MarginalisToolWindowPanel(private val project: Project) :
 
     private val tree = Tree()
 
+    /**
+     * Display filters — and because step-walking follows the tree as
+     * displayed, each filter turns the walk into a purposeful sweep:
+     * BLOCKERS + next-step is the pre-merge gate check, AWAITING +
+     * next-step is "walk what needs me". Each empty state is the answer
+     * everyone wants to read.
+     *
+     * MUST be declared before the init block: init calls rebuild(), which
+     * reads this — Kotlin initializes in declaration order, and a property
+     * declared below init is still null when init runs (found the hard
+     * way: NPE on tool-window creation, v0.1.17).
+     */
+    var filter: TreeFilter = TreeFilter.ALL
+        set(value) {
+            field = value
+            rebuild()
+        }
+
     init {
         tree.isRootVisible = false
         tree.showsRootHandles = true
@@ -448,19 +466,6 @@ private class MarginalisToolWindowPanel(private val project: Project) :
     fun goLast() {
         steps().first.lastOrNull()?.let { goTo(it) }
     }
-
-    /**
-     * Display filters — and because step-walking follows the tree as
-     * displayed, each filter turns the walk into a purposeful sweep:
-     * BLOCKERS + next-step is the pre-merge gate check, AWAITING +
-     * next-step is "walk what needs me". Each empty state is the answer
-     * everyone wants to read.
-     */
-    var filter: TreeFilter = TreeFilter.ALL
-        set(value) {
-            field = value
-            rebuild()
-        }
 
     fun rebuild() {
         val store = MarginalisStore.getInstance(project)
