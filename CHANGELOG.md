@@ -7,6 +7,24 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.1.24] - 2026-07-25
+
+### Added
+
+- `GET /api/marginalis/agent_guide`: the plugin serves its own agent
+  manual — the full contract (turn etiquette, identity and read
+  receipts, anchoring rules, severity and walkthrough vocabulary, orphan
+  rescue, API reference) as markdown, version-matched by construction
+  because it ships inside the plugin. Teaching any agent Marginalis is
+  now one instruction: ping, then fetch the guide. CI verifies the guide
+  mentions every endpoint.
+
+### Changed
+
+- `ping`'s `version` now comes from a build-stamped resource instead of
+  platform plugin-manager lookups (which are internal API).
+- README's agent-integration section leads with the served guide.
+
 ## [0.1.23] - 2026-07-25
 
 ### Changed

@@ -58,11 +58,22 @@ walkthrough auto-advance, time format).
 
 ## Agent integration
 
-Everything is plain JSON over the built-in server (port 63342; `ping`
-reports the plugin version and open projects):
+The plugin serves its own agent manual, version-matched by construction —
+teaching any agent to use Marginalis is one instruction:
 
 ```
-GET  ping · comment_list?file=&status=&unread_only=&project=
+Ping http://127.0.0.1:63342/api/marginalis/ping — if Marginalis answers,
+GET /api/marginalis/agent_guide and follow it.
+```
+
+The guide (markdown, CI-checked to cover every endpoint) carries the full
+contract: the turn-based etiquette, identity and per-agent read receipts,
+the anchoring rules, severity and walkthrough vocabulary, orphan rescue,
+and the API reference. The API itself is plain JSON over the IDE's
+built-in server:
+
+```
+GET  ping · agent_guide · comment_list?file=&status=&unread_only=&project=
 POST comment_add {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?}
 POST comment_reply {thread_id, body} · comment_resolve · comment_reopen
 POST comment_reanchor {thread_id, line, anchor_text?}   (orphan rescue)
@@ -73,8 +84,8 @@ POST navigate {file, line, anchor_text?, project?}      (consent-gated)
 `line` is 1-based and treated as a hint — pass `anchor_text` (the line's
 content) and the server verifies or searches nearby, answering 409 when
 your picture of the file is stale. Errors are written to be acted on.
-A Claude Code skill wrapping this API (sweep etiquette, walkthrough and
-severity vocabulary, identity) ships alongside the plugin.
+A Claude Code skill wrapping this API (sweep habits, wrapper script,
+identity) ships alongside the plugin and defers to the served guide.
 
 ## Building from source
 

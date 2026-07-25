@@ -17,6 +17,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Agent guide covers every endpoint
+        # The served guide is the agent contract's source of truth; a new
+        # endpoint that isn't documented there is drift by definition. The
+        # endpoint list comes from the transport's routing `when`, so this
+        # check updates itself.
+        run: |
+          guide=src/main/resources/marginalis/agent-guide.md
+          endpoints=$(grep -oE '"[a-z_]+" ->' src/main/kotlin/dev/marginalis/plugin/transport/MarginalisRestService.kt | sed -E 's/"([a-z_]+)" ->/\1/')
+          [ -n "$endpoints" ] || { echo "found no endpoints to check — parser broken?"; exit 1; }
+          missing=0
+          for e in $endpoints; do
+            grep -q "$e" "$guide" || { echo "MISSING from agent guide: $e"; missing=1; }
+          done
+          exit $missing
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

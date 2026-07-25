@@ -53,6 +53,7 @@ import java.util.Properties
  *
  * Endpoints:
  *   GET  /api/marginalis/ping             -> {status, ide, version, projects}
+ *   GET  /api/marginalis/agent_guide      -> the agent contract, as markdown
  *   POST /api/marginalis/comment_add      {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
@@ -103,6 +104,7 @@ class MarginalisRestService : RestService() {
         val endpoint = urlDecoder.path().removePrefix("/api/${getServiceName()}").trim('/')
         when (endpoint) {
             "ping" -> sendJson(pingInfo(), request, context)
+            "agent_guide" -> sendAgentGuide(request, context)
             "comment_add" -> post(request, context) { handleCommentAdd(it, request, context) }
             "comment_reply" -> post(request, context) { handleCommentReply(it, request, context) }
             "comment_resolve" -> post(request, context) { handleStatusChange(it, request, context, resolve = true) }
@@ -115,6 +117,23 @@ class MarginalisRestService : RestService() {
             else -> sendError(HttpResponseStatus.NOT_FOUND, "unknown endpoint '$endpoint'", request, context)
         }
         return null
+    }
+
+    /**
+     * The agent contract, served by the build that implements it — the
+     * document can't drift from the server because they ship in the same
+     * zip (CI checks it mentions every endpoint). Raw markdown, so plain
+     * curl is a complete client; the doorbell an agent needs is one line:
+     * "ping Marginalis, GET agent_guide, take it from there."
+     */
+    private fun sendAgentGuide(request: FullHttpRequest, context: ChannelHandlerContext) {
+        val guide = javaClass.classLoader.getResourceAsStream("marginalis/agent-guide.md")
+            ?.use { it.readBytes().toString(Charsets.UTF_8) }
+            ?: return sendError(HttpResponseStatus.NOT_FOUND, "agent guide resource missing from this build", request, context)
+        val bytes = guide.toByteArray(Charsets.UTF_8)
+        val response = DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, Unpooled.wrappedBuffer(bytes))
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/markdown; charset=utf-8")
+        sendResponse(request, context, response)
     }
 
     /**
