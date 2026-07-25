@@ -3,14 +3,41 @@
     <name>Marginalis</name>
     <vendor email="m@far.ag" url="https://github.com/MuhammadFarag/marginalis">Muhammad Farag</vendor>
     <description><![CDATA[
-        Code conversations with your AI coding agent, in the margins of your editor.
+        Margin conversations between you and your AI coding agent — Google Docs
+        comments over live code, built for the review loop, not the keystroke loop.
         <br/><br/>
-        Comment threads anchor to lines — or to the exact words you select — survive
-        edits and restarts, and resolve when their outcome lands in code. Your agent
-        reads and replies between turns, marks review findings as blockers or nitpicks
-        so you can filter to what actually gates the merge, guides you through changes
-        with step-by-step walkthroughs, and takes you to the code in question when you
-        ask — Google Docs comments over live code, built for the human-agent pair.
+        Marginalis is deliberately turn-based: your agent never types over your
+        shoulder. While you work, it reads the margin and leaves replies, review
+        findings, and guided walkthroughs anchored to the exact lines — even the
+        exact words — they are about. Threads survive edits and restarts, carry
+        per-agent read receipts ("the agent will see this next turn" is a promise,
+        not a hope), and resolve only when their outcome actually lands in code.
+        <br/><br/>
+        <ul>
+        <li><b>Anchored threads</b> — comment on a line, or select the exact words
+        (Alt+Shift+M); anchors track edits and re-find their content after
+        restarts instead of drifting.</li>
+        <li><b>Turn signals</b> — editor-tab glyphs, gutter badges, and a
+        tool-window count answer "is it my turn?" at a glance; a balloon arrives
+        when the agent posts in a file you don't have open.</li>
+        <li><b>Severity as a gate</b> — the agent marks findings <i>blocker</i>
+        ("act before this proceeds") or <i>nit</i> ("dismiss guilt-free"); filter
+        the tree to what actually gates the merge.</li>
+        <li><b>Guided walkthroughs</b> — the agent numbers steps through a change
+        ("look here 1st, 2nd, …"); walk them with the next/previous-occurrence
+        shortcuts, resolve as you go, step totals stay stable.</li>
+        <li><b>A review protocol, not just comments</b> — resolved means the
+        outcome is in the code; read receipts are per agent, so several agents
+        (one designing, one implementing) share a margin without consuming each
+        other's unread.</li>
+        <li><b>Agent-agnostic transport</b> — plain JSON over the IDE's built-in
+        HTTP server; anything that can make an HTTP request can converse. No MCP
+        server, no extra configuration.</li>
+        </ul>
+        <br/>
+        Threads persist per project (<code>.idea/marginalis.json</code>), so the
+        conversation is part of the workspace, not the session. Apache-2.0,
+        source on GitHub.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
