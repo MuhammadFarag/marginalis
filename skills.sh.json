@@ -1,0 +1,11 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Margin conversations",
+      "description": "Turn-based comment threads between you and your coding agent, anchored to lines of live code in a JetBrains IDE. The skill is a doorbell: find the server, fetch its served contract, follow it.",
+      "skills": ["marginalis"]
+    }
+  ]
+}

@@ -7,6 +7,13 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+### Added
+
+- In-repo agent skill (`skills/marginalis/`), installable globally for
+  70+ agents via `npx skills add MuhammadFarag/marginalis -g`: it
+  teaches an agent to find the server, fetch the served agent guide,
+  and follow it. No wrapper script — plain HTTP.
+
 ## [0.1.24] - 2026-07-25
 
 ### Added

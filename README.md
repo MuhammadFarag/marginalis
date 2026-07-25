@@ -3,74 +3,71 @@
 Code conversations with your AI coding agent, in the margins of your
 JetBrains IDE.
 
-Comment threads anchor to lines — or to the exact words you select — survive
-edits and restarts, and resolve when their outcome lands in code. Your agent
-reads and replies between turns over a local HTTP API; you read and reply in
-the editor, where the code is. Google Docs comments over live code, built
-for the human–agent pair.
+Comment threads anchor to lines — or to the exact words you select. They
+survive edits and restarts, and they resolve when their outcome lands in
+code. You write in the editor, where the code is. Your agent reads and
+replies between turns over a local HTTP API. Google Docs comments over
+live code, built for you and your agent.
 
 ## How it works
 
-**You** press <kbd>⌥⇧M</kbd> on a line (or on a selection, to anchor to that
-exact span) and write in the panel that unfolds. Threads show as gutter
-icons; a tool window lists every thread as a directory tree with
-first/prev/next/last walking. Resolving a thread means *its outcome is in
-the code* — the marker drops and the thread moves to the session's Resolved
-log.
+Press <kbd>⌥⇧M</kbd> on a line, or on a selection, and write in the panel
+that unfolds. Threads appear as gutter icons. A tool window lists every
+thread as a directory tree with step-by-step walking. Resolving a thread
+means its outcome is in the code: the marker drops and the thread moves
+to the Resolved log.
 
-**Your agent** talks to the IDE's built-in server on `127.0.0.1:63342` —
-reading unread messages at the start of each turn, replying in-thread,
-resolving what it completes. Messages carry per-agent read receipts, so
-"the agent will see this" is a visible promise (your messages earn a green
-✓ seen), and your message stays editable until it's actually been read.
+Your agent talks to the IDE's built-in server on `127.0.0.1:63342`. It
+reads unread messages at the start of each turn, replies in-thread, and
+resolves what it completes. Messages carry per-agent read receipts, so
+"the agent will see this" is a visible promise. Your message stays
+editable until an agent has read it.
 
-## What's in the margin
+## In the margin
 
-- **Anchors that survive** — line numbers are hints, content is truth:
-  threads re-find their text after edits and restarts, degrade gracefully
-  (a reworded span becomes a line comment, not a loss), and orphans can be
-  rescued by the agent (`comment_reanchor`).
-- **Spans** — select the words, not just the line; the span stays tinted
-  in the editor and the agent is told to heed it.
-- **Severity** — agents mark review findings `blocker` ("act before this
-  proceeds") or `nit` ("dismiss guilt-free"); the tool window filters to
-  Blockers Only or Awaiting You, and bulk actions warn before resolving
-  open blockers. A gate, not a weight: importance lives in prose.
-- **Walkthroughs** — ordered steps across files ("look here 1st, 2nd, …")
-  for reviewing a change; resolving a step auto-advances to the next.
-- **Turn signals, not presence** — stripe badge and "N awaiting you" when
-  the agent spoke last, a clickable balloon when a reply lands in a file
-  you don't have on screen, and nothing that pulses.
-- **A real composer** — markdown with structure highlighting, fenced code
-  rendered through the IDE's own lexer and color scheme, quote-the-selection
-  in one click, and drafts that survive closing the panel.
-- **Multi-agent ready** — agents introduce themselves (`author_name`/
-  `author_id`), get stable per-identity colors, and keep separate read
-  receipts.
+- **Anchors that survive.** Line numbers are hints; content is truth.
+  Threads re-find their text after edits and restarts. A reworded span
+  becomes a line comment instead of a loss, and agents can rescue
+  orphaned threads.
+- **Spans.** Select the words, not just the line. The span stays tinted
+  in the editor, and the agent is told to address it specifically.
+- **Severity.** Agents mark review findings `blocker` ("act before this
+  proceeds") or `nit` ("dismiss guilt-free"). The tool window filters to
+  Blockers Only or Awaiting You. A gate, not a weight: importance lives
+  in prose.
+- **Walkthroughs.** Ordered steps across files for reviewing a change.
+  Resolving a step advances to the next.
+- **Turn signals, not presence.** A stripe badge and "N awaiting you"
+  when the agent spoke last. A clickable balloon when a reply lands in a
+  file that is not on screen. Nothing pulses.
+- **A real composer.** Markdown with structure highlighting, code fences
+  rendered through the IDE's own color scheme, quote-the-selection in one
+  click, and drafts that survive closing the panel.
+- **Multiple agents.** Agents introduce themselves, get stable
+  per-identity colors, and keep separate read receipts.
 
 ## Install
 
-Grab the latest `marginalis-*.zip` from
-[Releases](https://github.com/MuhammadFarag/marginalis/releases) →
+Download the latest `marginalis-*.zip` from
+[Releases](https://github.com/MuhammadFarag/marginalis/releases), then
 Settings → Plugins → ⚙ → *Install Plugin from Disk*. Settings live under
-*Tools → Marginalis* (display name, navigation consent, notifications,
-walkthrough auto-advance, time format).
+*Tools → Marginalis*.
 
 ## Agent integration
 
-The plugin serves its own agent manual, version-matched by construction —
-teaching any agent to use Marginalis is one instruction:
+The plugin serves its own agent manual, so the documentation always
+matches the installed version. Teaching an agent Marginalis takes one
+instruction:
 
 ```
 Ping http://127.0.0.1:63342/api/marginalis/ping — if Marginalis answers,
 GET /api/marginalis/agent_guide and follow it.
 ```
 
-The guide (markdown, CI-checked to cover every endpoint) carries the full
-contract: the turn-based etiquette, identity and per-agent read receipts,
-the anchoring rules, severity and walkthrough vocabulary, orphan rescue,
-and the API reference. The API itself is plain JSON over the IDE's
-built-in server:
+The guide covers turn etiquette, identity and read receipts, anchoring
+rules, severity and walkthrough vocabulary, orphan rescue, and the full
+API reference. CI checks that it mentions every endpoint. The API itself
+is plain JSON over the built-in server:
 
 ```
 GET  ping · agent_guide · comment_list?file=&status=&unread_only=&project=
@@ -81,11 +78,21 @@ POST comment_resolve_all {file?} · comment_clear_all {file?}
 POST navigate {file, line, anchor_text?, project?}      (consent-gated)
 ```
 
-`line` is 1-based and treated as a hint — pass `anchor_text` (the line's
-content) and the server verifies or searches nearby, answering 409 when
-your picture of the file is stale. Errors are written to be acted on.
-A Claude Code skill wrapping this API (sweep habits, wrapper script,
-identity) ships alongside the plugin and defers to the served guide.
+`line` is 1-based and treated as a hint. Pass `anchor_text` (the line's
+content) and the server verifies it or searches nearby, answering 409
+when your picture of the file is stale. Errors are written to be acted
+on.
+
+### Give your agent the skill
+
+```sh
+npx skills add MuhammadFarag/marginalis -g
+```
+
+This installs the Marginalis skill (`skills/marginalis/`) for Claude
+Code, Cursor, and [70+ other agents](https://skills.sh). The skill
+teaches an agent to find the server, fetch the guide, and follow it.
+Plain HTTP; no wrapper scripts.
 
 ## Building from source
 
@@ -96,9 +103,8 @@ JDK 21+, no other setup:
 ./gradlew runIde         # sandbox IDE with the plugin
 ```
 
-Layout: `core/` is pure Kotlin — model, thread lifecycle, anchoring policy,
-persistence codec, tested via `scripts/test-core.sh` — and the plugin module
-is adapters around it: `transport/` (REST endpoints), `store/` (project
-service pairing threads with live markers), `ui/` (panels, gutter,
-tool window), `settings/`. CI verifies against the declared 2025.2 floor
-with the Plugin Verifier; releases are tags (`v*`).
+`core/` is pure Kotlin: the model, thread lifecycle, anchoring policy,
+and persistence codec, tested via `scripts/test-core.sh`. The plugin
+module is adapters around it: `transport/`, `store/`, `ui/`, `settings/`.
+CI verifies against the declared 2025.2 floor with the Plugin Verifier.
+Releases are tags (`v*`).

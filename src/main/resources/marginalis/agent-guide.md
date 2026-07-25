@@ -4,9 +4,9 @@ You are reading the contract served by the installed plugin itself
 (`GET /api/marginalis/agent_guide`), so it always matches the server
 you are talking to. `ping` tells you the exact version.
 
-Marginalis is margin conversation between you and the human: comment
+Marginalis is margin conversation between you and the user: comment
 threads anchored to lines of live code, rendered inside their JetBrains
-IDE. The channel is **turn-based** — the human is always present; you
+IDE. The channel is **turn-based** — the user is always present; you
 exist during a turn. You never type into their buffer; you leave notes,
 replies, review findings, and guided walkthroughs in the margin, and
 you read what they left you. Everything below follows from that
@@ -40,11 +40,11 @@ names ("Claude · design" / "Claude · impl") with distinct ids.
 ## The three habits
 
 **1. Start every turn with the unread sweep.**
-`GET comment_list?unread_only=true&author_id=…` — the human leaves
+`GET comment_list?unread_only=true&author_id=…` — the user leaves
 comments and replies while you're away, born unread. Reading marks them
 seen (`newly_seen` per message, `marked_seen` total): that receipt is
-the promise the human relies on, so always read the bodies you consume,
-and answer in-thread — a human reply is guaranteed a response.
+the promise the user relies on, so always read the bodies you consume,
+and answer in-thread — a user reply is guaranteed a response.
 
 **2. Never edit a file that has open threads.**
 `GET comment_list?file=<path>&status=open` before editing. Open threads
@@ -54,9 +54,9 @@ and resolve. Editing underneath an open thread orphans the discussion.
 
 **3. The resolver is the completer.**
 `RESOLVED` means "the outcome is in the code, or explicitly moot" — the
-gutter marker disappears at that moment. A human reply of "do it" is
+gutter marker disappears at that moment. A user reply of "do it" is
 approval, not completion: make the edit first, then resolve. If the
-human resolves a thread themselves while action seems pending, ask
+user resolves a thread themselves while action seems pending, ask
 rather than assuming. Resolve immediately only when no action is needed.
 
 ## Anchoring
@@ -73,7 +73,7 @@ rather than assuming. Resolve immediately only when no action is needed.
 
 ## Spans (read-only for you)
 
-A thread may carry `segment {exact, prefix?, suffix?}`: the human
+A thread may carry `segment {exact, prefix?, suffix?}`: the user
 selected those exact words within the line. Their gesture was precise;
 address the quoted span specifically, not the line in general. Agents
 cannot create segments — `comment_add` anchors to lines.
@@ -86,7 +86,7 @@ omit for everything in between, which is most comments. The vocabulary
 is exactly those two words — anything else is rejected with a teaching
 400; fix the word or drop the field, never retry with a synonym. Never
 write the level into the body ("HIGH:", "Blocker:") — the UI carries it
-everywhere it matters and the human can filter to blockers. Importance
+everywhere it matters and the user can filter to blockers. Importance
 is not severity; importance lives in your prose, argued with reasons.
 
 ## Walkthroughs
@@ -101,7 +101,7 @@ explaining how code hangs together, or onboarding. Create steps with
   all three (steps render as "(2/5)" in a tree sorted in walking order).
 - Order by the code's structure — entry point first, then callees —
   never by severity; severity has its own channel.
-- The human walks with next/previous controls and resolves steps as they
+- The user walks with next/previous controls and resolves steps as they
   go. A step resolved without a reply is seen-and-approved; a reply is a
   change request — land the change first, then resolve it.
 
@@ -117,9 +117,9 @@ reply saying so and resolve.
 
 ## Navigation
 
-`navigate` opens the file in the human's editor with the caret on the
+`navigate` opens the file in the user's editor with the caret on the
 line — pointing without creating a thread. Use it **only on explicit
-request** ("show me", "take me there"); never move the human's caret
+request** ("show me", "take me there"); never move the user's caret
 uninvited. A 403 means they switched agent navigation off in settings —
 tell them, don't retry.
 
@@ -148,7 +148,7 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 | `POST comment_reopen {thread_id}` | resurface a resolved thread |
 | `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue |
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed |
-| `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit human request, and sweep unread first |
+| `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first |
 | `POST navigate {file, line, anchor_text?, project?}` | consent-gated pointing |
 
 Message bodies render as CommonMark: emphasis, lists, and fenced code
