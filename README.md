@@ -86,13 +86,15 @@ on.
 ### Give your agent the skill
 
 ```sh
-npx skills add MuhammadFarag/marginalis -g
+npx skills add MuhammadFarag/marginalis -g -y
 ```
 
 This installs the Marginalis skill (`skills/marginalis/`) for Claude
-Code, Cursor, and [70+ other agents](https://skills.sh). The skill
-teaches an agent to find the server, fetch the guide, and follow it.
-Plain HTTP; no wrapper scripts.
+Code, Cursor, and [70+ other agents](https://skills.sh). `-g` installs
+globally, so the skill is available in every project rather than only
+the current one. `-y` accepts the prompts, so the command runs
+unattended. The skill teaches an agent to find the server, fetch the
+guide, and follow it. Plain HTTP; no wrapper scripts.
 
 ## Building from source
 
