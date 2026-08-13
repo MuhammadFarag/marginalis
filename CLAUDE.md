@@ -50,5 +50,12 @@ is running the plugin:
   issue when the work lands. `docs/BACKLOG.md` is the historical shipped
   record and decision log, append-only. Don't gold-plate ahead of the
   agreed item.
+- Issue labels — apply on filing, keep current: `api` (the agent-facing
+  HTTP contract and served guide) and `ux` (the in-IDE experience) are
+  areas, both when a change spans them; `qol` marks friction removers
+  on what already works (batchable between feature releases), as
+  opposed to new capability; `refine` means a design conversation with
+  the user must settle before code — never start a `refine` issue
+  without that conversation, and drop the label once it happens.
 - Guided vocabulary is "walkthrough"/"steps" (wire param `walkthrough`,
   UI actions First/Previous/Next/Last Step).
