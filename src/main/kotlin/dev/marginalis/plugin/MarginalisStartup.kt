@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.CommentThread
@@ -19,10 +20,10 @@ import dev.marginalis.plugin.ui.MarginalisMarkers
 
 /**
  * Project wiring:
- * 1. Rehydrate persisted threads and re-anchor OPEN ones by content — the
- *    file may have changed while the IDE was closed, so the persisted line
- *    is only a hint; no match within the search window means ORPHANED,
- *    never a guessed anchor.
+ * 1. Rehydrate persisted threads, each by the rule its anchor implies (see
+ *    [rehydrate]) — the files may have changed while the IDE was closed, so
+ *    a persisted line is only a hint; no match within the search window
+ *    means ORPHANED, never a guessed anchor.
  * 2. Keep collapsed state honest on every change: markers dropped on
  *    resolve/delete, re-attached on reopen, renderers refreshed, tab-title
  *    glyphs updated.
@@ -56,7 +57,7 @@ class MarginalisStartup : ProjectActivity {
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 for (thread in persisted) {
-                    if (thread.status is ThreadStatus.Open) reanchor(project, thread)
+                    rehydrate(project, thread)
                     store.threads.addSilently(thread)
                 }
                 // Attach assigns solo icons; group shared lines per file.
@@ -68,14 +69,34 @@ class MarginalisStartup : ProjectActivity {
     }
 
     /**
-     * Re-anchor a rehydrated OPEN thread by content; orphan on no match.
+     * Put a persisted thread back where it belongs, by the rule its anchor
+     * implies. A file-level thread's only anchor is the path: it orphans
+     * when the file is gone and comes back by itself when the path exists
+     * again — nothing was lost, so nothing needs rescuing. A line thread
+     * re-anchors by content while it is open; an orphaned one stays
+     * orphaned, because moving a line anchor is the agent's call
+     * (comment_reanchor), not a guess made at startup. EDT.
+     */
+    private fun rehydrate(project: Project, thread: CommentThread) {
+        val vFile = project.guessProjectDir()?.findFileByRelativePath(thread.file)
+        if (thread.isFileLevel) {
+            when {
+                vFile == null -> thread.markOrphaned()
+                thread.status is ThreadStatus.Orphaned -> thread.reopen()
+            }
+            return
+        }
+        if (thread.status !is ThreadStatus.Open) return
+        reanchor(project, thread, vFile)
+    }
+
+    /**
+     * Re-anchor a rehydrated OPEN line thread by content; orphan on no match.
      * The ladder lives in AnchorPolicy: a segment that re-finds its quote
      * spans it again, a reworded span degrades to its line, and only a
      * vanished line orphans. EDT.
      */
-    private fun reanchor(project: Project, thread: CommentThread) {
-        val base = project.guessProjectDir()
-        val vFile = base?.findFileByRelativePath(thread.file)
+    private fun reanchor(project: Project, thread: CommentThread, vFile: VirtualFile?) {
         val document = vFile?.let { FileDocumentManager.getInstance().getDocument(it) }
         if (document == null) {
             thread.markOrphaned()
@@ -84,8 +105,8 @@ class MarginalisStartup : ProjectActivity {
         val found = AnchorPolicy.findAnchor(
             lineCount = document.lineCount,
             lineTextAt = { lineText(document, it) },
-            nearLine = thread.line,
-            anchorText = thread.anchorText,
+            nearLine = thread.line ?: 0,
+            anchorText = thread.anchorText ?: "",
             segment = thread.segment,
         )
         if (found == null) {
@@ -121,6 +142,9 @@ class MarginalisStartup : ProjectActivity {
                     store.removeMarker(thread)
                 }
             }
+
+            // File-level threads are deliberately markerless — nothing to sync.
+            thread.isFileLevel -> {}
 
             thread.status is ThreadStatus.Open && (marker == null || !marker.isValid) -> {
                 val base = project.guessProjectDir() ?: return

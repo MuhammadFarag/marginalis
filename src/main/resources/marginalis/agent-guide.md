@@ -73,12 +73,32 @@ rather than assuming. Resolve immediately only when no action is needed.
   dropping `anchor_text` — that trades an honest failure for a comment
   silently pinned to the wrong line.
 
+## File-level threads
+
+Omit `line` on `comment_add` and the thread is about the **file itself** —
+its shape, its name, the README it lacks. Reach for it only when no line
+is the subject; a line is always the sharper instrument.
+
+- Nothing to anchor, so nothing to re-find: `anchor_text` without `line`
+  is a teaching 400, and `comment_reanchor` refuses such a thread.
+- The response drops `line` and `line_adjusted`; in `comment_list` these
+  threads carry no `line` field and sort before their file's line threads.
+- They orphan only when the file itself disappears, and reopen on their
+  own when the path comes back — no rescue to perform.
+- `severity`, `order`, and `walkthrough` work unchanged; stepping to a
+  file-level step opens the file at the top. Such a thread may carry a
+  `segment` as provenance — the user's selection that sparked it, not an
+  anchor.
+
 ## Spans (read-only for you)
 
 A thread may carry `segment {exact, prefix?, suffix?}`: the user
 selected those exact words within the line. Their gesture was precise;
-address the quoted span specifically, not the line in general. Agents
-cannot create segments — `comment_add` anchors to lines.
+address the quoted span specifically, not the line in general. On a
+file-level thread the same field is provenance instead — the words that
+sparked a comment about the whole file; read them as the origin of the
+thought, not as its subject. Agents cannot create segments —
+`comment_add` anchors to lines.
 
 ## Severity
 
@@ -131,10 +151,11 @@ reply saying so and resolve.
 ## Navigation
 
 `navigate` opens the file in the user's editor with the caret on the
-line — pointing without creating a thread. Use it **only on explicit
-request** ("show me", "take me there"); never move the user's caret
-uninvited. A 403 means they switched agent navigation off in settings —
-tell them, don't retry.
+line — pointing without creating a thread. Omit `line` to open the file
+at the top when the file, not a place in it, is what you mean. Use it
+**only on explicit request** ("show me", "take me there"); never move
+the user's caret uninvited. A 403 means they switched agent navigation
+off in settings — tell them, don't retry.
 
 ## Multiple projects
 
@@ -155,14 +176,14 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
 | `GET comment_list?file=&status=open\|resolved\|orphaned&unread_only=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
-| `POST comment_add {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread (line-anchored) → `{thread_id, file, line, line_adjusted, status}` |
+| `POST comment_add {file, body, line?, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}` |
 | `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}` |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
 | `POST comment_reopen {thread_id}` | resurface a resolved thread → `{thread_id, status}` |
-| `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue → `{thread_id, line, status}` |
+| `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue, line threads only (file-level → 400) → `{thread_id, line, status}` |
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed → `{resolved: <count>}` |
 | `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first → `{cleared: <count>}` |
-| `POST navigate {file, line, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}` |
+| `POST navigate {file, line?, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}`; without `line`, opens the file at the top → `{navigated, file}` |
 
 A `comment_list` thread, in full:
 
@@ -185,7 +206,9 @@ Field notes: `author` is always an object — `kind` is `agent` or
 `newly_seen` marks messages this very listing consumed for your
 identity; `seen_by` lists the identities that have read the message.
 Timestamps are ISO-8601 UTC; `line` in every response is 1-based and
-current (already re-anchored), not necessarily where the thread began.
+current (already re-anchored), not necessarily where the thread began —
+and absent entirely on a file-level thread. Threads arrive in reading
+order: by file, file-level first within each file, then down the lines.
 
 ## Persistence
 

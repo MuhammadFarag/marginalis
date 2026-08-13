@@ -14,7 +14,8 @@ import dev.marginalis.plugin.ui.ThreadInlayManager
  * structures that outlive the classloader. Two of them exist:
  *
  *  - gutter highlighters live on the persistent document markup model, each
- *    holding a ThreadGutterIconRenderer;
+ *    holding a ThreadGutterIconRenderer — both the per-thread markers and
+ *    the per-file glyphs beside line 1;
  *  - thread panels live as inlays and user data on open editors.
  *
  * Anything left behind pins the unloaded classloader and the IDE falls back
@@ -32,12 +33,11 @@ class MarginalisUnloadListener : DynamicPluginListener {
             val store = MarginalisStore.getInstance(project)
             store.syncLines()
             MarginalisPersistence.save(project, store.threads.all())
-            for (thread in store.threads.all()) {
-                store.removeMarker(thread)?.let { marker ->
-                    if (marker.isValid) {
-                        DocumentMarkupModel.forDocument(marker.document, project, false)
-                            ?.removeHighlighter(marker)
-                    }
+            val ours = store.threads.all().mapNotNull { store.removeMarker(it) } + store.clearFileGlyphs()
+            for (marker in ours) {
+                if (marker.isValid) {
+                    DocumentMarkupModel.forDocument(marker.document, project, false)
+                        ?.removeHighlighter(marker)
                 }
             }
         }

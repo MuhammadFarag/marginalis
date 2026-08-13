@@ -29,8 +29,10 @@ object ThreadsCodec {
     private fun threadJson(thread: CommentThread): JsonObject = JsonObject().apply {
         addProperty("id", thread.id)
         addProperty("file", thread.file)
-        addProperty("line", thread.line)
-        addProperty("anchor_text", thread.anchorText)
+        // A file-level thread writes neither — absence IS the shape, and it
+        // reads back as one (see [thread]).
+        thread.line?.let { addProperty("line", it) }
+        thread.anchorText?.let { addProperty("anchor_text", it) }
         thread.segment?.let { seg ->
             add(
                 "segment",
@@ -66,10 +68,14 @@ object ThreadsCodec {
     }
 
     private fun thread(json: JsonObject): CommentThread {
+        // No "line" means file-level. A line without "anchor_text" is not
+        // the same thing — it's a pre-anchor-text thread, and it keeps its
+        // line with an empty fingerprint rather than losing its place.
+        val line = json.get("line")?.takeIf { it.isJsonPrimitive }?.asInt
         val thread = CommentThread(
             file = json.get("file").asString,
-            line = json.get("line").asInt,
-            anchorText = json.get("anchor_text")?.asString ?: "",
+            line = line,
+            anchorText = json.get("anchor_text")?.takeIf { it.isJsonPrimitive }?.asString ?: line?.let { "" },
             id = json.get("id").asString,
             createdAt = Instant.parse(json.get("created_at").asString),
             order = json.get("order")?.takeIf { it.isJsonPrimitive }?.asInt,

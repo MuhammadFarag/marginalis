@@ -135,6 +135,52 @@ class ThreadsCodecTest {
     }
 
     @Test
+    fun `a file-level thread writes no anchor and reads back without one`() {
+        val fileLevel = CommentThread("src/a.py", line = null, anchorText = null, severity = Severity.NIT, order = 1)
+        fileLevel.addMessage(Message(Author.Agent("Claude", id = "claude-1"), "this module needs a README"))
+
+        val encoded = ThreadsCodec.encode(listOf(fileLevel))
+        assertFalse(encoded.contains("\"line\""))
+        assertFalse(encoded.contains("\"anchor_text\""))
+
+        val decoded = ThreadsCodec.decode(encoded).single()
+        assertTrue(decoded.isFileLevel)
+        assertEquals(null, decoded.line)
+        assertEquals(null, decoded.anchorText)
+        assertEquals(Severity.NIT, decoded.severity)
+        assertEquals(1, decoded.order)
+        assertEquals("this module needs a README", decoded.messages.single().body)
+    }
+
+    @Test
+    fun `a file-level thread's provenance segment survives the trip without an anchor`() {
+        val sparkedBy = Segment("curr", prefix = "prev, ", suffix = " =")
+        val fileLevel = CommentThread("src/a.py", line = null, anchorText = null, segment = sparkedBy)
+
+        val encoded = ThreadsCodec.encode(listOf(fileLevel))
+        assertFalse(encoded.contains("\"line\""))
+        assertTrue(encoded.contains("\"segment\""))
+
+        val decoded = ThreadsCodec.decode(encoded).single()
+        assertTrue(decoded.isFileLevel)
+        assertEquals(sparkedBy, decoded.segment)
+    }
+
+    @Test
+    fun `a persisted line with no anchor text is still a line thread, not a file-level one`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t6","file":"a.py","line":3,
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]
+            }]}
+        """.trimIndent()
+        val thread = ThreadsCodec.decode(legacy).single()
+        assertFalse(thread.isFileLevel)
+        assertEquals(3, thread.line)
+        assertEquals("", thread.anchorText)
+    }
+
+    @Test
     fun `agent identity survives the trip`() {
         val t = CommentThread("a.py", 1, "x")
         t.addMessage(Message(Author.Agent("Some Other Agent", id = "soa-42"), "hi"))

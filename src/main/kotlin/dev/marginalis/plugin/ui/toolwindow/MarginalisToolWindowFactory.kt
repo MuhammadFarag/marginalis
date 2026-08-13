@@ -32,9 +32,11 @@ import dev.marginalis.core.AggregateState
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.PathTrie
 import dev.marginalis.core.Severity
+import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.FileLevelThreads
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
@@ -129,7 +131,7 @@ private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
     override fun actionPerformed(e: AnActionEvent) = panel.goLast()
 }
 
-private enum class TreeFilter(val title: String) {
+internal enum class TreeFilter(val title: String) {
     ALL("All"),
     BLOCKERS("Blockers Only"),
     AWAITING("Awaiting You"),
@@ -225,7 +227,7 @@ private sealed class NodeData {
     class ThreadNode(val thread: CommentThread, val walkthroughPrefix: String? = null) : NodeData()
 }
 
-private class MarginalisToolWindowPanel(private val project: Project) :
+internal class MarginalisToolWindowPanel(private val project: Project) :
     JPanel(BorderLayout()), UiDataProvider, OccurenceNavigator {
 
     private val tree = Tree()
@@ -289,6 +291,24 @@ private class MarginalisToolWindowPanel(private val project: Project) :
         }
     }
 
+    /**
+     * Put the cursor on one file's node — where the editor banner's "Open"
+     * lands. Files are identified by the threads beneath them, so a path
+     * that isn't in the tree (all resolved, or filtered out) simply leaves
+     * the selection alone.
+     */
+    fun selectFile(file: String) {
+        val root = tree.model.root as? DefaultMutableTreeNode ?: return
+        val node = root.preorderEnumeration().asSequence()
+            .filterIsInstance<DefaultMutableTreeNode>()
+            .firstOrNull { candidate ->
+                (candidate.userObject as? NodeData.FileNode)?.threads?.any { it.file == file } == true
+            } ?: return
+        val path = TreePath(node.path)
+        tree.selectionPath = path
+        tree.scrollPathToVisible(path)
+    }
+
     private fun selectedThread(): CommentThread? {
         val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return null
         return (node.userObject as? NodeData.ThreadNode)?.thread
@@ -330,6 +350,15 @@ private class MarginalisToolWindowPanel(private val project: Project) :
             }
             is NodeData.FileNode, is NodeData.DirNode -> {
                 val threads = threadsUnder(node)
+                // The user's way into a file-level thread: the file node is
+                // the one place in this tree that means a whole file.
+                if (data is NodeData.FileNode) {
+                    threads.firstOrNull()?.file?.let { path ->
+                        menu.add(JMenuItem("Comment on File").apply {
+                            addActionListener { FileLevelThreads.startDraft(project, path) }
+                        })
+                    }
+                }
                 val open = threads.filter { it.status !is ThreadStatus.Resolved }
                 if (open.isNotEmpty()) {
                     menu.add(JMenuItem("Resolve ${open.size} Open Thread(s)…").apply {
@@ -524,7 +553,9 @@ private class MarginalisToolWindowPanel(private val project: Project) :
      * Emit the trie, compressing single-child directory chains (a/b/c → one
      * node). With [prefixFor] (guided mode), directories/files sort by their
      * earliest walkthrough step and threads by walkthrough order, so the tree reads
-     * top-to-bottom in roughly walking order; otherwise alphabetical/by-line.
+     * top-to-bottom in roughly walking order; otherwise alphabetical, and
+     * within a file in reading order (see [ThreadOrder.byAnchor]: what is
+     * about the whole file first, then down the lines).
      */
     private fun emitTrie(
         trie: PathTrie,
@@ -556,7 +587,7 @@ private class MarginalisToolWindowPanel(private val project: Project) :
             val fileNode = DefaultMutableTreeNode(NodeData.FileNode(fileName, fileThreads))
             val ordered =
                 if (prefixFor != null) fileThreads.sortedWith(compareBy({ it.order }, { it.createdAt }))
-                else fileThreads.sortedBy { it.line }
+                else fileThreads.sortedWith(ThreadOrder.byAnchor)
             for (thread in ordered) {
                 fileNode.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread, prefixFor?.invoke(thread))))
             }
@@ -617,12 +648,14 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 icon = when {
                     thread.status is ThreadStatus.Resolved -> AllIcons.General.GreenCheckmark
                     thread.status is ThreadStatus.Orphaned -> AllIcons.General.Warning
+                    // Its own mark: this one is about the file, not a place in it.
+                    thread.isFileLevel -> AllIcons.FileTypes.Any_type
                     else -> AllIcons.General.Balloon
                 }
                 if (data.walkthroughPrefix != null) {
                     append("${data.walkthroughPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
-                append("L${thread.line + 1}  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                append(thread.line?.let { "L${it + 1}  " } ?: "file  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 // One loud mark, one quiet mark, silence: word + color, never
                 // color alone. A nit de-emphasizes its whole row.
                 when (thread.severity) {

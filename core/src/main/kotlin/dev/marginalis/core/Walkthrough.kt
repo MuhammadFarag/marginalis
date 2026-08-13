@@ -7,8 +7,8 @@ package dev.marginalis.core
  * surface that walks (thread panel buttons, tool window) must agree on the
  * sequence, so the rules live here, once. A walkthrough step walks its own
  * walkthrough in step order (never bleeding into a neighboring
- * walkthrough); an unordered thread walks every open thread in
- * directory-tree order (see [PathTrie.pathOrder]), then by line.
+ * walkthrough); an unordered thread walks every open thread in the canonical
+ * reading order (see [ThreadOrder.byAnchor]).
  */
 object Walkthrough {
 
@@ -19,10 +19,7 @@ object Walkthrough {
             open.filter { it.order != null && (it.walkthrough ?: "") == (thread.walkthrough ?: "") }
                 .sortedWith(compareBy({ it.order }, { it.createdAt }))
         } else {
-            open.sortedWith(
-                Comparator<CommentThread> { a, b -> PathTrie.pathOrder(a.file, b.file) }
-                    .thenComparingInt { it.line },
-            )
+            open.sortedWith(ThreadOrder.byAnchor)
         }
         return walk to walk.indexOfFirst { it.id == thread.id }
     }

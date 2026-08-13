@@ -79,31 +79,36 @@ class AddCommentAction : AnAction() {
         ThreadInlayManager.openDraft(project, editor, CommentThread(relPath, line, anchorText, segment = segment))
     }
 
-    /**
-     * The selection as a quote selector — captured live, never guessed.
-     * Segments stay line-scoped (the context that re-finds them is the
-     * line), so a multi-line selection clamps to its first line: the
-     * gesture still earns a quoted span instead of silently degrading to
-     * a whole-line thread (operator finding). Empty selections — or ones
-     * whose first-line portion is blank — stay whole-line threads.
-     */
-    private fun captureSegment(editor: Editor): Segment? {
-        val selection = editor.selectionModel
-        if (!selection.hasSelection()) return null
-        val document = editor.document
-        val start = selection.selectionStart
-        val line = document.getLineNumber(start)
-        val end = minOf(selection.selectionEnd, document.getLineEndOffset(line))
-        val exact = document.getText(TextRange(start, end))
-        if (exact.isBlank()) return null
-        val lineStart = document.getLineStartOffset(line)
-        val lineEnd = document.getLineEndOffset(line)
-        val prefixFrom = maxOf(lineStart, start - AnchorPolicy.SEGMENT_CONTEXT)
-        val suffixTo = minOf(lineEnd, end + AnchorPolicy.SEGMENT_CONTEXT)
-        return Segment(
-            exact = exact,
-            prefix = document.getText(TextRange(prefixFrom, start)),
-            suffix = document.getText(TextRange(end, suffixTo)),
-        )
+    companion object {
+        /**
+         * The selection as a quote selector — captured live, never guessed.
+         * Segments stay line-scoped (the context that re-finds them is the
+         * line), so a multi-line selection clamps to its first line: the
+         * gesture still earns a quoted span instead of silently degrading to
+         * a whole-line thread (operator finding). Empty selections — or ones
+         * whose first-line portion is blank — stay whole-line threads.
+         *
+         * Shared with "Comment on File", where the same capture is kept as
+         * provenance rather than as an anchor.
+         */
+        fun captureSegment(editor: Editor): Segment? {
+            val selection = editor.selectionModel
+            if (!selection.hasSelection()) return null
+            val document = editor.document
+            val start = selection.selectionStart
+            val line = document.getLineNumber(start)
+            val end = minOf(selection.selectionEnd, document.getLineEndOffset(line))
+            val exact = document.getText(TextRange(start, end))
+            if (exact.isBlank()) return null
+            val lineStart = document.getLineStartOffset(line)
+            val lineEnd = document.getLineEndOffset(line)
+            val prefixFrom = maxOf(lineStart, start - AnchorPolicy.SEGMENT_CONTEXT)
+            val suffixTo = minOf(lineEnd, end + AnchorPolicy.SEGMENT_CONTEXT)
+            return Segment(
+                exact = exact,
+                prefix = document.getText(TextRange(prefixFrom, start)),
+                suffix = document.getText(TextRange(end, suffixTo)),
+            )
+        }
     }
 }

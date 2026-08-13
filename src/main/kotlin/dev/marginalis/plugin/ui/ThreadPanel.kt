@@ -23,6 +23,7 @@ import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBOptionButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.marginalis.core.Author
@@ -40,15 +41,17 @@ import java.awt.FlowLayout
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
+import java.awt.event.ActionEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import javax.swing.AbstractAction
+import javax.swing.Action
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.Icon
-import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.KeyStroke
@@ -69,7 +72,20 @@ class ThreadPanel(
 
     private val messagesBox = Box.createVerticalBox()
     private val statusLabel = JBLabel()
-    private val sendButton = JButton()
+
+    /**
+     * Submit, with an alternative destination hanging off it — the
+     * Commit/Commit-and-Push shape. The default action always does what the
+     * composer says it will; the dropdown offers the one retarget worth
+     * having, and only while nothing has been sent yet (see [refresh]).
+     */
+    private val submitAction = object : AbstractAction("Submit") {
+        override fun actionPerformed(e: ActionEvent?) = sendReply()
+    }
+    private val commentOnFileAction = object : AbstractAction("Comment on file instead") {
+        override fun actionPerformed(e: ActionEvent?) = submitAsFileLevel()
+    }
+    private val sendButton = JBOptionButton(submitAction, arrayOf(commentOnFileAction))
     private val replyRow = JPanel(BorderLayout()).apply {
         isOpaque = false
         border = JBUI.Borders.emptyTop(4)
@@ -390,7 +406,6 @@ class ThreadPanel(
      */
     private fun buildReplyRow(): JComponent {
         sendButton.font = JBUI.Fonts.smallFont()
-        sendButton.addActionListener { sendReply() }
         cancelEditLink.font = JBUI.Fonts.smallFont()
         val quoteLink = ActionLink("") { quoteIntoReply() }.apply {
             icon = AllIcons.Actions.MenuPaste
@@ -459,8 +474,8 @@ class ThreadPanel(
     private fun quoteIntoReply() {
         val quoted = editor.selectionModel.selectedText
             ?: thread.segment?.exact
-            ?: thread.anchorText.trim()
-        if (quoted.isBlank()) return
+            ?: thread.anchorText?.trim()
+        if (quoted.isNullOrBlank()) return
         val lang = thread.file.substringAfterLast('.', "")
         val fence = "```$lang\n$quoted\n```\n"
         replyArea.text = when {
@@ -500,6 +515,26 @@ class ThreadPanel(
         setComposerExpanded(false)
         MarginalisStore.getInstance(project).drafts.remove(thread.id)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+    }
+
+    /**
+     * The dropdown's destination: land this unsent draft as a thread about
+     * the whole file instead of the line it started on. The selection that
+     * sparked it rides along as provenance — the user pointed at those words
+     * even if what they had to say outgrew them — and the line draft, which
+     * was never stored, simply ends.
+     */
+    private fun submitAsFileLevel() {
+        val body = replyArea.text.trim()
+        if (body.isEmpty()) return
+        val store = MarginalisStore.getInstance(project)
+        val aboutTheFile = CommentThread(thread.file, line = null, anchorText = null, segment = thread.segment)
+        aboutTheFile.addMessage(Message(Authors.user, body))
+        replyArea.text = ""
+        store.drafts.remove(thread.id)
+        onClose()
+        store.threads.add(aboutTheFile)
+        WalkthroughNavigator.navigateTo(project, aboutTheFile)
     }
 
     fun focusReply() {
@@ -566,14 +601,27 @@ class ThreadPanel(
         // transmitted anywhere, the message lands in the local store awaiting
         // the agent's next read. While editing, the composer becomes the
         // editor: Save + Cancel.
-        sendButton.text = when {
-            editingMessageId != null -> "Save"
-            thread.messages.isEmpty() -> "Submit"
-            else -> "Reply"
-        }
+        submitAction.putValue(
+            Action.NAME,
+            when {
+                editingMessageId != null -> "Save"
+                thread.messages.isEmpty() -> "Submit"
+                else -> "Reply"
+            },
+        )
+        // The retarget is offered only where it is still a choice: a thread
+        // being started, on a line. A reply belongs to the thread it is in,
+        // and a thread already about the file has nowhere else to go.
+        sendButton.options = if (isDraft() && !thread.isFileLevel) arrayOf(commentOnFileAction) else emptyArray()
         cancelEditLink.isVisible = editingMessageId != null
         replyArea.setPlaceholder(
-            if (thread.messages.isEmpty()) "Comment on this line… (⌘⏎ to submit)" else "Reply… (⌘⏎ to submit)",
+            when {
+                thread.messages.isNotEmpty() -> "Reply… (⌘⏎ to submit)"
+                // The composer names its own subject: a file-level panel
+                // opens at the top of the file, where "this line" would lie.
+                thread.isFileLevel -> "Comment on this file… (⌘⏎ to submit)"
+                else -> "Comment on this line… (⌘⏎ to submit)"
+            },
         )
 
         messagesBox.removeAll()

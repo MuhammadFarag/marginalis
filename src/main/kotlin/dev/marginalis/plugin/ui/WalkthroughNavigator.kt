@@ -25,11 +25,16 @@ object WalkthroughNavigator {
     fun stableTotal(project: Project, thread: CommentThread): Int? =
         Walkthrough.stableTotal(MarginalisStore.getInstance(project).threads.all(), thread)
 
-    /** Open the thread's file at its live line and pop its panel — the double-click behavior. */
+    /**
+     * Open the thread's file at its live line and pop its panel — the
+     * double-click behavior. A file-level thread has no line to land on, so
+     * it opens the file at the top: the whole file is what it is about.
+     */
     fun navigateTo(project: Project, thread: CommentThread) {
         val base = project.guessProjectDir() ?: return
         val vFile = base.findFileByRelativePath(thread.file) ?: return
-        OpenFileDescriptor(project, vFile, MarginalisStore.getInstance(project).currentLine(thread), 0).navigate(true)
+        val line = MarginalisStore.getInstance(project).currentLine(thread) ?: 0
+        OpenFileDescriptor(project, vFile, line, 0).navigate(true)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
         ThreadInlayManager.open(project, editor, thread)
     }

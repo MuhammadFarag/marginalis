@@ -58,6 +58,15 @@
                  was taken in real use — operator-picked replacement. -->
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift M"/>
         </action>
+        <!-- The entry point that needs nothing to exist first: a file with no
+             threads at all had no way to start one about itself (#15). -->
+        <action id="marginalis.commentOnFile"
+                class="dev.marginalis.plugin.actions.CommentOnFileAction"
+                text="Comment on File"
+                icon="AllIcons.FileTypes.Any_type"
+                description="Start a margin thread about this file as a whole — no line, nothing to drift">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="marginalis.addComment"/>
+        </action>
     </actions>
 
     <applicationListeners>

@@ -9,6 +9,30 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
+- File-level threads (#12): omit `line` on `comment_add` and the thread
+  is about the file itself — its shape, its name, the README it lacks —
+  with no anchor to drift and nothing to re-find. A page glyph in the
+  gutter beside line 1 marks a file that has them; clicking it unfolds
+  the conversation above the first line, above all the code it is about.
+  The glyph is display only: it never anchors anything, and these threads
+  orphan only when the file itself disappears, reopening by themselves
+  when the path comes back. They carry `severity`, `order`, and
+  `walkthrough` like any thread (a file-level step opens the file at the
+  top), and the tool window lists them under the file node above its line
+  threads. On the wire the absence is the shape: responses and listings
+  for a file-level thread carry no `line` or `line_adjusted` at all.
+  `navigate` without `line` now opens a file at the top; `anchor_text`
+  without `line`, and `comment_reanchor` on a file-level thread, are
+  teaching 400s.
+- "Comment on File" in the editor context menu (#15): the entry point
+  that needs nothing to exist first, so a file with no threads at all can
+  still be commented on as a whole. The tool window's file node offers
+  the same action.
+- The composer for a thread being started is now a split button: submit
+  as begun, or take the dropdown's "Comment on file instead" to land the
+  same words as a file-level thread. A draft that began from a selection
+  keeps the selected words as provenance — what sparked the comment,
+  recorded without pretending to anchor it.
 - In-repo agent skill (`skills/marginalis/`), installable globally for
   70+ agents via `npx skills add MuhammadFarag/marginalis -g`: it
   teaches an agent to find the server, fetch the served agent guide,
@@ -16,6 +40,13 @@ History before 0.1.19 lives in git tags.
 
 ### Changed
 
+- `comment_list` returns threads in the tool window's reading order — by
+  file (directory-tree), file-level threads first within each file, then
+  down the lines — instead of creation order.
+- A `segment` may now ride a file-level thread: provenance, not anchor.
+  The guide's Spans and File-level sections both teach it — the quoted
+  words are what sparked the thread; address them specifically even when
+  the thread is about the whole file.
 - Agent guide: message-body formatting is now its own "Message bodies"
   section (was a footnote under the API reference) — names everything
   that renders (emphasis, inline code, links, lists, headings, tagged

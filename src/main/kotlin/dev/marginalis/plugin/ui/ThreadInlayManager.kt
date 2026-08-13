@@ -70,9 +70,16 @@ object ThreadInlayManager {
         }
 
         val panel = ThreadPanel(project, editor, thread, ensureStored) { close(editor, thread.id) }
-        val line = MarginalisStore.getInstance(project).currentLine(thread)
+        // A line thread unfolds below its anchor line. A file-level thread
+        // has no line to sit under, so it unfolds ABOVE the first one —
+        // above all the code it is about, matching the glyph in the gutter
+        // beside line 1.
+        val aboveFirstLine = thread.isFileLevel
+        val line = (MarginalisStore.getInstance(project).currentLine(thread) ?: 0)
             .coerceAtMost(editor.document.lineCount - 1)
-        val offset = editor.document.getLineEndOffset(line.coerceAtLeast(0))
+        val offset =
+            if (aboveFirstLine) editor.document.getLineStartOffset(0)
+            else editor.document.getLineEndOffset(line.coerceAtLeast(0))
         val inlay = EditorEmbeddedComponentManager.getInstance().addComponent(
             editor as EditorEx,
             panel,
@@ -80,7 +87,7 @@ object ThreadInlayManager {
                 EditorEmbeddedComponentManager.ResizePolicy.none(),
                 null,
                 true, // relatesToPrecedingText
-                false, // showAbove = false -> the panel unfolds below the anchor line
+                aboveFirstLine, // showAbove
                 0,
                 offset,
             ),

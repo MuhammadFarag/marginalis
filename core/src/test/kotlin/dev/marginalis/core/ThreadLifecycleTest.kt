@@ -52,6 +52,43 @@ class ThreadLifecycleTest {
     }
 
     @Test
+    fun `a file-level thread has no anchor at all`() {
+        val t = CommentThread("a.py", line = null, anchorText = null)
+        assertTrue(t.isFileLevel)
+        assertNull(t.line)
+        assertNull(t.anchorText)
+        assertIs<ThreadStatus.Open>(t.status)
+    }
+
+    @Test
+    fun `half an anchor is not representable`() {
+        assertFailsWith<IllegalArgumentException> { CommentThread("a.py", line = 3, anchorText = null) }
+        assertFailsWith<IllegalArgumentException> { CommentThread("a.py", line = null, anchorText = "def f():") }
+    }
+
+    @Test
+    fun `a file-level thread may carry a segment — provenance, not an anchor`() {
+        val sparkedBy = Segment("curr", prefix = "prev, ", suffix = " =")
+        val t = CommentThread("a.py", line = null, anchorText = null, segment = sparkedBy)
+        // The words that started the thought are kept; the thought is still
+        // about the whole file, with nothing to re-find.
+        assertEquals(sparkedBy, t.segment)
+        assertTrue(t.isFileLevel)
+        assertNull(t.line)
+    }
+
+    @Test
+    fun `a file-level thread is never re-anchored — it follows its file`() {
+        val t = CommentThread("a.py", line = null, anchorText = null)
+        t.markOrphaned()
+        assertFailsWith<IllegalStateException> { t.rescueTo(7, "def g():") }
+        assertTrue(t.isFileLevel)
+        // Its rescue is the file coming back, which reopens it as it stands.
+        t.reopen()
+        assertIs<ThreadStatus.Open>(t.status)
+    }
+
+    @Test
     fun `live anchors don't move — rescue demands an orphan`() {
         val t = thread()
         assertFailsWith<IllegalStateException> { t.rescueTo(7, "elsewhere") }

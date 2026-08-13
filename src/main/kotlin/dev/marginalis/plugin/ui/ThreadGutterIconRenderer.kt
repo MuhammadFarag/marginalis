@@ -13,17 +13,29 @@ import dev.marginalis.core.CommentThread
 import javax.swing.Icon
 
 /**
- * Collapsed state of one line's threads: a single gutter icon whether the
- * line hosts one thread or several (segments made same-line threads
+ * Collapsed state of a gutter position's threads: a single icon whether it
+ * stands for one thread or several (segments made same-line threads
  * ordinary). Solo thread: click toggles its panel. Several: click opens a
  * chooser. Status merges pessimistically — any unread shows unread, any
  * orphan shows the warning.
+ *
+ * Two positions use it: a line's own threads, and — beside line 1 — a
+ * file's file-level threads, which are collapsed conversations too.
  */
 class ThreadGutterIconRenderer(
     private val project: Project,
-    /** The line's threads in creation order; never empty. */
+    /** The threads collapsed into this icon, in creation order; never empty. */
     private val threads: List<CommentThread>,
 ) : GutterIconRenderer() {
+
+    /**
+     * The base glyph names the subject — a page for threads about the whole
+     * file (these sit beside line 1, where their panel unfolds), the balloon
+     * for a line's conversation — so the two kinds are never confused at a
+     * glance.
+     */
+    private val badges: BadgeIconSupplier
+        get() = if (threads.all { it.isFileLevel }) FILE_BADGES else LINE_BADGES
 
     // A badge dot for unread, not a different balloon: the
     // BalloonInformation swap was too subtle to spot and leaned on color
@@ -31,9 +43,9 @@ class ThreadGutterIconRenderer(
     override fun getIcon(): Icon = when (AggregateState.of(threads)) {
         AggregateState.RESOLVED -> AllIcons.General.GreenCheckmark
         AggregateState.ORPHANED -> AllIcons.General.Warning
-        AggregateState.OPEN_BLOCKER -> BLOCKER_ICON
-        AggregateState.UNREAD -> UNREAD_ICON
-        AggregateState.OPEN -> AllIcons.General.Balloon
+        AggregateState.OPEN_BLOCKER -> badges.errorIcon
+        AggregateState.UNREAD -> badges.infoIcon
+        AggregateState.OPEN -> badges.originalIcon
     }
 
     override fun getTooltipText(): String {
@@ -71,8 +83,8 @@ class ThreadGutterIconRenderer(
     }
 
     private companion object {
-        val UNREAD_ICON = BadgeIconSupplier(AllIcons.General.Balloon).infoIcon
-        val BLOCKER_ICON = BadgeIconSupplier(AllIcons.General.Balloon).errorIcon
+        val LINE_BADGES = BadgeIconSupplier(AllIcons.General.Balloon)
+        val FILE_BADGES = BadgeIconSupplier(AllIcons.FileTypes.Any_type)
     }
 
     override fun equals(other: Any?): Boolean =
