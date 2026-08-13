@@ -23,30 +23,13 @@ knows its own open projects, and `branch` disambiguates same-layout git
 worktrees. If nothing answers, the IDE isn't running: say so and move
 on; never retry in a loop.
 
-## 2. Read the contract
+## 2. Read the contract — before anything else
 
 The server ships its own manual, version-matched to the installed
-plugin by construction. Fetch it once per session and follow it — it is
-the authority; wherever this file and the guide disagree, the guide
-wins:
+plugin by construction. Fetch it once per session, before your first
+margin call, and follow it — it is the whole contract and the sole
+authority: identity and read receipts, the unread sweep, anchoring,
+severity, walkthroughs, orphan rescue, navigation etiquette, the full
+API with response shapes.
 
     curl -s http://127.0.0.1:63342/api/marginalis/agent_guide
-
-## 3. The habits that can't wait for the guide
-
-- **Introduce yourself**: pass `author_name` (and a stable `author_id`)
-  on every call — read receipts are per agent, and anonymous callers
-  share one identity and consume each other's unread.
-- **Start every turn with the sweep**:
-  `GET comment_list?unread_only=true&author_id=…` — the user's
-  comments arrive while you're away, born unread. Reading marks them
-  seen; that receipt is a promise, so read every body you consume and
-  answer in-thread.
-- **Never edit a file with open threads**
-  (`comment_list?file=<path>&status=open`) — drive each to resolution
-  first.
-- **The resolver is the completer**: resolve only after the outcome is
-  in the code. A user reply of "do it" is approval, not completion.
-
-Everything else — anchoring rules, severity vocabulary, walkthroughs,
-orphan rescue, navigation etiquette, the full API — is in the guide.

@@ -40,8 +40,10 @@ names ("Claude · design" / "Claude · impl") with distinct ids.
 ## The three habits
 
 **1. Start every turn with the unread sweep.**
-`GET comment_list?unread_only=true&author_id=…` — the user leaves
-comments and replies while you're away, born unread. Reading marks them
+`GET comment_list?unread_only=true&project=…&author_id=…` — the user
+leaves comments and replies while you're away, born unread. Always pass
+`project`: a bare sweep spans every project open in the IDE and
+consumes your read receipts on all of them. Reading marks messages
 seen (`newly_seen` per message, `marked_seen` total): that receipt is
 the promise the user relies on, so always read the bodies you consume,
 and answer in-thread — a user reply is guaranteed a response.
@@ -88,6 +90,17 @@ is exactly those two words — anything else is rejected with a teaching
 write the level into the body ("HIGH:", "Blocker:") — the UI carries it
 everywhere it matters and the user can filter to blockers. Importance
 is not severity; importance lives in your prose, argued with reasons.
+
+## Message bodies
+
+Bodies render as CommonMark — use it wherever structure helps:
+emphasis, inline code, links (clickable, opened in the user's browser),
+lists, and headings (rescaled to margin proportions). Fenced code
+blocks display as read-only editor fragments with native syntax
+highlighting — tag your fences with a language and prefer them to
+prose-wrapped code. Deliberately outside the scope: tables, images,
+and raw HTML degrade to plain text, so stay within the constructs
+above.
 
 ## Walkthroughs
 
@@ -137,23 +150,42 @@ path, branch) so you can pick and retry. Check each listed thread's
 Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 `{"error": "…"}` with 4xx status, written to be acted on.
 
-| Endpoint | Description |
+| Endpoint | Description → returns |
 |---|---|
-| `GET ping` | status, ide, plugin version, open projects with branches |
-| `GET agent_guide` | this document |
-| `GET comment_list?file=&status=open\|resolved\|orphaned&unread_only=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity |
-| `POST comment_add {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread (line-anchored) |
-| `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread |
-| `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot |
-| `POST comment_reopen {thread_id}` | resurface a resolved thread |
-| `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue |
-| `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed |
-| `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first |
-| `POST navigate {file, line, anchor_text?, project?}` | consent-gated pointing |
+| `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
+| `GET agent_guide` | this document (markdown, not JSON) |
+| `GET comment_list?file=&status=open\|resolved\|orphaned&unread_only=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
+| `POST comment_add {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread (line-anchored) → `{thread_id, file, line, line_adjusted, status}` |
+| `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}` |
+| `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
+| `POST comment_reopen {thread_id}` | resurface a resolved thread → `{thread_id, status}` |
+| `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue → `{thread_id, line, status}` |
+| `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed → `{resolved: <count>}` |
+| `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first → `{cleared: <count>}` |
+| `POST navigate {file, line, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}` |
 
-Message bodies render as CommonMark: emphasis, lists, and fenced code
-blocks displayed as natively syntax-highlighted editor fragments — tag
-your fences with a language and prefer them to prose-wrapped code.
+A `comment_list` thread, in full:
+
+```json
+{"threads": [{
+  "thread_id": "…", "project": "…", "file": "src/…", "line": 12,
+  "status": "open", "created_at": "2026-07-27T18:03:11Z",
+  "messages": [{
+    "message_id": "…",
+    "author": {"kind": "user", "name": "…"},
+    "body": "…", "created_at": "…",
+    "seen_by": ["claude-main"], "newly_seen": true
+  }]
+}], "marked_seen": 1}
+```
+
+Field notes: `author` is always an object — `kind` is `agent` or
+`user`, and agent authors carry `id`. Thread fields `segment`, `order`,
+`walkthrough`, `severity`, and `resolved_by` appear only when set.
+`newly_seen` marks messages this very listing consumed for your
+identity; `seen_by` lists the identities that have read the message.
+Timestamps are ISO-8601 UTC; `line` in every response is 1-based and
+current (already re-anchored), not necessarily where the thread began.
 
 ## Persistence
 

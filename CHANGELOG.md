@@ -14,6 +14,26 @@ History before 0.1.19 lives in git tags.
   teaches an agent to find the server, fetch the served agent guide,
   and follow it. No wrapper script — plain HTTP.
 
+### Changed
+
+- Agent guide: message-body formatting is now its own "Message bodies"
+  section (was a footnote under the API reference) — names everything
+  that renders (emphasis, inline code, links, lists, headings, tagged
+  fences) and what deliberately doesn't (tables, images, raw HTML), and
+  tells agents to use markdown where structure helps.
+- Agent guide: the API reference now documents responses, not just
+  inputs — every endpoint's return shape in the table, a full
+  `comment_list` example (`thread_id`, structured `author {kind, name,
+  id}`, `seen_by`/`newly_seen`, optional thread fields), so agents
+  script against real shapes instead of guessing (#9).
+- Agent guide: the unread-sweep habit now passes `project=` — a bare
+  sweep spans every project open in the IDE and consumes read receipts
+  across all of them (#9).
+- Skill: slimmed to a pure bootstrap — find the server, fetch the
+  served guide before the first margin call, follow it as the sole
+  authority. The duplicated habit summaries are gone, so the skill no
+  longer needs to change when the contract does.
+
 ## [0.1.24] - 2026-07-25
 
 ### Added
