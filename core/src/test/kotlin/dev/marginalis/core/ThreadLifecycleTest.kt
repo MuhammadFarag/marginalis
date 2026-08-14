@@ -277,6 +277,22 @@ class ThreadLifecycleTest {
     }
 
     @Test
+    fun `store queries filter by intent, independently of severity`() {
+        val store = ThreadStore()
+        val guidance = CommentThread("a.py", 1, "x", intent = Intent.GUIDANCE)
+        val guidanceBlocker = CommentThread("b.py", 1, "x", intent = Intent.GUIDANCE, severity = Severity.BLOCKER)
+        val question = CommentThread("c.py", 1, "x", intent = Intent.QUESTION)
+        val ordinary = CommentThread("d.py", 1, "x", severity = Severity.BLOCKER)
+        listOf(guidance, guidanceBlocker, question, ordinary).forEach(store::add)
+
+        // The motivating query: everything that tells me how to write this.
+        assertEquals(listOf(guidance, guidanceBlocker), store.query(intent = Intent.GUIDANCE))
+        assertEquals(listOf(question), store.query(intent = Intent.QUESTION))
+        // Unfiltered still means unfiltered — an ordinary comment is not an intent.
+        assertEquals(4, store.query().size)
+    }
+
+    @Test
     fun `store change notifications fire for add, remove, and clear`() {
         val store = ThreadStore()
         val seen = mutableListOf<String>()

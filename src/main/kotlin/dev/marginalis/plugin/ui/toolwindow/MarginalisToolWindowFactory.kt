@@ -30,6 +30,7 @@ import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
 import dev.marginalis.core.AggregateState
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Intent
 import dev.marginalis.core.PathTrie
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadOrder
@@ -149,10 +150,23 @@ private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
     override fun actionPerformed(e: AnActionEvent) = panel.goLast()
 }
 
-internal enum class TreeFilter(val title: String) {
-    ALL("All"),
-    BLOCKERS("Blockers Only"),
-    AWAITING("Awaiting You"),
+/**
+ * The lenses, each carrying its own test and its own empty state so the two
+ * can never drift apart. Walking follows the filtered tree, so every lens is
+ * also a purposeful sweep: blockers before a merge, guidance before editing
+ * a file, questions when catching up.
+ */
+internal enum class TreeFilter(
+    val title: String,
+    val empty: String,
+    val matches: (CommentThread) -> Boolean,
+) {
+    ALL("All", "No margin threads yet", { true }),
+    BLOCKERS("Blockers Only", "No blockers", { it.severity == Severity.BLOCKER }),
+    AWAITING("Awaiting You", "Nothing awaiting you", { it.status is ThreadStatus.Open && it.awaitsUser() }),
+    FINDINGS("Findings", "No findings", { it.intent == Intent.FINDING }),
+    GUIDANCE("Guidance", "No guidance", { it.intent == Intent.GUIDANCE }),
+    QUESTIONS("Questions", "No questions", { it.intent == Intent.QUESTION }),
 }
 
 /**
@@ -498,18 +512,8 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     fun rebuild() {
         val store = MarginalisStore.getInstance(project)
         store.syncLines() // refresh live lines + orphan status from markers
-        val threads = store.threads.all().filter { thread ->
-            when (filter) {
-                TreeFilter.ALL -> true
-                TreeFilter.BLOCKERS -> thread.severity == Severity.BLOCKER
-                TreeFilter.AWAITING -> thread.status is ThreadStatus.Open && thread.awaitsUser()
-            }
-        }
-        tree.emptyText.text = when (filter) {
-            TreeFilter.ALL -> "No margin threads yet"
-            TreeFilter.BLOCKERS -> "No blockers"
-            TreeFilter.AWAITING -> "Nothing awaiting you"
-        }
+        val threads = store.threads.all().filter(filter.matches)
+        tree.emptyText.text = filter.empty
 
         val root = DefaultMutableTreeNode()
         addGuidedSection(root, threads)
@@ -709,6 +713,10 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 }
                 val where = thread.line?.let { "L${it + 1}" } ?: if (thread.isProjectLevel) "project" else "file"
                 append("$where  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                // What it asks for, then how hard it asks: two independent
+                // marks, the intent kept quiet so severity keeps the loud
+                // channel to itself.
+                thread.intent?.let { append("${it.name.lowercase()}  ", INTENT_ATTRS) }
                 // One loud mark, one quiet mark, silence: word + color, never
                 // color alone. A nit de-emphasizes its whole row.
                 when (thread.severity) {
@@ -732,6 +740,7 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
 
     private companion object {
         // Same families as the thread-panel author colors.
+        val INTENT_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x37618E, 0x9CC0E8))
         val VIOLET_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x9C27B0, 0xCE93D8))
         val BLUE_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x1565C0, 0x90CAF9))
     }

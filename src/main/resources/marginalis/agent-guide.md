@@ -126,6 +126,31 @@ write the level into the body ("HIGH:", "Blocker:") — the UI carries it
 everywhere it matters and the user can filter to blockers. Importance
 is not severity; importance lives in your prose, argued with reasons.
 
+## Intents
+
+`intent` on `comment_add` says what kind of response the thread wants —
+a **gate, not a weight**, exactly like severity and completely
+independent of it. Three words, nothing else:
+
+- `finding` — something here is wrong. It ends when the code is fixed.
+- `guidance` — how the code around here should be written. It ends when
+  the new code follows it, which is usually not the moment you read it.
+- `question` — you genuinely want an answer. It ends when you get one.
+
+Omit it for everything else, which is most threads: an ordinary comment
+asks for nothing in particular, and marking everything makes the marks
+meaningless. Anything outside the three words is a teaching 400 — fix
+the word or drop the field, never retry with a synonym. Never write the
+intent into the body ("Question:", "FINDING —"): the UI carries it, and
+`comment_list?intent=` is how it is found.
+
+Intent and severity compose freely, because they answer different
+questions: a `guidance` `blocker` ("do not bring the rejected approach
+back") is a normal and useful thing to say. Resolution works identically
+for all of them — what differs is what resolving *means*, which is the
+list above. Before editing a file, `comment_list?file=…&intent=guidance`
+is the cheapest way to learn what its authors already decided.
+
 ## Message bodies
 
 Bodies render as CommonMark — use it wherever structure helps:
@@ -200,8 +225,8 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 |---|---|
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
-| `GET comment_list?file=&status=open\|resolved\|orphaned&unread_only=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
-| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
+| `GET comment_list?file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question&unread_only=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
+| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
 | `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults → `{results: [ …success shape… \| {error} ], created}` in request order, 200 unless the envelope itself is malformed |
 | `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}` |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
@@ -218,7 +243,8 @@ A `comment_list` thread, in full:
 {"threads": [{
   "thread_id": "…", "project": "…", "file": "src/…", "line": 12,
   "anchor_text": "    val x = compute()",
-  "status": "open", "created_at": "2026-07-27T18:03:11Z",
+  "status": "open", "intent": "guidance",
+  "created_at": "2026-07-27T18:03:11Z",
   "updated_at": "2026-07-27T18:41:02Z",
   "messages": [{
     "message_id": "…",
@@ -239,7 +265,8 @@ when the conversation does (a message, a resolve, a reopen, a rescue) and
 not when it is merely read or its line drifts, which is what makes it a
 usable cursor for `updated_after`. `author` is always an object — `kind`
 is `agent` or `user`, and agent authors carry `id`. Thread fields `segment`, `order`,
-`walkthrough`, `severity`, and `resolved_by` appear only when set.
+`walkthrough`, `severity`, `intent`, and `resolved_by` appear only when
+set.
 `newly_seen` marks messages this very listing consumed for your
 identity; `seen_by` lists the identities that have read the message.
 Timestamps are ISO-8601 UTC; `line` in every response is 1-based and

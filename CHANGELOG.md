@@ -9,6 +9,21 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
+- Thread intents (#14): an optional `intent` on `comment_add` —
+  `finding`, `guidance` or `question` — saying what kind of response a
+  thread wants, with anything else answered by a teaching 400 naming the
+  vocabulary. Omitted stays the common case. It is fully independent of
+  severity (a `guidance` `blocker` is a legitimate thing to say) and
+  purely semantic in this version: resolution works identically for all
+  of them, and the served guide teaches what resolving each one means —
+  a finding by fixing, guidance by being followed in the new code, a
+  question by an answer. `comment_list` gains an `intent=` filter and
+  returns `intent` on threads that have one, which makes the motivating
+  query cheap: all the open guidance for the file you are about to edit.
+  In the IDE each intent has its own gutter glyph — an eye, a bulb, a
+  question mark, shapes rather than colors — plus a chip in the tool
+  window rows and the thread panel, and its own lens in the tool
+  window's filter.
 - `comment_add_batch` (#10): a review round's notes in one call. Each
   item is a whole `comment_add` payload — the full anchor ladder, mixed
   freely — judged on its own, so one stale anchor fails its own item and

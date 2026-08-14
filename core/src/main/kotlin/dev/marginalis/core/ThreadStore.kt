@@ -26,6 +26,8 @@ class ThreadStore {
     fun query(
         file: String? = null,
         status: ThreadStatus.Kind? = null,
+        /** Non-null: only threads asking for this kind of response. */
+        intent: Intent? = null,
         /** Non-null: only threads with messages this agent hasn't seen. */
         unreadFor: String? = null,
         /**
@@ -38,6 +40,7 @@ class ThreadStore {
     ): List<CommentThread> = all().filter { thread ->
         (file == null || thread.file == file) &&
             (status == null || thread.status.kind == status) &&
+            (intent == null || thread.intent == intent) &&
             (unreadFor == null || thread.unreadCountFor(unreadFor) > 0) &&
             (updatedAfter == null || thread.updatedAt > updatedAfter)
     }

@@ -23,6 +23,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Intent
 import dev.marginalis.core.Message
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadOrder
@@ -57,7 +58,7 @@ import java.util.Properties
  * Endpoints:
  *   GET  /api/marginalis/ping             -> {status, ide, version, projects}
  *   GET  /api/marginalis/agent_guide      -> the agent contract, as markdown
- *   POST /api/marginalis/comment_add      {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, project?}
+ *   POST /api/marginalis/comment_add      {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, project?}
  *   POST /api/marginalis/comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
@@ -66,7 +67,7 @@ import java.util.Properties
  *   POST /api/marginalis/comment_reanchor {thread_id, line, anchor_text?}
  *   POST /api/marginalis/comment_reanchor_all {file, project?}
  *   POST /api/marginalis/comment_clear_all    {file?}
- *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&updated_after=&project=&author_name=&author_id=
+ *   GET  /api/marginalis/comment_list?file=&status=&intent=&unread_only=&updated_after=&project=&author_name=&author_id=
  *   POST /api/marginalis/navigate         {file, line?, anchor_text?, project?}
  *
  * Writing/resolving endpoints (comment_add, comment_reply, comment_resolve,
@@ -311,10 +312,15 @@ class MarginalisRestService : RestService() {
         val order = json.intOrNull("order")
         val walkthroughLabel = json.stringOrNull("walkthrough")
         val projectFilter = json.stringOrNull("project")
-        // Garbage gets a teaching 400, not a silent unmarked thread.
+        // Garbage in either vocabulary gets a teaching 400, not a silently
+        // unmarked thread. The two are independent: any intent, any severity.
         val severity = when (val parsed = Severity.parse(json.stringOrNull("severity"))) {
             is Severity.Parsed.Invalid -> return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, parsed.reason)
             is Severity.Parsed.Ok -> parsed.severity
+        }
+        val intent = when (val parsed = Intent.parse(json.stringOrNull("intent"))) {
+            is Intent.Parsed.Invalid -> return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, parsed.reason)
+            is Intent.Parsed.Ok -> parsed.intent
         }
 
         // A path resolves the project by itself; without one, the caller has
@@ -342,7 +348,7 @@ class MarginalisRestService : RestService() {
                 // subject is the file as a whole, or the project itself.
                 CommentThread(
                     file, line = null, anchorText = null,
-                    order = order, walkthrough = walkthroughLabel, severity = severity,
+                    order = order, walkthrough = walkthroughLabel, severity = severity, intent = intent,
                 )
             } else {
                 val document = FileDocumentManager.getInstance().getDocument(vFile)
@@ -361,7 +367,7 @@ class MarginalisRestService : RestService() {
                 adjusted = placed.adjusted
                 CommentThread(
                     file, placed.line0, lineText(document, placed.line0),
-                    order = order, walkthrough = walkthroughLabel, severity = severity,
+                    order = order, walkthrough = walkthroughLabel, severity = severity, intent = intent,
                 ).also { MarginalisMarkers.attach(project, it, document) }
             }
             val author = agentAuthor(json)
@@ -773,6 +779,12 @@ class MarginalisRestService : RestService() {
                 return sendError(HttpResponseStatus.BAD_REQUEST, "invalid status '$it' (open|resolved|orphaned)", request, context)
             }
         }
+        // "All the open guidance for the file I am about to edit" — the
+        // query this filter exists for.
+        val intentFilter = when (val parsed = Intent.parse(params["intent"]?.firstOrNull())) {
+            is Intent.Parsed.Invalid -> return sendError(HttpResponseStatus.BAD_REQUEST, parsed.reason, request, context)
+            is Intent.Parsed.Ok -> parsed.intent
+        }
         val unreadOnly = params["unread_only"]?.firstOrNull()?.toBoolean() ?: false
         val projectFilter = params["project"]?.firstOrNull()
         // The sweep cursor: hand back the newest 'updated_at' you saw and
@@ -804,7 +816,7 @@ class MarginalisRestService : RestService() {
                 if (projectFilter != null && !projectMatches(project, projectFilter)) continue
                 val store = MarginalisStore.getInstance(project)
                 val listed = store.threads
-                    .query(fileFilter, statusFilter, if (unreadOnly) callerKey else null, updatedAfter)
+                    .query(fileFilter, statusFilter, intentFilter, if (unreadOnly) callerKey else null, updatedAfter)
                     .sortedWith(ThreadOrder.byAnchor)
                 for (thread in listed) {
                     val messagesJson = JsonArray()
@@ -857,6 +869,7 @@ class MarginalisRestService : RestService() {
                             thread.order?.let { addProperty("order", it) }
                             thread.walkthrough?.let { addProperty("walkthrough", it) }
                             thread.severity?.let { addProperty("severity", it.name.lowercase()) }
+                            thread.intent?.let { addProperty("intent", it.name.lowercase()) }
                             thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
                             add("messages", messagesJson)
                         },
@@ -1055,6 +1068,7 @@ class MarginalisRestService : RestService() {
             "author_name" to "how you want to be shown in the margin",
             "author_id" to "your stable identity, which read receipts are keyed by",
             "severity" to "exactly 'blocker' or 'nit'",
+            "intent" to "exactly 'finding', 'guidance' or 'question'",
         )
     }
 

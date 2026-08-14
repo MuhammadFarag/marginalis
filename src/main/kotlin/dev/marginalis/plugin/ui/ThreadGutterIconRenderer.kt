@@ -10,6 +10,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.BadgeIconSupplier
 import dev.marginalis.core.AggregateState
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Intent
 import javax.swing.Icon
 
 /**
@@ -29,13 +30,24 @@ class ThreadGutterIconRenderer(
 ) : GutterIconRenderer() {
 
     /**
-     * The base glyph names the subject — a page for threads about the whole
-     * file (these sit beside line 1, where their panel unfolds), the balloon
-     * for a line's conversation — so the two kinds are never confused at a
-     * glance.
+     * The base glyph answers "what is being asked of me here?" when the
+     * threads agree on an intent — an eye for something found, a bulb for
+     * how to write this, a question mark for an answer wanted — and
+     * otherwise names the subject: a page for threads about the whole file
+     * (these sit beside line 1, where their panel unfolds), the balloon for
+     * a line's ordinary conversation. Shapes, not colors, so the triage
+     * survives themes and color blindness. Threads that disagree fall back
+     * to the subject rather than one of them winning.
      */
-    private val badges: BadgeIconSupplier
-        get() = if (threads.all { it.isFileLevel }) FILE_BADGES else LINE_BADGES
+    private val base: Icon = when (threads.map { it.intent }.distinct().singleOrNull()) {
+        Intent.FINDING -> AllIcons.General.InspectionsEye
+        Intent.GUIDANCE -> AllIcons.Actions.IntentionBulb
+        Intent.QUESTION -> AllIcons.General.ContextHelp
+        null -> if (threads.all { it.isFileLevel }) AllIcons.FileTypes.Any_type else AllIcons.General.Balloon
+    }
+
+    /** Status rides on top of whatever the base says, as a badge. */
+    private val badges = BadgeIconSupplier(base)
 
     // A badge dot for unread, not a different balloon: the
     // BalloonInformation swap was too subtle to spot and leaned on color
@@ -80,11 +92,6 @@ class ThreadGutterIconRenderer(
             }
             ThreadChooserPopup.show(project, editor, threads)
         }
-    }
-
-    private companion object {
-        val LINE_BADGES = BadgeIconSupplier(AllIcons.General.Balloon)
-        val FILE_BADGES = BadgeIconSupplier(AllIcons.FileTypes.Any_type)
     }
 
     override fun equals(other: Any?): Boolean =

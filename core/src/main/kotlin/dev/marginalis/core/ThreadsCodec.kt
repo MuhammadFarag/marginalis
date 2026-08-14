@@ -46,6 +46,7 @@ object ThreadsCodec {
         thread.order?.let { addProperty("order", it) }
         thread.walkthrough?.let { addProperty("walkthrough", it) }
         thread.severity?.let { addProperty("severity", it.name) }
+        thread.intent?.let { addProperty("intent", it.name) }
         addProperty("status", thread.status.kind.name)
         addProperty("created_at", thread.createdAt.toString())
         addProperty("updated_at", thread.updatedAt.toString())
@@ -97,6 +98,10 @@ object ThreadsCodec {
             // shared vocabulary (Severity.parse), leniently — unknown
             // values load as unmarked rather than failing the whole file.
             severity = Severity.parseLenient(json.get("severity")?.takeIf { it.isJsonPrimitive }?.asString),
+            // Additive in the same way, and lenient for the same reason: a
+            // value from a newer vocabulary loads as unmarked, not as a
+            // corrupt file.
+            intent = Intent.parseLenient(json.get("intent")?.takeIf { it.isJsonPrimitive }?.asString),
         )
         for (m in json.getAsJsonArray("messages")) {
             val msg = m.asJsonObject

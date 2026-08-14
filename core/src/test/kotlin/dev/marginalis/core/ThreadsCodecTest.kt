@@ -114,6 +114,46 @@ class ThreadsCodecTest {
     }
 
     @Test
+    fun `intent survives the trip, at any rung and beside any severity`() {
+        val guidanceBlocker = CommentThread("a.py", 1, "x", severity = Severity.BLOCKER, intent = Intent.GUIDANCE)
+        val question = CommentThread(file = null, line = null, anchorText = null, intent = Intent.QUESTION)
+        val plain = CommentThread("c.py", 3, "z")
+        val decoded = ThreadsCodec.decode(ThreadsCodec.encode(listOf(guidanceBlocker, question, plain)))
+
+        // The two vocabularies are independent in both directions.
+        assertEquals(Intent.GUIDANCE, decoded[0].intent)
+        assertEquals(Severity.BLOCKER, decoded[0].severity)
+        assertEquals(Intent.QUESTION, decoded[1].intent)
+        assertEquals(null, decoded[1].severity)
+        assertTrue(decoded[1].isProjectLevel)
+        assertEquals(null, decoded[2].intent)
+    }
+
+    @Test
+    fun `unknown intent values load as unmarked, not as failure`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t9","file":"a.py","line":3,"anchor_text":"x = 1","intent":"EPIPHANY",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]
+            }]}
+        """.trimIndent()
+        assertEquals(null, ThreadsCodec.decode(legacy).single().intent)
+    }
+
+    @Test
+    fun `pre-intent files load as ordinary comments`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t10","file":"a.py","line":3,"anchor_text":"x = 1","severity":"NIT",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]
+            }]}
+        """.trimIndent()
+        val thread = ThreadsCodec.decode(legacy).single()
+        assertEquals(null, thread.intent)
+        assertEquals(Severity.NIT, thread.severity)
+    }
+
+    @Test
     fun `unknown severity values load as unmarked, not as failure`() {
         val legacy = """
             {"version":1,"threads":[{

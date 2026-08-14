@@ -240,11 +240,17 @@ class ThreadPanel(
         val left = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
-            // The panel-side echo of the gutter badge (operator feedback:
-            // a word in the status line was too easy to miss): a pill in
-            // the same red as the gutter for blockers, quiet gray for nits.
+            // The panel-side echo of the gutter glyphs (operator feedback:
+            // a word in the status line was too easy to miss): what the
+            // thread asks for, then how hard it asks — a pill in the same
+            // red as the gutter for blockers, quiet gray for nits, and a
+            // quieter one still for the intent, which is not a gate.
+            thread.intent?.let { intent ->
+                add(Chip(intent.name.lowercase(), INTENT_PILL, INTENT_TEXT))
+                add(Box.createHorizontalStrut(JBUI.scale(6)))
+            }
             thread.severity?.let { severity ->
-                add(SeverityBadge(severity))
+                add(Chip(severity.name.lowercase(), severityPill(severity), severityText(severity)))
                 add(Box.createHorizontalStrut(JBUI.scale(8)))
             }
             add(statusLabel)
@@ -755,22 +761,15 @@ class ThreadPanel(
     }
 
     /**
-     * A pill naming the thread's severity, colored like its gutter
-     * counterpart: red and loud for a blocker, gray and quiet for a nit.
-     * Word + color, never color alone.
+     * A pill naming one of the thread's marks — its intent, its severity —
+     * colored like its gutter counterpart. Word + color, never color alone,
+     * so the two vocabularies stay readable side by side and in every theme.
      */
-    private class SeverityBadge(severity: Severity) : JBLabel(severity.name.lowercase()) {
-        private val pill = when (severity) {
-            Severity.BLOCKER -> JBColor(Color(0xDB, 0x58, 0x60), Color(0xC7, 0x54, 0x50))
-            Severity.NIT -> JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x4E, 0x51, 0x57))
-        }
+    private class Chip(text: String, private val pill: JBColor, textColor: JBColor) : JBLabel(text) {
 
         init {
             font = JBUI.Fonts.miniFont().asBold()
-            foreground = when (severity) {
-                Severity.BLOCKER -> JBColor(Color.WHITE, Color(0xF5, 0xE3, 0xE3))
-                Severity.NIT -> JBColor(Color(0x59, 0x59, 0x59), Color(0xBD, 0xBD, 0xBD))
-            }
+            foreground = textColor
             border = JBUI.Borders.empty(1, 7)
             isOpaque = false
             maximumSize = preferredSize
@@ -787,6 +786,21 @@ class ThreadPanel(
     }
 
     private companion object {
+        // Quieter than either severity: an intent says what kind of answer
+        // is wanted, never how urgently.
+        val INTENT_PILL = JBColor(Color(0xE1, 0xE9, 0xF4), Color(0x36, 0x3E, 0x4B))
+        val INTENT_TEXT = JBColor(Color(0x2A, 0x4A, 0x7A), Color(0xB6, 0xC7, 0xE0))
+
+        fun severityPill(severity: Severity): JBColor = when (severity) {
+            Severity.BLOCKER -> JBColor(Color(0xDB, 0x58, 0x60), Color(0xC7, 0x54, 0x50))
+            Severity.NIT -> JBColor(Color(0xE8, 0xE8, 0xE8), Color(0x4E, 0x51, 0x57))
+        }
+
+        fun severityText(severity: Severity): JBColor = when (severity) {
+            Severity.BLOCKER -> JBColor(Color.WHITE, Color(0xF5, 0xE3, 0xE3))
+            Severity.NIT -> JBColor(Color(0x59, 0x59, 0x59), Color(0xBD, 0xBD, 0xBD))
+        }
+
         val AGENT_PALETTE = arrayOf(
             JBColor(0x9C27B0, 0xCE93D8), // purple — the anonymous "Agent"
             JBColor(0x00796B, 0x80CBC4), // teal

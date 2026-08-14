@@ -52,6 +52,13 @@ class CommentThread(
     val segment: Segment? = null,
     /** What response this thread asks of its reader; null = ordinary comment. */
     val severity: Severity? = null,
+    /**
+     * What kind of response it asks for — a finding to fix, guidance to
+     * follow, a question to answer; null = ordinary comment. Independent of
+     * [severity] in both directions: either may be set without the other,
+     * and any pairing of them means what both words mean.
+     */
+    val intent: Intent? = null,
 ) {
     init {
         require((line == null) == (anchorText == null)) {
