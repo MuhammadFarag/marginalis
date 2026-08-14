@@ -5,7 +5,9 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
-## [Unreleased]
+## [0.1.25] - 2026-07-27
+
+First stable-channel release (#7).
 
 ### Added
 

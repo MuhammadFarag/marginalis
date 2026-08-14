@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "dev.marginalis"
-version = "0.1.24"
+version = "0.1.25"
 
 // Stamp the build version into a resource ping can serve: the platform's
 // plugin-manager lookups (PluginManagerCore.getPlugin AND
@@ -99,13 +99,11 @@ intellijPlatform {
 
     publishing {
         token = providers.environmentVariable("PUBLISH_TOKEN")
-        // EAP until the listing goes public: without this, publishPlugin
-        // targets the stable channel and would leapfrog the hidden EAP
-        // channel the moment the CI secrets exist. Flip to stable later by
-        // setting PUBLISH_CHANNEL=default on the release run.
+        // Stable since 0.1.25 (#7). PUBLISH_CHANNEL still overrides for a
+        // one-off EAP or beta run.
         channels = providers.environmentVariable("PUBLISH_CHANNEL")
             .map { listOf(it) }
-            .orElse(listOf("eap"))
+            .orElse(listOf("default"))
     }
 
     pluginVerification {
