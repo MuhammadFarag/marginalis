@@ -20,6 +20,27 @@ class ThreadOrderTest {
     }
 
     @Test
+    fun `what is about the whole project is read before every file`() {
+        val aboutTheProject = CommentThread(file = null, line = null, anchorText = null, createdAt = Instant.ofEpochSecond(tick++))
+        val firstFile = thread("build.gradle.kts")
+        val deepLine = thread("src/a.py", line = 3)
+        assertEquals(
+            listOf(aboutTheProject, deepLine, firstFile),
+            listOf(firstFile, deepLine, aboutTheProject).sortedWith(ThreadOrder.byAnchor),
+        )
+    }
+
+    @Test
+    fun `a project-level thread belongs to no node of the file tree`() {
+        val trie = PathTrie().apply {
+            insert(CommentThread(file = null, line = null, anchorText = null))
+            insert(thread("src/a.py", line = 1))
+        }
+        assertEquals(0, trie.files.size)
+        assertEquals(1, trie.threadCount())
+    }
+
+    @Test
     fun `files come in directory-tree order, dirs before files at each level`() {
         val readme = thread("readme.md")
         val deep = thread("src/util/a.py", line = 5)

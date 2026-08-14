@@ -55,7 +55,7 @@ import java.util.Properties
  * Endpoints:
  *   GET  /api/marginalis/ping             -> {status, ide, version, projects}
  *   GET  /api/marginalis/agent_guide      -> the agent contract, as markdown
- *   POST /api/marginalis/comment_add      {file, body, line?, anchor_text?, order?, walkthrough?, severity?, project?}
+ *   POST /api/marginalis/comment_add      {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, project?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
  *   POST /api/marginalis/comment_reopen   {thread_id}
@@ -70,9 +70,12 @@ import java.util.Properties
  * self-introduction; without it the author displays as "Agent".
  *
  * `file` is project-relative; `line` is 1-based, matching how agents read
- * files. Omitting `line` addresses the file as a whole — a file-level
- * thread on comment_add, the file's top on navigate — and no response ever
- * claims a `line` for one. Listing marks messages seen and says so
+ * files. Omissions widen the subject: no `line` addresses the file as a
+ * whole (a file-level thread on comment_add, the file's top on navigate),
+ * and on comment_add no `file` either addresses the project itself — which
+ * is also the one call that cannot resolve its project from a path, so it
+ * takes `project` whenever more than one is open. No response claims what
+ * its thread lacks. Listing marks messages seen and says so
  * explicitly (per-message `newly_seen`, top-level `marked_seen`) — that read
  * receipt is what lets the user trust "the agent will see this on its next
  * turn".
@@ -207,15 +210,15 @@ class MarginalisRestService : RestService() {
     // ---------------------------------------------------------------- add
 
     private fun handleCommentAdd(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
-        val file = json.stringOrNull("file")
-            ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'file' (project-relative path)", request, context)
         val body = json.stringOrNull("body")
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
         val anchorText = json.stringOrNull("anchor_text")
-        // Omitting 'line' is the file-level gesture; garbage in it is still a
-        // mistake worth naming.
+        // Each omission widens the subject: no 'line' means the file, no
+        // 'file' either means the project. Garbage is still a mistake worth
+        // naming, and so is a line with no file to be in.
+        val file = json.stringOrNull("file")
         val line1 = json.intOrNull("line")
-        anchorIntentError(json, anchorText)?.let {
+        anchorIntentError(json, file, anchorText)?.let {
             return sendError(HttpResponseStatus.BAD_REQUEST, it, request, context)
         }
         val order = json.intOrNull("order")
@@ -227,9 +230,16 @@ class MarginalisRestService : RestService() {
             is Severity.Parsed.Ok -> parsed.severity
         }
 
-        val (project, vFile) = ApplicationManager.getApplication()
-            .runReadAction(Computable { resolveFile(file, projectFilter) })
-            ?: return sendResolutionError(resolutionFailure(file, projectFilter), request, context)
+        // A path resolves the project by itself; without one, the caller has
+        // to say which workspace they mean.
+        val resolved = ApplicationManager.getApplication().runReadAction(
+            Computable { if (file == null) resolveProject(projectFilter)?.to(null) else resolveFile(file, projectFilter) },
+        ) ?: return sendResolutionError(
+            if (file == null) projectResolutionFailure(projectFilter) else resolutionFailure(file, projectFilter),
+            request, context,
+        )
+        val project = resolved.first
+        val vFile = resolved.second
 
         var error: String? = null
         var errorStatus = HttpResponseStatus.BAD_REQUEST
@@ -238,9 +248,9 @@ class MarginalisRestService : RestService() {
 
         ApplicationManager.getApplication().invokeAndWait {
             // Agents never create segments — the selection gesture is human.
-            val created = if (line1 == null) {
-                // File-level: the path is the whole anchor. Nothing to
-                // resolve against the text, nothing to mark in it.
+            val created = if (line1 == null || file == null || vFile == null) {
+                // Nothing to resolve against text, nothing to mark in it: the
+                // subject is the file as a whole, or the project itself.
                 CommentThread(
                     file, line = null, anchorText = null,
                     order = order, walkthrough = walkthroughLabel, severity = severity,
@@ -276,9 +286,10 @@ class MarginalisRestService : RestService() {
         sendJson(
             JsonObject().apply {
                 addProperty("thread_id", added.id)
-                addProperty("file", added.file)
-                // A file-level thread has no line to report back — and so no
-                // line that could have been adjusted.
+                // Each response says only what the thread actually has: no
+                // file when the project is the subject, and no line — nor
+                // anything about adjusting one — above the line.
+                added.file?.let { addProperty("file", it) }
                 added.line?.let {
                     addProperty("line", it + 1)
                     addProperty("line_adjusted", adjusted)
@@ -290,15 +301,19 @@ class MarginalisRestService : RestService() {
     }
 
     /**
-     * The one rule about an omitted `line`, shared by comment_add and
-     * navigate: leaving it out addresses the file as a whole, so anchor text
-     * would have nothing to verify against — and a `line` that isn't a
-     * number is a mistake, not an omission. Null when the request is
-     * coherent.
+     * The rules about what may be left out, shared by comment_add and
+     * navigate. Omissions widen the subject — no `line` means the file, no
+     * `file` means the project — so each one drops what the narrower rung
+     * needed: anchor text has nothing to verify against without a line, and
+     * a line has nowhere to be without a file. Garbage in `line` is a
+     * mistake, not an omission. Null when the request is coherent.
      */
-    private fun anchorIntentError(json: JsonObject, anchorText: String?): String? = when {
+    private fun anchorIntentError(json: JsonObject, file: String?, anchorText: String?): String? = when {
         json.has("line") && json.intOrNull("line") == null ->
             "'line' must be an integer (1-based) — omit it entirely to address the file as a whole."
+        file == null && json.intOrNull("line") != null ->
+            "'line' without 'file': a line is a place in a file. Pass the 'file' it belongs to, or drop " +
+                "'line' too to address the project as a whole."
         !json.has("line") && anchorText != null ->
             "'anchor_text' without 'line': there is nothing to anchor to. Pass the 'line' (1-based) it " +
                 "belongs to, or drop 'anchor_text' to address the file as a whole."
@@ -323,10 +338,12 @@ class MarginalisRestService : RestService() {
             val selectedRel = selectedFile?.let { file ->
                 project.guessProjectDir()?.let { base -> VfsUtilCore.getRelativePath(file, base) }
             }
-            if (selectedRel == thread.file) return@invokeLater // already on screen
+            // A project-level thread is on nobody's screen, so it always rings.
+            if (thread.file != null && selectedRel == thread.file) return@invokeLater // already on screen
+            val where = thread.file?.plus(thread.line?.let { ":${it + 1}" } ?: "") ?: project.name
             NotificationGroupManager.getInstance().getNotificationGroup("Marginalis")
                 .createNotification(
-                    "${author.displayName} · ${thread.file}${thread.line?.let { ":${it + 1}" } ?: ""}",
+                    "${author.displayName} · $where",
                     StringUtil.shortenTextWithEllipsis(MarkdownRenderer.previewText(body), 120, 0),
                     NotificationType.INFORMATION,
                 )
@@ -419,11 +436,13 @@ class MarginalisRestService : RestService() {
      */
     private fun handleReanchor(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
         val (project, thread) = lookupThread(json, request, context) ?: return
-        if (thread.isFileLevel) {
+        if (thread.line == null) {
+            val subject = if (thread.isProjectLevel) "the project" else "the file"
             return sendError(
                 HttpResponseStatus.BAD_REQUEST,
-                "thread '${thread.id}' is file-level — it has no anchor to re-find. A file-level thread " +
-                    "orphans only when its file disappears, and reopens by itself when the path comes back.",
+                "thread '${thread.id}' has no anchor to re-find — it is about $subject as a whole. A " +
+                    "file-level thread orphans only when its file disappears, and reopens by itself when " +
+                    "the path comes back; a project-level thread never orphans.",
                 request, context,
             )
         }
@@ -444,9 +463,13 @@ class MarginalisRestService : RestService() {
             )
         }
         val anchorText = json.stringOrNull("anchor_text")
+        // Core's invariant: a thread with a line has the file it is in, so
+        // the guard above has already ruled this out.
+        val path = thread.file
+            ?: return sendError(HttpResponseStatus.BAD_REQUEST, "thread '${thread.id}' has no file", request, context)
         val vFile = ApplicationManager.getApplication()
-            .runReadAction(Computable { resolveFile(thread.file, json.stringOrNull("project"))?.second })
-            ?: return sendResolutionError(resolutionFailure(thread.file, json.stringOrNull("project")), request, context)
+            .runReadAction(Computable { resolveFile(path, json.stringOrNull("project"))?.second })
+            ?: return sendResolutionError(resolutionFailure(path, json.stringOrNull("project")), request, context)
 
         var error: String? = null
         var errorStatus = HttpResponseStatus.BAD_REQUEST
@@ -454,10 +477,10 @@ class MarginalisRestService : RestService() {
         ApplicationManager.getApplication().invokeAndWait {
             val document = FileDocumentManager.getInstance().getDocument(vFile)
             if (document == null) {
-                error = "'${thread.file}' has no text document (binary or too large?)"
+                error = "'$path' has no text document (binary or too large?)"
                 return@invokeAndWait
             }
-            val placed = when (val outcome = resolveAnchoredLine(document, thread.file, line1, anchorText)) {
+            val placed = when (val outcome = resolveAnchoredLine(document, path, line1, anchorText)) {
                 is AnchorOutcome.Stale -> {
                     error = outcome.message
                     errorStatus = HttpResponseStatus.CONFLICT
@@ -596,9 +619,9 @@ class MarginalisRestService : RestService() {
                         JsonObject().apply {
                             addProperty("thread_id", thread.id)
                             addProperty("project", project.name)
-                            addProperty("file", thread.file)
-                            // Absent on a file-level thread: the file is the
-                            // whole address.
+                            // Absent as the subject widens: no line once the
+                            // file is the address, no file once the project is.
+                            thread.file?.let { addProperty("file", it) }
                             store.currentLine(thread)?.let { addProperty("line", it + 1) }
                             addProperty("status", thread.status.kind.name.lowercase())
                             addProperty("created_at", timeFormat.format(thread.createdAt))
@@ -652,7 +675,7 @@ class MarginalisRestService : RestService() {
         // No line means "just show me the file" — same omission rule as
         // comment_add's file-level threads.
         val line1 = json.intOrNull("line")
-        anchorIntentError(json, anchorText)?.let {
+        anchorIntentError(json, file, anchorText)?.let {
             return sendError(HttpResponseStatus.BAD_REQUEST, it, request, context)
         }
         val projectFilter = json.stringOrNull("project")
@@ -738,12 +761,32 @@ class MarginalisRestService : RestService() {
         return null
     }
 
+    /**
+     * The project a file-less call is about. A path normally answers this by
+     * itself; with nothing to resolve by, the caller must name the workspace
+     * whenever more than one is open — guessing would file the thread in
+     * someone else's project.
+     */
+    private fun resolveProject(projectFilter: String?): Project? {
+        val open = ProjectManager.getInstance().openProjects.filter { !it.isDisposed }
+        if (projectFilter == null) return open.singleOrNull()
+        return open.firstOrNull { projectMatches(it, projectFilter) }
+    }
+
     /** Match by project name, full root path, or the root's trailing segment. */
     private fun projectMatches(project: Project, filter: String): Boolean {
         if (project.name == filter) return true
         val path = project.guessProjectDir()?.path ?: project.basePath ?: return false
         return path == filter || path.endsWith("/$filter")
     }
+
+    private fun projectResolutionFailure(projectFilter: String?): String =
+        if (projectFilter == null) {
+            "a thread about the project needs to know which one: pass 'project' (name or root path). " +
+                "There is no file here to resolve it by — see open_projects."
+        } else {
+            "no open project matches '$projectFilter' — see open_projects."
+        }
 
     private fun resolutionFailure(file: String, projectFilter: String?): String =
         if (projectFilter == null) {

@@ -9,6 +9,20 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
+- Project-level threads (#16): omit `file` as well as `line` on
+  `comment_add` and the thread is about the workspace itself — the
+  convention nobody wrote down, the decision still owed — with no path,
+  no line, and nothing that can ever orphan. They lead the reading order
+  everywhere: first in `comment_list`, and above the file nodes in a
+  "Project" section of the tool window that appears only when such
+  threads exist. Creating one never depends on that section: a toolbar
+  action is always there, and the composer's split button now offers
+  both widenings ("Comment on file instead" / "Comment on project
+  instead"), carrying a draft's selection along as provenance. Since
+  there is no file to resolve by, `comment_add` takes `project` whenever
+  several are open, and answers the usual `open_projects` error when it
+  can't tell; `line` without `file` is a teaching 400. The served guide
+  states the anchor ladder once: selection → line → file → project.
 - File-level threads (#12): omit `line` on `comment_add` and the thread
   is about the file itself — its shape, its name, the README it lacks —
   with no anchor to drift and nothing to re-find. A page glyph in the

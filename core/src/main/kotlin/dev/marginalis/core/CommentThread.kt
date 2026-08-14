@@ -4,24 +4,30 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * One margin conversation about one file — anchored to a line of it, or to
- * the file as a whole.
+ * One margin conversation, held at the width of its subject.
+ *
+ * The anchor is a ladder, and a thread stands on one rung of it: a line of
+ * a file, a whole file, or the project itself. Each rung up drops what the
+ * narrower one needed — [line] and [anchorText] go together or not at all,
+ * and without a [file] there is no line to have. What remains is always the
+ * same conversation.
  *
  * The anchor here is data only: `line` is the last known good position and
  * `anchorText` is the content fingerprint used to re-find it when line
  * numbers go stale (they always do — the code moves underneath). Keeping a
  * *live* anchor attached to an editing surface is an adapter concern.
  *
- * Both are null together on a file-level thread: its subject is the file
- * itself ("this module needs a README"), so there is no place in the text
- * to point at, nothing to re-find, and nothing that can drift. Such a
- * thread may still carry a [segment] — not as an anchor then, but as
- * provenance: the words the user had selected when the thought started.
+ * Above the line there is nothing to re-find and nothing that can drift: a
+ * file-level thread ("this module needs a README") outlives any rewrite of
+ * its file, and a project-level one ("we never settled on error handling")
+ * is tied to nothing at all. Either may still carry a [segment] — not as an
+ * anchor then, but as provenance: the words the user had selected when the
+ * thought started.
  */
 class CommentThread(
-    /** Project-relative path — the one anchor every thread has. */
-    val file: String,
-    /** 0-based, last known good; null = file-level. */
+    /** Project-relative path; null = project-level. */
+    val file: String?,
+    /** 0-based, last known good; null = no line (the file, or the project). */
     var line: Int?,
     /**
      * Text of the anchor line; how the thread re-finds its place. Set at
@@ -37,11 +43,11 @@ class CommentThread(
     /** Walkthrough label (e.g. "A") so several guided sequences can coexist. */
     val walkthrough: String? = null,
     /**
-     * The user's selection: a span anchor within the line, or — on a
-     * file-level thread, which has no line to anchor in — the provenance of
-     * the thought, the words that sparked a comment that turned out to be
-     * about the whole file. Null = no selection was made. Human-created only
-     * (the selection gesture); agents read segments, never write them.
+     * The user's selection: a span anchor within the line, or — once the
+     * thread widens past the line it started on — the provenance of the
+     * thought, the words that sparked a comment about the whole file or the
+     * whole project. Null = no selection was made. Human-created only (the
+     * selection gesture); agents read segments, never write them.
      */
     val segment: Segment? = null,
     /** What response this thread asks of its reader; null = ordinary comment. */
@@ -51,11 +57,18 @@ class CommentThread(
         require((line == null) == (anchorText == null)) {
             "an anchor is a line and its text together; a thread has both or neither"
         }
+        require(line == null || file != null) {
+            "a line is a place in a file; a thread without a file has no line to hold"
+        }
     }
 
-    /** No anchor at all: the file itself is the subject, not a place in it. */
+    /** Nothing but the project: no path, no line, nothing that can go stale. */
+    val isProjectLevel: Boolean
+        get() = file == null
+
+    /** The file itself is the subject, not a place in it. */
     val isFileLevel: Boolean
-        get() = line == null
+        get() = file != null && line == null
 
     private val messagesLock = Any()
     private val _messages = mutableListOf<Message>()
@@ -93,8 +106,12 @@ class CommentThread(
      * would re-orphan on the next restart.
      */
     fun rescueTo(line: Int, anchorText: String) {
-        check(!isFileLevel) {
-            "a file-level thread has no anchor to move; it follows its file, and reopens when the path returns"
+        // Guarded on the anchor itself, not on the rung: everything above the
+        // line has nothing to move, and moving one would leave a line with no
+        // file to be in.
+        check(this.line != null) {
+            val subject = if (isProjectLevel) "the project" else "its file"
+            "this thread is about $subject as a whole and has no anchor to move; it comes back with what it is about"
         }
         check(status is ThreadStatus.Orphaned) {
             "only an orphaned thread can be re-anchored; this one is ${status.kind.name.lowercase()}"

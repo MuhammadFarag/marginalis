@@ -51,6 +51,15 @@ class WalkthroughTest {
     }
 
     @Test
+    fun `a project-level step leads the whole walk`() {
+        val line = thread("src/a.py", line = 12)
+        val whole = CommentThread("src/a.py", line = null, anchorText = null, createdAt = Instant.ofEpochSecond(tick++))
+        val project = CommentThread(file = null, line = null, anchorText = null, createdAt = Instant.ofEpochSecond(tick++))
+        val (walk, _) = Walkthrough.walkFrom(listOf(line, whole, project), line)
+        assertEquals(listOf(project, whole, line), walk)
+    }
+
+    @Test
     fun `a resolved thread is not a member of the walk`() {
         val open = thread("a.py")
         val resolved = thread("b.py").also { it.resolve(user) }

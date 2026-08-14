@@ -64,7 +64,8 @@ import javax.swing.KeyStroke
  */
 class ThreadPanel(
     private val project: Project,
-    private val editor: Editor,
+    /** The editor hosting this panel; null when it floats in a popup of its own. */
+    private val editor: Editor?,
     private val thread: CommentThread,
     private val ensureStored: () -> Unit,
     private val onClose: () -> Unit,
@@ -74,18 +75,22 @@ class ThreadPanel(
     private val statusLabel = JBLabel()
 
     /**
-     * Submit, with an alternative destination hanging off it — the
+     * Submit, with the wider destinations hanging off it — the
      * Commit/Commit-and-Push shape. The default action always does what the
-     * composer says it will; the dropdown offers the one retarget worth
-     * having, and only while nothing has been sent yet (see [refresh]).
+     * composer says it will; the dropdown offers the rungs above wherever
+     * this draft started, and only while nothing has been sent yet (see
+     * [refresh]).
      */
     private val submitAction = object : AbstractAction("Submit") {
         override fun actionPerformed(e: ActionEvent?) = sendReply()
     }
     private val commentOnFileAction = object : AbstractAction("Comment on file instead") {
-        override fun actionPerformed(e: ActionEvent?) = submitAsFileLevel()
+        override fun actionPerformed(e: ActionEvent?) = submitWiderThan(file = thread.file)
     }
-    private val sendButton = JBOptionButton(submitAction, arrayOf(commentOnFileAction))
+    private val commentOnProjectAction = object : AbstractAction("Comment on project instead") {
+        override fun actionPerformed(e: ActionEvent?) = submitWiderThan(file = null)
+    }
+    private val sendButton = JBOptionButton(submitAction, arrayOf(commentOnFileAction, commentOnProjectAction))
     private val replyRow = JPanel(BorderLayout()).apply {
         isOpaque = false
         border = JBUI.Borders.emptyTop(4)
@@ -201,7 +206,7 @@ class ThreadPanel(
     /** Close is a round trip: the margin folds away, the code gets focus back. */
     private fun closeAndRefocus() {
         onClose()
-        editor.contentComponent.requestFocusInWindow()
+        editor?.contentComponent?.requestFocusInWindow()
     }
 
     /**
@@ -216,9 +221,12 @@ class ThreadPanel(
         return Dimension(panelWidth(), computed.height)
     }
 
-    private fun panelWidth(): Int =
-        (editor.scrollingModel.visibleArea.width - JBUI.scale(120))
-            .coerceIn(JBUI.scale(360), JBUI.scale(800))
+    private fun panelWidth(): Int {
+        // Floating in its own window there is no viewport to follow, so the
+        // panel picks a readable width and the popup takes its size from it.
+        val viewport = editor?.scrollingModel?.visibleArea?.width ?: return JBUI.scale(560)
+        return (viewport - JBUI.scale(120)).coerceIn(JBUI.scale(360), JBUI.scale(800))
+    }
 
     private fun buildHeader(): JComponent {
         val header = JPanel(BorderLayout()).apply { isOpaque = false }
@@ -363,7 +371,9 @@ class ThreadPanel(
             // The store listener does the rest: marker removed, this panel
             // closed, icons regrouped (the deleted-thread branch).
             MarginalisStore.getInstance(project).threads.remove(thread.id)
-            editor.contentComponent.requestFocusInWindow()
+            // A panel outlives its thread nowhere: in an editor the store
+            // listener closes it, in a popup this does.
+            closeAndRefocus()
         }
     }
 
@@ -472,11 +482,11 @@ class ThreadPanel(
      * natively highlighted like every other fence.
      */
     private fun quoteIntoReply() {
-        val quoted = editor.selectionModel.selectedText
+        val quoted = editor?.selectionModel?.selectedText
             ?: thread.segment?.exact
             ?: thread.anchorText?.trim()
         if (quoted.isNullOrBlank()) return
-        val lang = thread.file.substringAfterLast('.', "")
+        val lang = thread.file?.substringAfterLast('.', "") ?: ""
         val fence = "```$lang\n$quoted\n```\n"
         replyArea.text = when {
             replyArea.text.isBlank() -> fence
@@ -518,23 +528,23 @@ class ThreadPanel(
     }
 
     /**
-     * The dropdown's destination: land this unsent draft as a thread about
-     * the whole file instead of the line it started on. The selection that
-     * sparked it rides along as provenance — the user pointed at those words
-     * even if what they had to say outgrew them — and the line draft, which
-     * was never stored, simply ends.
+     * The dropdown's destinations: land this unsent draft a rung wider than
+     * it began — on [file] as a whole, or on the project when that is null.
+     * The selection that sparked it rides along as provenance either way —
+     * the user pointed at those words even if what they had to say outgrew
+     * them — and the draft, which was never stored, simply ends.
      */
-    private fun submitAsFileLevel() {
+    private fun submitWiderThan(file: String?) {
         val body = replyArea.text.trim()
         if (body.isEmpty()) return
         val store = MarginalisStore.getInstance(project)
-        val aboutTheFile = CommentThread(thread.file, line = null, anchorText = null, segment = thread.segment)
-        aboutTheFile.addMessage(Message(Authors.user, body))
+        val wider = CommentThread(file, line = null, anchorText = null, segment = thread.segment)
+        wider.addMessage(Message(Authors.user, body))
         replyArea.text = ""
         store.drafts.remove(thread.id)
         onClose()
-        store.threads.add(aboutTheFile)
-        WalkthroughNavigator.navigateTo(project, aboutTheFile)
+        store.threads.add(wider)
+        WalkthroughNavigator.navigateTo(project, wider)
     }
 
     fun focusReply() {
@@ -609,16 +619,23 @@ class ThreadPanel(
                 else -> "Reply"
             },
         )
-        // The retarget is offered only where it is still a choice: a thread
-        // being started, on a line. A reply belongs to the thread it is in,
-        // and a thread already about the file has nowhere else to go.
-        sendButton.options = if (isDraft() && !thread.isFileLevel) arrayOf(commentOnFileAction) else emptyArray()
+        // Retargeting is offered only where it is still a choice — a thread
+        // being started — and only upward: a reply belongs to the thread it
+        // is in, and nothing widens past the project.
+        sendButton.options = when {
+            !isDraft() -> emptyArray()
+            thread.isProjectLevel -> emptyArray()
+            thread.isFileLevel -> arrayOf(commentOnProjectAction)
+            else -> arrayOf(commentOnFileAction, commentOnProjectAction)
+        }
         cancelEditLink.isVisible = editingMessageId != null
         replyArea.setPlaceholder(
             when {
                 thread.messages.isNotEmpty() -> "Reply… (⌘⏎ to submit)"
                 // The composer names its own subject: a file-level panel
-                // opens at the top of the file, where "this line" would lie.
+                // opens at the top of the file, where "this line" would lie,
+                // and a project-level one is nowhere in particular.
+                thread.isProjectLevel -> "Comment on this project… (⌘⏎ to submit)"
                 thread.isFileLevel -> "Comment on this file… (⌘⏎ to submit)"
                 else -> "Comment on this line… (⌘⏎ to submit)"
             },

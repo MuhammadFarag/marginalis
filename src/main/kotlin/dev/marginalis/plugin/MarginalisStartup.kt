@@ -41,8 +41,10 @@ class MarginalisStartup : ProjectActivity {
                 // Refresh this file's tab so the turn glyph tracks the change.
                 // Deliberately the base-class API: FileEditorManagerEx's
                 // variant is 2026.1+ and broke the 2025.2 floor in CI.
-                project.guessProjectDir()?.findFileByRelativePath(thread.file)?.let { vFile ->
-                    FileEditorManager.getInstance(project).updateFilePresentation(vFile)
+                thread.file?.let { path ->
+                    project.guessProjectDir()?.findFileByRelativePath(path)?.let { vFile ->
+                        FileEditorManager.getInstance(project).updateFilePresentation(vFile)
+                    }
                 }
             }
             AppExecutorUtil.getAppExecutorService().execute {
@@ -61,7 +63,7 @@ class MarginalisStartup : ProjectActivity {
                     store.threads.addSilently(thread)
                 }
                 // Attach assigns solo icons; group shared lines per file.
-                persisted.map { it.file }.distinct().forEach { MarginalisMarkers.refreshIcons(project, it) }
+                persisted.mapNotNull { it.file }.distinct().forEach { MarginalisMarkers.refreshIcons(project, it) }
                 // One notification refreshes every UI surface after bulk load.
                 persisted.lastOrNull()?.let { store.threads.notifyChanged(it) }
             }
@@ -70,15 +72,17 @@ class MarginalisStartup : ProjectActivity {
 
     /**
      * Put a persisted thread back where it belongs, by the rule its anchor
-     * implies. A file-level thread's only anchor is the path: it orphans
-     * when the file is gone and comes back by itself when the path exists
-     * again — nothing was lost, so nothing needs rescuing. A line thread
-     * re-anchors by content while it is open; an orphaned one stays
-     * orphaned, because moving a line anchor is the agent's call
-     * (comment_reanchor), not a guess made at startup. EDT.
+     * implies. A project-level thread is tied to nothing that can vanish, so
+     * it simply comes back as it was. A file-level thread's only anchor is
+     * the path: it orphans when the file is gone and comes back by itself
+     * when the path exists again — nothing was lost, so nothing needs
+     * rescuing. A line thread re-anchors by content while it is open; an
+     * orphaned one stays orphaned, because moving a line anchor is the
+     * agent's call (comment_reanchor), not a guess made at startup. EDT.
      */
     private fun rehydrate(project: Project, thread: CommentThread) {
-        val vFile = project.guessProjectDir()?.findFileByRelativePath(thread.file)
+        val path = thread.file ?: return
+        val vFile = project.guessProjectDir()?.findFileByRelativePath(path)
         if (thread.isFileLevel) {
             when {
                 vFile == null -> thread.markOrphaned()
@@ -143,16 +147,16 @@ class MarginalisStartup : ProjectActivity {
                 }
             }
 
-            // File-level threads are deliberately markerless — nothing to sync.
-            thread.isFileLevel -> {}
+            // Above the line there is nothing in the text to mark.
+            thread.line == null -> {}
 
             thread.status is ThreadStatus.Open && (marker == null || !marker.isValid) -> {
                 val base = project.guessProjectDir() ?: return
-                val vFile = base.findFileByRelativePath(thread.file) ?: return
+                val vFile = thread.file?.let { base.findFileByRelativePath(it) } ?: return
                 val document = FileDocumentManager.getInstance().getDocument(vFile) ?: return
                 MarginalisMarkers.attach(project, thread, document)
             }
         }
-        MarginalisMarkers.refreshIcons(project, thread.file)
+        thread.file?.let { MarginalisMarkers.refreshIcons(project, it) }
     }
 }

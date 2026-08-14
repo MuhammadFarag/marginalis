@@ -67,9 +67,35 @@ class ThreadLifecycleTest {
     }
 
     @Test
+    fun `a project-level thread has neither file nor line`() {
+        val t = CommentThread(file = null, line = null, anchorText = null)
+        assertTrue(t.isProjectLevel)
+        assertFalse(t.isFileLevel)
+        assertNull(t.file)
+        assertNull(t.line)
+        assertIs<ThreadStatus.Open>(t.status)
+    }
+
+    @Test
+    fun `a line without a file is not representable`() {
+        assertFailsWith<IllegalArgumentException> {
+            CommentThread(file = null, line = 3, anchorText = "def f():")
+        }
+    }
+
+    @Test
+    fun `a project-level thread is never re-anchored — there is nothing to lose`() {
+        val t = CommentThread(file = null, line = null, anchorText = null)
+        t.markOrphaned()
+        assertFailsWith<IllegalStateException> { t.rescueTo(7, "def g():") }
+    }
+
+    @Test
     fun `a file-level thread may carry a segment — provenance, not an anchor`() {
         val sparkedBy = Segment("curr", prefix = "prev, ", suffix = " =")
         val t = CommentThread("a.py", line = null, anchorText = null, segment = sparkedBy)
+        // The same words survive the widest widening too.
+        assertEquals(sparkedBy, CommentThread(null, null, null, segment = sparkedBy).segment)
         // The words that started the thought are kept; the thought is still
         // about the whole file, with nothing to re-find.
         assertEquals(sparkedBy, t.segment)

@@ -15,8 +15,13 @@ class PathTrie {
     val dirs: SortedMap<String, PathTrie> = TreeMap()
     val files: SortedMap<String, MutableList<CommentThread>> = TreeMap()
 
+    /**
+     * File the thread under its path. A project-level thread has no path and
+     * so belongs to no node of this tree — it is not part of the file
+     * hierarchy at all, and its surfaces render it beside the root.
+     */
     fun insert(thread: CommentThread) {
-        val parts = thread.file.split('/')
+        val parts = (thread.file ?: return).split('/')
         var node = this
         for (dir in parts.dropLast(1)) node = node.dirs.getOrPut(dir) { PathTrie() }
         node.files.getOrPut(parts.last()) { mutableListOf() }.add(thread)

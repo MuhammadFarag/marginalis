@@ -63,6 +63,11 @@ rather than assuming. Resolve immediately only when no action is needed.
 
 ## Anchoring
 
+- The ladder, narrowest first: **selection → line → file → project**. You
+  write the middle two and the top one — `line` for a place in the code,
+  `file` alone for the file as a whole, neither for the project itself;
+  selections are the user's gesture (see Spans). Always take the narrowest
+  rung the subject actually occupies.
 - `file` is project-relative; `line` is **1-based**, as you read files.
 - Line numbers are hints; content is truth. **Always pass `anchor_text`**
   — the exact text you believe occupies the line. The server verifies,
@@ -73,31 +78,38 @@ rather than assuming. Resolve immediately only when no action is needed.
   dropping `anchor_text` — that trades an honest failure for a comment
   silently pinned to the wrong line.
 
-## File-level threads
+## Above the line: file and project threads
 
 Omit `line` on `comment_add` and the thread is about the **file itself** —
-its shape, its name, the README it lacks. Reach for it only when no line
-is the subject; a line is always the sharper instrument.
+its shape, its name, the README it lacks. Omit `file` as well and it is
+about the **project**: the workspace as a whole, what you'd raise in a
+standup rather than in a diff.
 
-- Nothing to anchor, so nothing to re-find: `anchor_text` without `line`
-  is a teaching 400, and `comment_reanchor` refuses such a thread.
-- The response drops `line` and `line_adjusted`; in `comment_list` these
-  threads carry no `line` field and sort before their file's line threads.
-- They orphan only when the file itself disappears, and reopen on their
-  own when the path comes back — no rescue to perform.
+- Each omission drops what the narrower rung needed: `anchor_text` without
+  `line` is a teaching 400, and so is `line` without `file`.
+- A project-level `comment_add` has no path to resolve by, so pass
+  `project` whenever more than one is open — otherwise it fails with
+  `open_projects` for you to pick from.
+- Responses and listings say only what the thread has: no `line`, and for
+  project-level no `file` either. In `comment_list` project-level threads
+  come first of all, then each file's file-level threads before its line
+  threads.
+- Neither drifts: a file-level thread orphans only when its file
+  disappears (reopening on its own when the path comes back), a
+  project-level one never orphans. `comment_reanchor` refuses both, and
+  `navigate` still needs a `file`.
 - `severity`, `order`, and `walkthrough` work unchanged; stepping to a
-  file-level step opens the file at the top. Such a thread may carry a
-  `segment` as provenance — the user's selection that sparked it, not an
-  anchor.
+  file-level step opens the file at the top. Either may carry a `segment`
+  as provenance — the user's selection that sparked it, not an anchor.
 
 ## Spans (read-only for you)
 
 A thread may carry `segment {exact, prefix?, suffix?}`: the user
 selected those exact words within the line. Their gesture was precise;
-address the quoted span specifically, not the line in general. On a
-file-level thread the same field is provenance instead — the words that
-sparked a comment about the whole file; read them as the origin of the
-thought, not as its subject. Agents cannot create segments —
+address the quoted span specifically, not the line in general. Above the
+line the same field is provenance instead — the words that sparked a
+comment about the whole file, or the whole project; read them as the
+origin of the thought, not as its subject. Agents cannot create segments —
 `comment_add` anchors to lines.
 
 ## Severity
@@ -134,6 +146,8 @@ explaining how code hangs together, or onboarding. Create steps with
   all three (steps render as "(2/5)" in a tree sorted in walking order).
 - Order by the code's structure — entry point first, then callees —
   never by severity; severity has its own channel.
+- A step can sit at any rung: a line, a file, or the project — a
+  project-level step opens nothing, since there is no file to jump to.
 - The user walks with next/previous controls and resolves steps as they
   go. A step resolved without a reply is seen-and-approved; a reply is a
   change request — land the change first, then resolve it.
@@ -176,7 +190,7 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
 | `GET comment_list?file=&status=open\|resolved\|orphaned&unread_only=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
-| `POST comment_add {file, body, line?, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}` |
+| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
 | `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}` |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
 | `POST comment_reopen {thread_id}` | resurface a resolved thread → `{thread_id, status}` |
@@ -207,8 +221,9 @@ Field notes: `author` is always an object — `kind` is `agent` or
 identity; `seen_by` lists the identities that have read the message.
 Timestamps are ISO-8601 UTC; `line` in every response is 1-based and
 current (already re-anchored), not necessarily where the thread began —
-and absent entirely on a file-level thread. Threads arrive in reading
-order: by file, file-level first within each file, then down the lines.
+and absent entirely above the line, as `file` is on a project-level
+thread. Threads arrive in reading order: the project's own first, then by
+file, file-level before line threads, then down the lines.
 
 ## Persistence
 

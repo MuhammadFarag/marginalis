@@ -167,6 +167,28 @@ class ThreadsCodecTest {
     }
 
     @Test
+    fun `a project-level thread writes no file at all and reads back without one`() {
+        val aboutTheProject = CommentThread(
+            file = null, line = null, anchorText = null,
+            order = 1, walkthrough = "A", severity = Severity.BLOCKER,
+        )
+        aboutTheProject.addMessage(Message(Author.User("Muhammad"), "we never settled on error handling"))
+
+        val encoded = ThreadsCodec.encode(listOf(aboutTheProject))
+        assertFalse(encoded.contains("\"file\""))
+        assertFalse(encoded.contains("\"line\""))
+
+        val decoded = ThreadsCodec.decode(encoded).single()
+        assertTrue(decoded.isProjectLevel)
+        assertFalse(decoded.isFileLevel)
+        assertEquals(null, decoded.file)
+        assertEquals(null, decoded.line)
+        assertEquals(1, decoded.order)
+        assertEquals("A", decoded.walkthrough)
+        assertEquals(Severity.BLOCKER, decoded.severity)
+    }
+
+    @Test
     fun `a persisted line with no anchor text is still a line thread, not a file-level one`() {
         val legacy = """
             {"version":1,"threads":[{

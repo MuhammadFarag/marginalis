@@ -28,11 +28,15 @@ object WalkthroughNavigator {
     /**
      * Open the thread's file at its live line and pop its panel — the
      * double-click behavior. A file-level thread has no line to land on, so
-     * it opens the file at the top: the whole file is what it is about.
+     * it opens the file at the top: the whole file is what it is about. A
+     * project-level thread has nowhere to go at all — the editor stays
+     * exactly where it is and the conversation opens in its own window, so
+     * walking through such a step moves nothing but the walk.
      */
     fun navigateTo(project: Project, thread: CommentThread) {
+        val path = thread.file ?: return ProjectThreadPopup.open(project, thread)
         val base = project.guessProjectDir() ?: return
-        val vFile = base.findFileByRelativePath(thread.file) ?: return
+        val vFile = base.findFileByRelativePath(path) ?: return
         val line = MarginalisStore.getInstance(project).currentLine(thread) ?: 0
         OpenFileDescriptor(project, vFile, line, 0).navigate(true)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return

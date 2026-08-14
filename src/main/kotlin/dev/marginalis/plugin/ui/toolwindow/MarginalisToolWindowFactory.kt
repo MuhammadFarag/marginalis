@@ -38,6 +38,7 @@ import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileLevelThreads
 import dev.marginalis.plugin.ui.MarkdownRenderer
+import dev.marginalis.plugin.ui.ProjectThreadPopup
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
@@ -68,6 +69,7 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
         val common = CommonActionsManager.getInstance()
         toolWindow.setTitleActions(
             listOf(
+                CommentOnProjectAction(),
                 FirstStepAction(panel),
                 common.createPrevOccurenceAction(panel),
                 common.createNextOccurenceAction(panel),
@@ -104,6 +106,22 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
 
     private companion object {
         val STRIPE_ICON = BadgeIconSupplier(AllIcons.Toolwindows.ToolWindowMessages)
+    }
+}
+
+/**
+ * Start a thread about the project itself. Deliberately a toolbar action
+ * rather than something hanging off a node: creation must never depend on
+ * the thing it creates already existing (#15's lesson), so this is here
+ * whether the tree has a Project section or not.
+ */
+private class CommentOnProjectAction :
+    AnAction("Comment on Project", "Start a margin thread about this project as a whole", AllIcons.Nodes.Module) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        ProjectThreadPopup.openDraft(project, CommentThread(file = null, line = null, anchorText = null))
     }
 }
 
@@ -222,6 +240,9 @@ private class ClearAllAction : AnAction("Delete All", "Delete all threads, inclu
 
 private sealed class NodeData {
     class Section(val title: String, val count: Int, val blockers: Int = 0) : NodeData()
+
+    /** The threads about the workspace itself — no path, so no place in the file tree. */
+    class ProjectNode(val count: Int) : NodeData()
     class DirNode(val name: String, val count: Int) : NodeData()
     class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
     class ThreadNode(val thread: CommentThread, val walkthroughPrefix: String? = null) : NodeData()
@@ -527,8 +548,10 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
             val total = WalkthroughNavigator.stableTotal(project, walkthroughThreads.first())
                 ?: walkthroughThreads.size
             val shownLabel = if (labelNeeded && label.isNotEmpty()) label else ""
+            val prefixFor = { thread: CommentThread -> "($shownLabel${thread.order}/$total)" }
+            addProjectNode(section, walkthroughThreads.filter { it.isProjectLevel }, prefixFor)
             val trie = PathTrie().apply { walkthroughThreads.forEach(::insert) }
-            emitTrie(trie, section, prefixFor = { thread -> "($shownLabel${thread.order}/$total)" })
+            emitTrie(trie, section, prefixFor)
             root.add(section)
         }
     }
@@ -544,9 +567,32 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         if (threads.isEmpty()) return
         val blockers = threads.count { it.status !is ThreadStatus.Resolved && it.severity == Severity.BLOCKER }
         val section = DefaultMutableTreeNode(NodeData.Section(title, threads.size, blockers))
+        addProjectNode(section, threads.filter { it.isProjectLevel })
         val trie = PathTrie().apply { threads.forEach(::insert) }
         emitTrie(trie, section)
         root.add(section)
+    }
+
+    /**
+     * The workspace's own threads, above every file — the widest subject
+     * read first, the same rule [ThreadOrder.byAnchor] applies everywhere
+     * else. Absent entirely when there are none: a section for nothing is
+     * noise.
+     */
+    private fun addProjectNode(
+        section: DefaultMutableTreeNode,
+        threads: List<CommentThread>,
+        prefixFor: ((CommentThread) -> String)? = null,
+    ) {
+        if (threads.isEmpty()) return
+        val node = DefaultMutableTreeNode(NodeData.ProjectNode(threads.size))
+        val ordered =
+            if (prefixFor != null) threads.sortedWith(compareBy({ it.order }, { it.createdAt }))
+            else threads.sortedWith(ThreadOrder.byAnchor)
+        for (thread in ordered) {
+            node.add(DefaultMutableTreeNode(NodeData.ThreadNode(thread, prefixFor?.invoke(thread))))
+        }
+        section.add(node)
     }
 
     /**
@@ -624,6 +670,11 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     append("  ·  ${data.blockers} blocker${if (data.blockers > 1) "s" else ""}", SimpleTextAttributes.ERROR_ATTRIBUTES)
                 }
             }
+            is NodeData.ProjectNode -> {
+                icon = AllIcons.Nodes.Module
+                append("Project", SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+            }
             is NodeData.DirNode -> {
                 icon = AllIcons.Nodes.Folder
                 append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
@@ -648,14 +699,16 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 icon = when {
                     thread.status is ThreadStatus.Resolved -> AllIcons.General.GreenCheckmark
                     thread.status is ThreadStatus.Orphaned -> AllIcons.General.Warning
-                    // Its own mark: this one is about the file, not a place in it.
+                    // Each width its own mark: the project, the file, a line.
+                    thread.isProjectLevel -> AllIcons.Nodes.Module
                     thread.isFileLevel -> AllIcons.FileTypes.Any_type
                     else -> AllIcons.General.Balloon
                 }
                 if (data.walkthroughPrefix != null) {
                     append("${data.walkthroughPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
-                append(thread.line?.let { "L${it + 1}  " } ?: "file  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                val where = thread.line?.let { "L${it + 1}" } ?: if (thread.isProjectLevel) "project" else "file"
+                append("$where  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 // One loud mark, one quiet mark, silence: word + color, never
                 // color alone. A nit de-emphasizes its whole row.
                 when (thread.severity) {
