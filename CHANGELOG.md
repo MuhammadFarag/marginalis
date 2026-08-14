@@ -9,6 +9,30 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
+- `comment_add_batch` (#10): a review round's notes in one call. Each
+  item is a whole `comment_add` payload — the full anchor ladder, mixed
+  freely — judged on its own, so one stale anchor fails its own item and
+  the rest still land. The envelope's `author_name`, `author_id` and
+  `project` are defaults for every item; results come back in request
+  order, each the shape the single call would have sent or `{error}`.
+  Only a malformed envelope is an HTTP error.
+- `comment_reanchor_all {file}` (#11): rescue every orphan on a file at
+  once, the way a whole-file rewrite creates them. The content search
+  runs server-side and widens to the whole file — after a rewrite the
+  old line numbers mean nothing and the anchor text means everything —
+  and answers per thread: re-anchored at line N, or still orphaned
+  because the content is genuinely gone. A file with no orphans returns
+  an empty list, not an error.
+- `comment_list` gains `updated_after` and returns `updated_at` per
+  thread (#13): a cursor for "what moved since my last sweep", including
+  threads the user resolved while the agent was away. It moves on
+  messages, resolve, reopen and rescue — deliberately not on reading a
+  thread or on an anchor drifting with an edit, which would make it
+  useless as a cursor. Persisted; files written before this carry no
+  timestamp and derive one from their newest message.
+- Listed threads carry `anchor_text` — the anchor line as it stands now,
+  so a caller can tell "adjusted to new content" from "still exactly
+  what I wrote" without re-reading the file (#13).
 - Project-level threads (#16): omit `file` as well as `line` on
   `comment_add` and the thread is about the workspace itself — the
   convention nobody wrote down, the decision still owed — with no path,
@@ -54,6 +78,10 @@ History before 0.1.19 lives in git tags.
 
 ### Changed
 
+- Malformed `comment_add` payloads now get teaching 400s throughout
+  (#13): every rejection names the field, says what is wrong with it,
+  and says what to do instead — the manner the severity vocabulary set,
+  applied to types, empty bodies and misplaced anchors alike.
 - `comment_list` returns threads in the tool window's reading order — by
   file (directory-tree), file-level threads first within each file, then
   down the lines — instead of creation order.

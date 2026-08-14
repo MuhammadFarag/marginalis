@@ -48,6 +48,7 @@ object ThreadsCodec {
         thread.severity?.let { addProperty("severity", it.name) }
         addProperty("status", thread.status.kind.name)
         addProperty("created_at", thread.createdAt.toString())
+        addProperty("updated_at", thread.updatedAt.toString())
         thread.resolvedBy?.let { add("resolved_by", authorJson(it)) }
         add(
             "messages",
@@ -109,6 +110,15 @@ object ThreadsCodec {
                 ),
             )
         }
+        // Pre-cursor files have no "updated_at": the best evidence left of
+        // when the conversation last moved is its most recent message, and
+        // failing that its birth. Restored AFTER the messages, which each
+        // count as a change while they are being added back.
+        thread.restoreUpdatedAt(
+            json.get("updated_at")?.takeIf { it.isJsonPrimitive }?.asString?.let { Instant.parse(it) }
+                ?: thread.messages.maxOfOrNull { it.createdAt }
+                ?: thread.createdAt,
+        )
         val resolvedBy = json.get("resolved_by")?.takeIf { it.isJsonObject }?.let { author(it.asJsonObject) }
         thread.restoreStatus(
             when (json.get("status").asString.uppercase()) {

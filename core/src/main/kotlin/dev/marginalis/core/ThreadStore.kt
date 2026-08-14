@@ -1,5 +1,6 @@
 package dev.marginalis.core
 
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -27,10 +28,18 @@ class ThreadStore {
         status: ThreadStatus.Kind? = null,
         /** Non-null: only threads with messages this agent hasn't seen. */
         unreadFor: String? = null,
+        /**
+         * Non-null: only threads that changed strictly after this instant —
+         * the sweep cursor. Strict, so handing back the newest [
+         * CommentThread.updatedAt] you saw returns what happened since, not
+         * what you already have.
+         */
+        updatedAfter: Instant? = null,
     ): List<CommentThread> = all().filter { thread ->
         (file == null || thread.file == file) &&
             (status == null || thread.status.kind == status) &&
-            (unreadFor == null || thread.unreadCountFor(unreadFor) > 0)
+            (unreadFor == null || thread.unreadCountFor(unreadFor) > 0) &&
+            (updatedAfter == null || thread.updatedAt > updatedAfter)
     }
 
     /** Remove one thread entirely. Any live UI attachments are the caller's to clean up. */

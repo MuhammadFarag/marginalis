@@ -1,5 +1,6 @@
 package dev.marginalis.core
 
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -176,6 +177,84 @@ class ThreadLifecycleTest {
         // adapters' contract, verified here only as data.
         m.markSeenBy("someone")
         assertTrue(m.seenByAnyAgent)
+    }
+
+    @Test
+    fun `updated_at moves with the conversation, not with reading it`() {
+        val t = thread()
+        val born = t.updatedAt
+        assertEquals(t.createdAt, born)
+
+        Thread.sleep(2)
+        t.addMessage(Message(user, "something"))
+        val afterMessage = t.updatedAt
+        assertTrue(afterMessage > born, "a new message is a change")
+
+        // Reading is not a change: a listing marks messages seen, and if that
+        // bumped the cursor every sweep would return everything forever.
+        t.messages.forEach { it.markSeenBy("claude") }
+        assertEquals(afterMessage, t.updatedAt)
+
+        // Neither is an anchor sliding as the file is edited.
+        t.line = 99
+        assertEquals(afterMessage, t.updatedAt)
+
+        Thread.sleep(2)
+        t.resolve(user)
+        val afterResolve = t.updatedAt
+        assertTrue(afterResolve > afterMessage, "resolving is a change")
+
+        Thread.sleep(2)
+        t.reopen()
+        assertTrue(t.updatedAt > afterResolve, "so is reopening")
+    }
+
+    @Test
+    fun `rescue and in-place message edits both count as changes`() {
+        // The clock is only microseconds fine, and these mutations are
+        // nanoseconds apart; the sleeps are about the test's ability to see
+        // the difference, not about the semantics.
+        val t = thread()
+        t.addMessage(Message(user, "draft"))
+        t.markOrphaned()
+        val orphaned = t.updatedAt
+        Thread.sleep(2)
+        t.rescueTo(7, "def g():")
+        assertTrue(t.updatedAt > orphaned, "a rescue is a change")
+
+        val rescued = t.updatedAt
+        Thread.sleep(2)
+        t.messages.first().body = "revised"
+        t.touch()
+        assertTrue(t.updatedAt > rescued, "a revised message is a change the thread must report")
+    }
+
+    @Test
+    fun `rehydration restores the cursor instead of rewriting history`() {
+        val t = thread()
+        val long_ago = Instant.parse("2026-01-01T00:00:00Z")
+        t.addMessage(Message(user, "old news"))
+        t.restoreUpdatedAt(long_ago)
+        assertEquals(long_ago, t.updatedAt)
+        // Status restored the same way — neither is a lifecycle event.
+        t.restoreStatus(ThreadStatus.Orphaned)
+        assertEquals(long_ago, t.updatedAt)
+    }
+
+    @Test
+    fun `the sweep cursor returns what moved, and nothing when nothing did`() {
+        val store = ThreadStore()
+        val quiet = thread()
+        val moved = CommentThread("b.py", 1, "x = 1")
+        store.add(quiet)
+        store.add(moved)
+        val cursor = Instant.now()
+        Thread.sleep(2)
+        moved.addMessage(Message(user, "new"))
+
+        assertEquals(listOf(moved), store.query(updatedAfter = cursor))
+        // Handing back the newest value you saw is not a re-read of it.
+        assertEquals(emptyList(), store.query(updatedAfter = moved.updatedAt))
     }
 
     @Test

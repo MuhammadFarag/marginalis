@@ -512,6 +512,9 @@ class ThreadPanel(
             // original in the meantime, it is record now — don't rewrite it.
             if (!editing.seenByAnyAgent) {
                 editing.body = body
+                // The one change a Message owns; the thread has to be told,
+                // or a sweep by cursor would miss the revision.
+                thread.touch()
             }
             replyArea.text = ""
             setComposerExpanded(false)

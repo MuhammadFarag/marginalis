@@ -46,7 +46,10 @@ leaves comments and replies while you're away, born unread. Always pass
 consumes your read receipts on all of them. Reading marks messages
 seen (`newly_seen` per message, `marked_seen` total): that receipt is
 the promise the user relies on, so always read the bodies you consume,
-and answer in-thread — a user reply is guaranteed a response.
+and answer in-thread — a user reply is guaranteed a response. Every
+thread carries `updated_at`; hand the newest one back as
+`updated_after=` and a later sweep returns only what has moved —
+including threads the user resolved while you were away.
 
 **2. Never edit a file that has open threads.**
 `GET comment_list?file=<path>&status=open` before editing. Open threads
@@ -141,6 +144,9 @@ explaining how code hangs together, or onboarding. Create steps with
 `order` on `comment_add` (1, 2, …); an optional `walkthrough` label
 ("A", "B") keeps concurrent walkthroughs separate. Rules:
 
+- A finished walk is one call: `comment_add_batch` takes the steps as
+  items and answers per item, so a single stale anchor costs you that
+  step and not the round.
 - One topic per step, anchored on the line that best embodies it. The
   body never restates position, file path, or severity — the UI carries
   all three (steps render as "(2/5)" in a tree sorted in walking order).
@@ -160,7 +166,12 @@ where the content lives now, `comment_reanchor {thread_id, line,
 anchor_text}`. The thread reopens with a fresh verified anchor. Only
 orphans may move (live anchors answer 409). When a sweep surfaces
 orphans, rescue them before other work; if the content is truly gone,
-reply saying so and resolve.
+reply saying so and resolve. When a whole file was rewritten and its
+threads orphaned together, `comment_reanchor_all {file}` runs the same
+search over all of them at once — widened to the whole file, since the
+old line numbers mean nothing after a rewrite — and answers per thread:
+re-anchored at line N, or still orphaned. No orphans there is an empty
+list, not an error.
 
 ## Navigation
 
@@ -189,12 +200,14 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 |---|---|
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
-| `GET comment_list?file=&status=open\|resolved\|orphaned&unread_only=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
+| `GET comment_list?file=&status=open\|resolved\|orphaned&unread_only=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
 | `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
+| `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults → `{results: [ …success shape… \| {error} ], created}` in request order, 200 unless the envelope itself is malformed |
 | `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}` |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
 | `POST comment_reopen {thread_id}` | resurface a resolved thread → `{thread_id, status}` |
 | `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue, line threads only (file-level → 400) → `{thread_id, line, status}` |
+| `POST comment_reanchor_all {file, project?}` | rescue every orphan on one file, searching the whole file by content → `{file, results: [{thread_id, line?, status}], rescued}` |
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed → `{resolved: <count>}` |
 | `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first → `{cleared: <count>}` |
 | `POST navigate {file, line?, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}`; without `line`, opens the file at the top → `{navigated, file}` |
@@ -204,7 +217,9 @@ A `comment_list` thread, in full:
 ```json
 {"threads": [{
   "thread_id": "…", "project": "…", "file": "src/…", "line": 12,
+  "anchor_text": "    val x = compute()",
   "status": "open", "created_at": "2026-07-27T18:03:11Z",
+  "updated_at": "2026-07-27T18:41:02Z",
   "messages": [{
     "message_id": "…",
     "author": {"kind": "user", "name": "…"},
@@ -214,8 +229,16 @@ A `comment_list` thread, in full:
 }], "marked_seen": 1}
 ```
 
-Field notes: `author` is always an object — `kind` is `agent` or
-`user`, and agent authors carry `id`. Thread fields `segment`, `order`,
+Field notes: `anchor_text` is the anchor line **as it stands now** —
+compare it with the text you anchored to and you know whether the code
+moved under the thread, without re-reading the file. (Live from the
+open document; for a file no editor has loaded it is the stored
+fingerprint — the most the server honestly knows without forcing the
+file into memory.) `updated_at` moves
+when the conversation does (a message, a resolve, a reopen, a rescue) and
+not when it is merely read or its line drifts, which is what makes it a
+usable cursor for `updated_after`. `author` is always an object — `kind`
+is `agent` or `user`, and agent authors carry `id`. Thread fields `segment`, `order`,
 `walkthrough`, `severity`, and `resolved_by` appear only when set.
 `newly_seen` marks messages this very listing consumed for your
 identity; `seen_by` lists the identities that have read the message.

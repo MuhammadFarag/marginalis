@@ -44,7 +44,9 @@ import io.netty.handler.codec.http.HttpVersion
 import io.netty.handler.codec.http.QueryStringDecoder
 import org.jetbrains.ide.RestService
 import java.nio.file.Path
+import java.time.Instant
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 import java.util.Properties
 
 /**
@@ -56,13 +58,15 @@ import java.util.Properties
  *   GET  /api/marginalis/ping             -> {status, ide, version, projects}
  *   GET  /api/marginalis/agent_guide      -> the agent contract, as markdown
  *   POST /api/marginalis/comment_add      {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, project?}
+ *   POST /api/marginalis/comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}
  *   POST /api/marginalis/comment_reply    {thread_id, body}
  *   POST /api/marginalis/comment_resolve  {thread_id}
  *   POST /api/marginalis/comment_reopen   {thread_id}
  *   POST /api/marginalis/comment_resolve_all  {file?}
  *   POST /api/marginalis/comment_reanchor {thread_id, line, anchor_text?}
+ *   POST /api/marginalis/comment_reanchor_all {file, project?}
  *   POST /api/marginalis/comment_clear_all    {file?}
- *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&project=&author_name=&author_id=
+ *   GET  /api/marginalis/comment_list?file=&status=&unread_only=&updated_after=&project=&author_name=&author_id=
  *   POST /api/marginalis/navigate         {file, line?, anchor_text?, project?}
  *
  * Writing/resolving endpoints (comment_add, comment_reply, comment_resolve,
@@ -113,11 +117,13 @@ class MarginalisRestService : RestService() {
             "ping" -> sendJson(pingInfo(), request, context)
             "agent_guide" -> sendAgentGuide(request, context)
             "comment_add" -> post(request, context) { handleCommentAdd(it, request, context) }
+            "comment_add_batch" -> post(request, context) { handleCommentAddBatch(it, request, context) }
             "comment_reply" -> post(request, context) { handleCommentReply(it, request, context) }
             "comment_resolve" -> post(request, context) { handleStatusChange(it, request, context, resolve = true) }
             "comment_reopen" -> post(request, context) { handleStatusChange(it, request, context, resolve = false) }
             "comment_resolve_all" -> post(request, context) { handleResolveAll(it, request, context) }
             "comment_reanchor" -> post(request, context) { handleReanchor(it, request, context) }
+            "comment_reanchor_all" -> post(request, context) { handleReanchorAll(it, request, context) }
             "comment_clear_all" -> post(request, context) { handleClearAll(it, request, context) }
             "comment_list" -> handleCommentList(urlDecoder, request, context)
             "navigate" -> post(request, context) { handleNavigate(it, request, context) }
@@ -210,8 +216,89 @@ class MarginalisRestService : RestService() {
     // ---------------------------------------------------------------- add
 
     private fun handleCommentAdd(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val outcome = addComment(json)
+        send(outcome.json, outcome.status, request, context)
+    }
+
+    /**
+     * A review round's worth of notes in one call. Each item is a whole
+     * comment_add payload and is judged on its own: one stale anchor fails
+     * its own item and the rest still land, because the alternative — the
+     * caller unpicking which of nine notes survived a single 409 — is worse
+     * than the round trip it saves.
+     *
+     * The envelope's `author_name`/`author_id`/`project` are defaults for
+     * every item, since a batch almost always shares all three; an item that
+     * states its own wins. Only a broken envelope is an HTTP error: with a
+     * well-formed one the answer is 200 and the failures are inside it, in
+     * request order, each item's shape identical to what the single call
+     * would have sent.
+     */
+    private fun handleCommentAddBatch(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val items = json.get("items")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?: return sendError(
+                HttpResponseStatus.BAD_REQUEST,
+                "missing 'items': comment_add_batch takes {\"items\": [ … ]}, an array of comment_add payloads. " +
+                    "Top-level 'author_name', 'author_id' and 'project' apply to every item unless the item says " +
+                    "otherwise.",
+                request, context,
+            )
+        val results = JsonArray()
+        var created = 0
+        for (element in items) {
+            if (!element.isJsonObject) {
+                results.add(
+                    JsonObject().apply {
+                        addProperty("error", "each item must be a JSON object — one comment_add payload per item.")
+                    },
+                )
+                continue
+            }
+            val outcome = addComment(withBatchDefaults(element.asJsonObject, json))
+            if (outcome.status == HttpResponseStatus.OK) created++
+            results.add(outcome.json)
+        }
+        sendJson(
+            JsonObject().apply {
+                add("results", results)
+                addProperty("created", created)
+            },
+            request, context,
+        )
+    }
+
+    /** The envelope's shared identity and scope, filled in wherever an item left them out. */
+    private fun withBatchDefaults(item: JsonObject, envelope: JsonObject): JsonObject {
+        val merged = item.deepCopy()
+        for (field in BATCH_DEFAULTS) {
+            if (!merged.has(field) && envelope.has(field)) merged.add(field, envelope.get(field))
+        }
+        return merged
+    }
+
+    /** What one add came to: the JSON to report for it, and the status it deserves. */
+    private class AddOutcome(val status: HttpResponseStatus, val json: JsonObject) {
+        companion object {
+            fun created(json: JsonObject) = AddOutcome(HttpResponseStatus.OK, json)
+            fun refused(status: HttpResponseStatus, message: String) =
+                AddOutcome(status, JsonObject().apply { addProperty("error", message) })
+        }
+    }
+
+    /**
+     * One note, start to finish — the whole of comment_add, minus the
+     * transport. It answers with an outcome instead of writing a response so
+     * that the batch can collect many of them: a per-item failure there is a
+     * result, not the end of the call, and both paths must judge anchors by
+     * exactly the same rules or the batch becomes a second contract.
+     */
+    private fun addComment(json: JsonObject): AddOutcome {
+        payloadError(json)?.let { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
         val body = json.stringOrNull("body")
-            ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
+            ?: return AddOutcome.refused(
+                HttpResponseStatus.BAD_REQUEST,
+                "missing 'body': a thread is something said about code. Pass the note itself as 'body'.",
+            )
         val anchorText = json.stringOrNull("anchor_text")
         // Each omission widens the subject: no 'line' means the file, no
         // 'file' either means the project. Garbage is still a mistake worth
@@ -219,14 +306,14 @@ class MarginalisRestService : RestService() {
         val file = json.stringOrNull("file")
         val line1 = json.intOrNull("line")
         anchorIntentError(json, file, anchorText)?.let {
-            return sendError(HttpResponseStatus.BAD_REQUEST, it, request, context)
+            return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it)
         }
         val order = json.intOrNull("order")
         val walkthroughLabel = json.stringOrNull("walkthrough")
         val projectFilter = json.stringOrNull("project")
         // Garbage gets a teaching 400, not a silent unmarked thread.
         val severity = when (val parsed = Severity.parse(json.stringOrNull("severity"))) {
-            is Severity.Parsed.Invalid -> return sendError(HttpResponseStatus.BAD_REQUEST, parsed.reason, request, context)
+            is Severity.Parsed.Invalid -> return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, parsed.reason)
             is Severity.Parsed.Ok -> parsed.severity
         }
 
@@ -234,9 +321,11 @@ class MarginalisRestService : RestService() {
         // to say which workspace they mean.
         val resolved = ApplicationManager.getApplication().runReadAction(
             Computable { if (file == null) resolveProject(projectFilter)?.to(null) else resolveFile(file, projectFilter) },
-        ) ?: return sendResolutionError(
-            if (file == null) projectResolutionFailure(projectFilter) else resolutionFailure(file, projectFilter),
-            request, context,
+        ) ?: return AddOutcome(
+            HttpResponseStatus.NOT_FOUND,
+            resolutionErrorJson(
+                if (file == null) projectResolutionFailure(projectFilter) else resolutionFailure(file, projectFilter),
+            ),
         )
         val project = resolved.first
         val vFile = resolved.second
@@ -282,8 +371,8 @@ class MarginalisRestService : RestService() {
             thread = created
         }
 
-        val added = thread ?: return sendError(errorStatus, error ?: "internal error", request, context)
-        sendJson(
+        val added = thread ?: return AddOutcome.refused(errorStatus, error ?: "internal error")
+        return AddOutcome.created(
             JsonObject().apply {
                 addProperty("thread_id", added.id)
                 // Each response says only what the thread actually has: no
@@ -296,8 +385,30 @@ class MarginalisRestService : RestService() {
                 }
                 addProperty("status", added.status.kind.name.lowercase())
             },
-            request, context,
         )
+    }
+
+    /**
+     * Every field of an add, checked for shape before anything is created —
+     * and every rejection written the way the severity 400 is: name the
+     * field, say what is wrong with it, say what to do instead. A caller who
+     * mistypes a payload gets a fix, not a status code. Null when the shape
+     * is sound; the meaning of the values is judged after this.
+     */
+    private fun payloadError(json: JsonObject): String? {
+        for ((field, what) in TEXT_FIELDS) {
+            if (json.has(field) && json.stringOrNull(field) == null) {
+                return "'$field' must be a string — $what."
+            }
+        }
+        if (json.has("body") && json.stringOrNull("body")?.isBlank() == true) {
+            return "'body' is empty: a thread with nothing said in it is not worth anchoring. Pass the note text."
+        }
+        if (json.has("order") && json.intOrNull("order") == null) {
+            return "'order' must be an integer (1, 2, 3 …) — a step's position in a walkthrough. Omit it for an " +
+                "ordinary thread."
+        }
+        return null
     }
 
     /**
@@ -506,6 +617,90 @@ class MarginalisRestService : RestService() {
         )
     }
 
+    /**
+     * Rescue every orphan on one file at once. A whole-file rewrite orphans
+     * all of them together, and recovering them one at a time is the same
+     * read-find-call cycle repeated — so the search runs here, over the file
+     * the caller names.
+     *
+     * Two things differ from the single rescue, both because the situation
+     * differs: the caller supplies no line hint (there is nothing sensible
+     * to hint after a rewrite), and the content search widens to the whole
+     * file rather than ±20 lines — the old line number is worthless, the
+     * anchor text is not. Everything else holds: only orphans move, and only
+     * to content that actually matches, so a thread whose text is genuinely
+     * gone stays orphaned and says so. No orphans on the file is not a
+     * failure; it is an empty list.
+     */
+    private fun handleReanchorAll(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+        val file = json.stringOrNull("file")
+            ?: return sendError(
+                HttpResponseStatus.BAD_REQUEST,
+                "missing 'file': comment_reanchor_all rescues the orphans of one file. Pass its project-relative " +
+                    "path, e.g. 'src/App.kt'.",
+                request, context,
+            )
+        val projectFilter = json.stringOrNull("project")
+        val (project, vFile) = ApplicationManager.getApplication()
+            .runReadAction(Computable { resolveFile(file, projectFilter) })
+            ?: return sendResolutionError(resolutionFailure(file, projectFilter), request, context)
+
+        val results = JsonArray()
+        var rescued = 0
+        var error: String? = null
+        ApplicationManager.getApplication().invokeAndWait {
+            val document = FileDocumentManager.getInstance().getDocument(vFile)
+            if (document == null) {
+                error = "'$file' has no text document (binary or too large?)"
+                return@invokeAndWait
+            }
+            val store = MarginalisStore.getInstance(project)
+            // Only threads with an anchor to find: a file-level orphan is
+            // waiting for its file, not for its content.
+            val orphans = store.threads.all()
+                .filter { it.file == file && it.line != null && it.status is ThreadStatus.Orphaned }
+            for (thread in orphans) {
+                val found = AnchorPolicy.findAnchor(
+                    lineCount = document.lineCount,
+                    lineTextAt = { lineText(document, it) },
+                    nearLine = thread.line ?: 0,
+                    anchorText = thread.anchorText ?: "",
+                    segment = thread.segment,
+                    window = document.lineCount,
+                )
+                if (found == null) {
+                    results.add(
+                        JsonObject().apply {
+                            addProperty("thread_id", thread.id)
+                            addProperty("status", thread.status.kind.name.lowercase())
+                        },
+                    )
+                    continue
+                }
+                thread.rescueTo(found.line, lineText(document, found.line))
+                MarginalisMarkers.attach(project, thread, document)
+                store.threads.notifyChanged(thread)
+                rescued++
+                results.add(
+                    JsonObject().apply {
+                        addProperty("thread_id", thread.id)
+                        addProperty("line", found.line + 1)
+                        addProperty("status", thread.status.kind.name.lowercase())
+                    },
+                )
+            }
+        }
+        error?.let { return sendError(HttpResponseStatus.BAD_REQUEST, it, request, context) }
+        sendJson(
+            JsonObject().apply {
+                addProperty("file", file)
+                add("results", results)
+                addProperty("rescued", rescued)
+            },
+            request, context,
+        )
+    }
+
     /** Bulk resolve, optionally scoped to one file: {"file"?}. */
     private fun handleResolveAll(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
         val fileFilter = json.stringOrNull("file")
@@ -580,6 +775,20 @@ class MarginalisRestService : RestService() {
         }
         val unreadOnly = params["unread_only"]?.firstOrNull()?.toBoolean() ?: false
         val projectFilter = params["project"]?.firstOrNull()
+        // The sweep cursor: hand back the newest 'updated_at' you saw and
+        // get only what has moved since. Strictly after, so nothing repeats.
+        val updatedAfter = params["updated_after"]?.firstOrNull()?.let {
+            try {
+                Instant.parse(it)
+            } catch (e: DateTimeParseException) {
+                return sendError(
+                    HttpResponseStatus.BAD_REQUEST,
+                    "'updated_after' must be an ISO-8601 instant (e.g. 2026-08-14T09:30:00Z) — pass back the " +
+                        "'updated_at' of the newest thread your last listing returned.",
+                    request, context,
+                )
+            }
+        }
         // The caller's read receipts are their own: identity via the same
         // author params (query-string here), anonymous callers share "Agent".
         val callerKey = (params["author_id"]?.firstOrNull() ?: params["author_name"]?.firstOrNull())
@@ -594,7 +803,8 @@ class MarginalisRestService : RestService() {
                 if (project.isDisposed) continue
                 if (projectFilter != null && !projectMatches(project, projectFilter)) continue
                 val store = MarginalisStore.getInstance(project)
-                val listed = store.threads.query(fileFilter, statusFilter, if (unreadOnly) callerKey else null)
+                val listed = store.threads
+                    .query(fileFilter, statusFilter, if (unreadOnly) callerKey else null, updatedAfter)
                     .sortedWith(ThreadOrder.byAnchor)
                 for (thread in listed) {
                     val messagesJson = JsonArray()
@@ -622,9 +832,16 @@ class MarginalisRestService : RestService() {
                             // Absent as the subject widens: no line once the
                             // file is the address, no file once the project is.
                             thread.file?.let { addProperty("file", it) }
-                            store.currentLine(thread)?.let { addProperty("line", it + 1) }
+                            val line = store.currentLine(thread)
+                            line?.let { addProperty("line", it + 1) }
+                            // What that line says NOW: compare it with the
+                            // anchor_text you wrote and you know whether the
+                            // code moved under the thread — without re-reading
+                            // the file.
+                            currentAnchorText(project, thread, line)?.let { addProperty("anchor_text", it) }
                             addProperty("status", thread.status.kind.name.lowercase())
                             addProperty("created_at", timeFormat.format(thread.createdAt))
+                            addProperty("updated_at", timeFormat.format(thread.updatedAt))
                             // Additive: the human anchored this thread to a
                             // span within the line, not the whole line.
                             thread.segment?.let { seg ->
@@ -735,6 +952,23 @@ class MarginalisRestService : RestService() {
         )
     }
 
+    /**
+     * The anchor line's text as it stands right now — the answer to "is this
+     * still what I wrote?" without a re-read. Live from the document when one
+     * is loaded (an in-place edit shows up here while the stored fingerprint
+     * still says what the thread was born on); otherwise the fingerprint
+     * itself, which is the most the server honestly knows about a file
+     * nobody has open. Null above the line, where no text is the subject.
+     */
+    private fun currentAnchorText(project: Project, thread: CommentThread, line: Int?): String? {
+        if (line == null) return null
+        val vFile = thread.file?.let { project.guessProjectDir()?.findFileByRelativePath(it) }
+        val document = vFile?.let { FileDocumentManager.getInstance().getCachedDocument(it) }
+            ?: return thread.anchorText
+        if (line >= document.lineCount) return thread.anchorText
+        return lineText(document, line)
+    }
+
     private fun authorJson(author: Author): JsonObject = JsonObject().apply {
         addProperty("kind", if (author is Author.Agent) "agent" else "user")
         addProperty("name", author.displayName)
@@ -796,15 +1030,31 @@ class MarginalisRestService : RestService() {
             "'$file' not found in a project matching '$projectFilter' — see open_projects."
         }
 
+    /** The teaching part of a resolution failure: the error plus every open project with its branch. */
+    private fun resolutionErrorJson(message: String): JsonObject = JsonObject().apply {
+        addProperty("error", message)
+        add("open_projects", ApplicationManager.getApplication().runReadAction(Computable { openProjectsJson() }))
+    }
+
     /** 404 that teaches: the error plus every open project with its branch. */
     private fun sendResolutionError(message: String, request: FullHttpRequest, context: ChannelHandlerContext) {
-        val projects = ApplicationManager.getApplication().runReadAction(Computable { openProjectsJson() })
-        send(
-            JsonObject().apply {
-                addProperty("error", message)
-                add("open_projects", projects)
-            },
-            HttpResponseStatus.NOT_FOUND, request, context,
+        send(resolutionErrorJson(message), HttpResponseStatus.NOT_FOUND, request, context)
+    }
+
+    private companion object {
+        /** What a batch envelope may say once on behalf of every item in it. */
+        val BATCH_DEFAULTS = listOf("author_name", "author_id", "project")
+
+        /** Every add field that must be text, and what it is for — used to write its 400. */
+        val TEXT_FIELDS = listOf(
+            "file" to "the project-relative path, e.g. 'src/App.kt'. Omit it to address the project as a whole",
+            "body" to "the note itself",
+            "anchor_text" to "the exact text you believe occupies the line",
+            "walkthrough" to "a short label, e.g. 'A', grouping the steps of one walk",
+            "project" to "a project name or root path, as listed by ping",
+            "author_name" to "how you want to be shown in the margin",
+            "author_id" to "your stable identity, which read receipts are keyed by",
+            "severity" to "exactly 'blocker' or 'nit'",
         )
     }
 

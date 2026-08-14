@@ -1,5 +1,6 @@
 package dev.marginalis.core
 
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -200,6 +201,37 @@ class ThreadsCodecTest {
         assertFalse(thread.isFileLevel)
         assertEquals(3, thread.line)
         assertEquals("", thread.anchorText)
+    }
+
+    @Test
+    fun `the cursor survives the trip untouched by rehydration`() {
+        val t = CommentThread("a.py", 1, "x")
+        t.addMessage(Message(Author.User("Muhammad"), "hello"))
+        val moved = t.updatedAt
+
+        val decoded = ThreadsCodec.decode(ThreadsCodec.encode(listOf(t))).single()
+        assertEquals(moved, decoded.updatedAt)
+        assertTrue(decoded.updatedAt >= decoded.createdAt)
+    }
+
+    @Test
+    fun `pre-cursor files derive updated_at from what they do remember`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t7","file":"a.py","line":3,"anchor_text":"x = 1",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z",
+              "messages":[{"id":"m1","author":{"kind":"USER","name":"Muhammad"},
+                "body":"hi","created_at":"2026-07-18T12:00:05Z","seen_by":[]}]
+            },{
+              "id":"t8","file":"a.py","line":9,"anchor_text":"y = 2",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]
+            }]}
+        """.trimIndent()
+        val (withMessage, silent) = ThreadsCodec.decode(legacy)
+        // Newest message is the best evidence of when it last moved…
+        assertEquals(Instant.parse("2026-07-18T12:00:05Z"), withMessage.updatedAt)
+        // …and with nothing said, its birth is all there is.
+        assertEquals(Instant.parse("2026-07-18T12:00:00Z"), silent.updatedAt)
     }
 
     @Test

@@ -77,6 +77,26 @@ class CommentThread(
     var status: ThreadStatus = ThreadStatus.Open
         private set
 
+    /**
+     * When this conversation last actually changed — something said, or its
+     * status moved. It is a cursor, not a heartbeat: reading a thread does
+     * not change it (a listing would then bump everything it returns), and
+     * neither does an anchor sliding as the file is edited. That restraint
+     * is the whole point — an agent that asks "what moved since I last
+     * looked?" must get an answer that shrinks to nothing when nothing did.
+     */
+    @Volatile
+    var updatedAt: Instant = createdAt
+        private set
+
+    /**
+     * Mark a mutation this thread does not own — a message body revised in
+     * place, which is the one change that happens inside a [Message].
+     */
+    fun touch() {
+        updatedAt = Instant.now()
+    }
+
     val messages: List<Message>
         get() = synchronized(messagesLock) { _messages.toList() }
 
@@ -85,18 +105,22 @@ class CommentThread(
 
     fun addMessage(message: Message) {
         synchronized(messagesLock) { _messages.add(message) }
+        touch()
     }
 
     fun resolve(by: Author) {
         status = ThreadStatus.Resolved(by)
+        touch()
     }
 
     fun reopen() {
         status = ThreadStatus.Open
+        touch()
     }
 
     fun markOrphaned() {
         status = ThreadStatus.Orphaned
+        touch()
     }
 
     /**
@@ -119,11 +143,21 @@ class CommentThread(
         this.line = line
         this.anchorText = anchorText
         status = ThreadStatus.Open
+        touch()
     }
 
     /** Rehydration only: restore persisted status without lifecycle semantics. */
     fun restoreStatus(status: ThreadStatus) {
         this.status = status
+    }
+
+    /**
+     * Rehydration only: put back the persisted [updatedAt]. Loading a thread
+     * is not a change to it — without this, every restart would rewrite the
+     * whole margin's history as "just now".
+     */
+    fun restoreUpdatedAt(updatedAt: Instant) {
+        this.updatedAt = updatedAt
     }
 
     /** Messages no agent has consumed yet — the user-facing "will be seen" count. */
