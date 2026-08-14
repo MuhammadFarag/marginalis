@@ -6,6 +6,16 @@
         Margin conversations between you and your AI coding agent — Google Docs
         comments over live code, built for the review loop, not the keystroke loop.
         <br/><br/>
+        Getting your agent on board is one command — the skill (for Claude Code
+        and 70+ other agents) teaches it to find the server and follow the
+        plugin's own served guide, version-matched by construction:
+        <br/><br/>
+        <code>npx skills add MuhammadFarag/marginalis -g -y</code>
+        <br/><br/>
+        No skill needed, though: any agent pointed at
+        <code>GET http://127.0.0.1:63342/api/marginalis/agent_guide</code> learns
+        the whole contract from the running plugin itself.
+        <br/><br/>
         Marginalis is deliberately turn-based: your agent never types over your
         shoulder. While you work, it reads the margin and leaves replies, review
         findings, and guided walkthroughs anchored to the exact lines — even the
@@ -35,16 +45,6 @@
         server, no extra configuration.</li>
         </ul>
         <br/>
-        Getting your agent on board is one command — the skill (for Claude Code
-        and 70+ other agents) teaches it to find the server and follow the
-        plugin's own served guide, version-matched by construction:
-        <br/><br/>
-        <code>npx skills add MuhammadFarag/marginalis -g -y</code>
-        <br/><br/>
-        No skill needed, though: any agent pointed at
-        <code>GET http://127.0.0.1:63342/api/marginalis/agent_guide</code> learns
-        the whole contract from the running plugin itself.
-        <br/><br/>
         Threads persist per project (<code>.idea/marginalis.json</code>), so the
         conversation is part of the workspace, not the session. Apache-2.0,
         source on GitHub.
