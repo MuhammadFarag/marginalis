@@ -5,13 +5,14 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
-## [Unreleased]
+## [0.1.26] - 2026-07-27
 
 ### Changed
 
-- Marketplace listing description: onboarding an agent is now part of the
-  pitch — the one-command skill install, and the served guide URL for
-  agents without the skill.
+- Marketplace listing description: onboarding an agent is now the second
+  thing a visitor reads — the one-command skill install and the served
+  guide URL, right after the hook. Metadata-only release; the plugin
+  itself is 0.1.25's.
 
 ## [0.1.25] - 2026-07-27
 
