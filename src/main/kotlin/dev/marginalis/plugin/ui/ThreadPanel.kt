@@ -17,10 +17,6 @@ import com.intellij.openapi.editor.impl.ContextMenuPopupHandler
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.fileTypes.FileType
-import com.intellij.openapi.fileTypes.FileTypeManager
-import com.intellij.openapi.fileTypes.PlainTextFileType
-import com.intellij.openapi.fileTypes.UnknownFileType
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.ActionLink
@@ -111,7 +107,7 @@ class ThreadPanel(
     // Markdown-aware composer: the IDE's own Markdown lexer highlights as you
     // type (plain text when the Markdown plugin is absent). Same input, same
     // colors you'll see rendered after submitting.
-    private val replyArea = EditorTextField("", project, composerFileType()).apply {
+    private val replyArea = EditorTextField("", project, CodeFenceFileTypes.of("markdown")).apply {
         setOneLineMode(false)
         // Fence interiors get their language's colors as they're typed —
         // Markdown's own highlighter leaves them flat.
@@ -510,11 +506,6 @@ class ThreadPanel(
             else -> replyArea.text + "\n" + fence
         }
         focusReply()
-    }
-
-    private fun composerFileType(): FileType {
-        val markdown = FileTypeManager.getInstance().getFileTypeByExtension("md")
-        return if (markdown is UnknownFileType) PlainTextFileType.INSTANCE else markdown
     }
 
     private fun sendReply() {

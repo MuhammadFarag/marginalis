@@ -37,6 +37,8 @@ import javax.swing.event.PopupMenuListener
  */
 object MarkdownRenderer {
 
+    private const val FENCE_PREVIEW_CHARS = 40
+
     fun render(project: Project, body: String, wrapWidth: Int): JComponent {
         val box = Box.createVerticalBox()
         var consumedUpTo = 0
@@ -57,13 +59,17 @@ object MarkdownRenderer {
         return box
     }
 
-    /** Strip markdown syntax for one-line previews (tooltips, tool window rows). */
+    /**
+     * One-line preview (tooltips, tool window rows): markdown syntax stripped,
+     * each fenced block sampled inline by its first [FENCE_PREVIEW_CHARS]
+     * characters of code.
+     */
     fun previewText(body: String): String {
         val flattened = StringBuilder()
         var consumedUpTo = 0
         for (fence in closedFences(body)) {
             flattened.append(body, consumedUpTo, fence.start)
-                .append(' ').append(body.substring(fence.codeStart, fence.codeEnd).take(40)).append(' ')
+                .append(' ').append(body.substring(fence.codeStart, fence.codeEnd).take(FENCE_PREVIEW_CHARS)).append(' ')
             consumedUpTo = fence.end
         }
         flattened.append(body, consumedUpTo, body.length)
