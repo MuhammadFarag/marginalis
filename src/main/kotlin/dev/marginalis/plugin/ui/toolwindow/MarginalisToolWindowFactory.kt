@@ -35,9 +35,11 @@ import dev.marginalis.core.PathTrie
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
+import dev.marginalis.core.Turn
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileLevelThreads
+import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ProjectThreadPopup
 import dev.marginalis.plugin.ui.WalkthroughNavigator
@@ -695,8 +697,8 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 val open = data.threads.filter { it.status is ThreadStatus.Open }
                 val needsYou = open.count { it.awaitsUser() }
                 val onClaude = open.size - needsYou
-                if (needsYou > 0) append("  ●$needsYou", VIOLET_ATTRS)
-                if (onClaude > 0) append("  ○$onClaude", BLUE_ATTRS)
+                if (needsYou > 0) append("  ${FileTurn.glyph(Turn.USER)}$needsYou", VIOLET_ATTRS)
+                if (onClaude > 0) append("  ${FileTurn.glyph(Turn.AGENT)}$onClaude", BLUE_ATTRS)
             }
             is NodeData.ThreadNode -> {
                 val thread = data.thread
@@ -730,8 +732,8 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     if (thread.severity == Severity.NIT) SimpleTextAttributes.GRAYED_ATTRIBUTES
                     else SimpleTextAttributes.REGULAR_ATTRIBUTES,
                 )
-                if (thread.status is ThreadStatus.Open) {
-                    append(if (thread.awaitsUser()) "  ●" else "  ○", if (thread.awaitsUser()) VIOLET_ATTRS else BLUE_ATTRS)
+                Turn.of(listOf(thread))?.let { turn ->
+                    append("  ${FileTurn.glyph(turn)}", if (turn == Turn.USER) VIOLET_ATTRS else BLUE_ATTRS)
                 }
             }
             else -> {}

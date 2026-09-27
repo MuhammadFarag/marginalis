@@ -1,5 +1,6 @@
 package dev.marginalis.plugin
 
+import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
@@ -26,7 +27,7 @@ import dev.marginalis.plugin.ui.MarginalisMarkers
  *    means ORPHANED, never a guessed anchor.
  * 2. Keep collapsed state honest on every change: markers dropped on
  *    resolve/delete, re-attached on reopen, renderers refreshed, tab-title
- *    glyphs updated.
+ *    and Project-view glyphs updated.
  * 3. Persist on every change (small file, background thread).
  */
 class MarginalisStartup : ProjectActivity {
@@ -38,12 +39,14 @@ class MarginalisStartup : ProjectActivity {
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 syncMarker(project, thread)
-                // Refresh this file's tab so the turn glyph tracks the change.
-                // Deliberately the base-class API: FileEditorManagerEx's
-                // variant is 2026.1+ and broke the 2025.2 floor in CI.
+                // Refresh this file's tab and Project-view node so the turn
+                // glyph tracks the change. Deliberately the base-class API:
+                // FileEditorManagerEx's variant is 2026.1+ and broke the
+                // 2025.2 floor in CI.
                 thread.file?.let { path ->
                     project.guessProjectDir()?.findFileByRelativePath(path)?.let { vFile ->
                         FileEditorManager.getInstance(project).updateFilePresentation(vFile)
+                        ProjectView.getInstance(project).currentProjectViewPane?.updateFrom(vFile, false, false)
                     }
                 }
             }

@@ -5,6 +5,15 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Added
+
+- Project view shows the turn glyph beside file names with open threads
+  (#4) — the editor tab's ● (you owe a reply) / ○ (the agent does), now
+  visible for files that aren't open. One rule in core (`Turn`) feeds the
+  tab, the Project view, and the tool window's dots.
+
 ## [0.1.26] - 2026-07-27
 
 ### Changed
