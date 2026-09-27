@@ -11,6 +11,8 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.impl.ContextMenuPopupHandler
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -111,8 +113,16 @@ class ThreadPanel(
     // colors you'll see rendered after submitting.
     private val replyArea = EditorTextField("", project, composerFileType()).apply {
         setOneLineMode(false)
+        // Fence interiors get their language's colors as they're typed —
+        // Markdown's own highlighter leaves them flat.
+        addDocumentListener(object : DocumentListener {
+            override fun documentChanged(event: DocumentEvent) {
+                editor?.let { ComposerFenceHighlighter.repaint(it, project) }
+            }
+        })
         addSettingsProvider { composerEditor ->
             composerEditor.settings.isUseSoftWraps = true
+            ComposerFenceHighlighter.repaint(composerEditor, project)
             // Same right-click the rendered messages got: undiscoverable
             // clipboard actions barely exist.
             composerEditor.installPopupHandler(

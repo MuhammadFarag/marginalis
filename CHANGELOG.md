@@ -13,6 +13,10 @@ History before 0.1.19 lives in git tags.
   (#4) — the editor tab's ● (you owe a reply) / ○ (the agent does), now
   visible for files that aren't open. One rule in core (`Turn`) feeds the
   tab, the Project view, and the tool window's dots.
+- Code fences in the composer are colored while you type (#3): each
+  fence's code runs through its language's own lexer, painted over the
+  Markdown highlighting — the colors it will render with, before you
+  submit. Rendered messages and the composer now share one fence parser.
 
 ## [0.1.26] - 2026-07-27
 
