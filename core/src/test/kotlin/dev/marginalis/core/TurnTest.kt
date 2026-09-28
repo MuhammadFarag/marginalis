@@ -2,6 +2,7 @@ package dev.marginalis.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -63,6 +64,85 @@ class TurnTest {
             assertIs<Parsed.Invalid>(parsed, "'$raw' must be rejected")
             assertTrue(parsed.reason.contains("'agent'") && parsed.reason.contains("'user'"))
         }
+    }
+
+    private val builder = Author.Agent("Claude · builder", "claude-builder")
+    private val reviewer = Author.Agent("Claude · review", "claude-review")
+
+    private fun thread(vararg said: Message) =
+        CommentThread(file = "a.py", line = 1, anchorText = "x").also { t -> said.forEach(t::addMessage) }
+
+    @Test
+    fun `an unaddressed word from the user is every agent's debt`() {
+        val asked = thread(Message(user, "…"))
+
+        assertEquals(Turn.AGENT, asked.turnFor("claude-builder"))
+        assertEquals(Turn.AGENT, asked.turnFor("claude-review"))
+    }
+
+    @Test
+    fun `a word addressed to one agent is that agent's debt alone`() {
+        val asked = thread(Message(user, "…", to = Addressee.Agent("claude-review")))
+
+        assertEquals(Turn.AGENT, asked.turn())
+        assertEquals(Turn.AGENT, asked.turnFor("claude-review"))
+        assertNull(asked.turnFor("claude-builder"))
+    }
+
+    @Test
+    fun `an agent addressing another agent hands the turn to that agent, not the user`() {
+        val handedOver = thread(Message(user, "…"), Message(builder, "…", to = Addressee.Agent("claude-review")))
+
+        assertEquals(Turn.AGENT, handedOver.turn())
+        assertEquals(Turn.AGENT, handedOver.turnFor("claude-review"))
+        assertNull(handedOver.turnFor("claude-builder"))
+    }
+
+    @Test
+    fun `a word addressed to the user awaits the user, whoever wrote it and whoever asks`() {
+        val toUser = thread(Message(user, "…", to = Addressee.User))
+
+        assertEquals(Turn.USER, toUser.turn())
+        assertEquals(Turn.USER, toUser.turnFor("claude-builder"))
+        assertEquals(Turn.USER, thread(Message(builder, "…")).turnFor("claude-review"))
+    }
+
+    @Test
+    fun `no calling identity reads the broadcast turn`() {
+        val asked = thread(Message(user, "…", to = Addressee.Agent("claude-review")))
+
+        assertEquals(asked.turn(), asked.turnFor(null))
+        assertEquals(Turn.AGENT, asked.turnFor(null))
+    }
+
+    @Test
+    fun `a concluded thread is nobody's debt, addressed or not`() {
+        val resolved = thread(Message(user, "…", to = Addressee.Agent("claude-builder"))).also { it.resolve(user) }
+
+        assertNull(resolved.turnFor("claude-builder"))
+    }
+
+    @Test
+    fun `awaiting is computed for the calling identity`() {
+        val store = ThreadStore()
+        val everyones = thread(Message(user, "…"))
+        val reviewers = thread(Message(user, "…", to = Addressee.Agent("claude-review")))
+        val users = thread(Message(reviewer, "…"))
+        listOf(everyones, reviewers, users).forEach(store::add)
+
+        assertEquals(setOf(everyones), store.query(awaiting = Turn.AGENT, awaitingFor = "claude-builder").toSet())
+        assertEquals(setOf(everyones, reviewers), store.query(awaiting = Turn.AGENT, awaitingFor = "claude-review").toSet())
+        assertEquals(setOf(users), store.query(awaiting = Turn.USER, awaitingFor = "claude-builder").toSet())
+        assertEquals(setOf(everyones, reviewers), store.query(awaiting = Turn.AGENT).toSet())
+    }
+
+    @Test
+    fun `the store knows whether anything awaits an agent`() {
+        val store = ThreadStore()
+        store.add(thread(Message(user, "…", to = Addressee.Agent("claude-review"))))
+
+        assertTrue(store.hasAwaiting(reviewer))
+        assertFalse(store.hasAwaiting(builder))
     }
 
     private fun parsed(raw: String?): Turn? = (Turn.parse(raw) as Parsed.Ok).value

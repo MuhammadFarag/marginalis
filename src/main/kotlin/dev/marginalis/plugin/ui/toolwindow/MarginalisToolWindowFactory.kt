@@ -207,7 +207,7 @@ private class FilterMenuAction(private val panel: MarginalisToolWindowPanel) :
 }
 
 private class HandBackAction :
-    AnAction("Hand Back", "Hand the turn back to the agent: every agent waiting on this project wakes", MarginalisIcons.HandBack) {
+    AnAction("Hand Back", "Hand the turn back to the waiting agents", MarginalisIcons.HandBack) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
@@ -215,7 +215,7 @@ private class HandBackAction :
         val waitingNames = MarginalisStore.getInstance(project).handBack.waitingNames
         e.presentation.icon =
             if (waitingNames.isNotEmpty()) MarginalisIcons.HandBack else IconLoader.getDisabledIcon(MarginalisIcons.HandBack)
-        e.presentation.description = WaitingAgents.handBackTooltip(waitingNames)
+        e.presentation.text = WaitingAgents.handBackText(waitingNames)
     }
 
     override fun actionPerformed(e: AnActionEvent) {

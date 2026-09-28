@@ -11,23 +11,33 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.command.undo.UndoManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.impl.ContextMenuPopupHandler
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBOptionButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import dev.marginalis.core.Addressee
+import dev.marginalis.core.AtMention
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Identities
+import dev.marginalis.core.Identity
 import dev.marginalis.core.Message
+import dev.marginalis.core.Reference
 import dev.marginalis.core.SendOption
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
@@ -40,19 +50,23 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Graphics
 import java.awt.Graphics2D
+import java.awt.Rectangle
 import java.awt.RenderingHints
+import java.awt.datatransfer.StringSelection
 import java.awt.event.ActionEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.AbstractAction
 import javax.swing.Action
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.Icon
 import javax.swing.JComponent
+import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 
@@ -72,6 +86,7 @@ class ThreadPanel(
 ) : JPanel(BorderLayout()) {
 
     private val messagesBox = Box.createVerticalBox()
+    private val messageComponents = mutableMapOf<String, JComponent>()
     private val statusLabel = JBLabel()
 
     /**
@@ -105,6 +120,14 @@ class ThreadPanel(
     private lateinit var composerActions: JComponent
     private lateinit var collapsedReply: JComponent
     private var composerExpanded = false
+    private var addressee: Addressee? = null
+    private var agentNames: Map<String, String> = emptyMap()
+    private val addresseeLink = ActionLink("") {
+        addressTo(null)
+        saveDraft()
+    }.apply {
+        toolTipText = "Click to address everyone instead"
+    }
     private val cancelEditLink = ActionLink("Cancel") {
         editingMessageId = null
         replyArea.text = ""
@@ -122,6 +145,12 @@ class ThreadPanel(
         addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
                 editor?.let { ComposerFenceHighlighter.repaint(it, project) }
+                if (event.newFragment.toString() == "@" && editingMessageId == null &&
+                    !UndoManager.getInstance(project).isUndoOrRedoInProgress &&
+                    AtMention.startsAt(event.document.text, event.offset)
+                ) {
+                    ApplicationManager.getApplication().invokeLater { pickAddressee(event.offset) }
+                }
             }
         })
         addSettingsProvider { composerEditor ->
@@ -198,16 +227,12 @@ class ThreadPanel(
         // one key; three paragraphs shouldn't be. A restored draft reopens
         // the composer it was typed in.
         MarginalisStore.getInstance(project).drafts[thread.id]?.let {
-            replyArea.text = it
+            replyArea.text = it.text
+            addressee = it.to
             setComposerExpanded(true)
         }
         replyArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
-            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
-                if (editingMessageId != null) return // edits restore the original on cancel, not a draft
-                val store = MarginalisStore.getInstance(project)
-                val text = replyArea.text
-                if (text.isBlank()) store.drafts.remove(thread.id) else store.drafts[thread.id] = text
-            }
+            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) = saveDraft()
         })
         // Esc anywhere in the panel (buttons, links) closes it; the composer
         // handles its own Esc above because the editor consumes key events.
@@ -262,7 +287,7 @@ class ThreadPanel(
             // red as the gutter for blockers, quiet gray for nits, and a
             // quieter one still for the intent, which is not a gate.
             thread.intent?.let { intent ->
-                add(Chip(intent.name.lowercase(), INTENT_PILL, INTENT_TEXT))
+                add(Chip(intent.name.lowercase(), QUIET_PILL, INTENT_TEXT))
                 add(Box.createHorizontalStrut(JBUI.scale(6)))
             }
             thread.severity?.let { severity ->
@@ -340,6 +365,7 @@ class ThreadPanel(
             nextStep,
             lastStep,
             Separator.getInstance(),
+            copyReferenceAction(),
             resolveAction(),
             deleteAction(),
             closeAction(),
@@ -390,13 +416,28 @@ class ThreadPanel(
                 Messages.getWarningIcon(),
             )
             if (answer != Messages.YES) return
-            // The store listener does the rest: marker removed, this panel
-            // closed, icons regrouped (the deleted-thread branch).
             MarginalisStore.getInstance(project).threads.remove(thread.id)
-            // A panel outlives its thread nowhere: in an editor the store
-            // listener closes it, in a popup this does.
             closeAndRefocus()
         }
+    }
+
+    private fun copyReferenceAction(): AnAction = object : AnAction("Copy Reference", null, AllIcons.Actions.Copy) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabledAndVisible = !isDraft()
+            e.presentation.description = "Copy ${Reference.of(thread.id)} to cite this thread"
+        }
+
+        override fun actionPerformed(e: AnActionEvent) = copyReference(thread.id)
+    }
+
+    private fun copyReference(id: String) {
+        CopyPasteManager.getInstance().setContents(StringSelection(Reference.of(id).toString()))
+    }
+
+    fun reveal(message: Message) {
+        messageComponents[message.id]?.let { it.scrollRectToVisible(Rectangle(it.size)) }
     }
 
     private fun closeAction(): AnAction = object : AnAction("Close", null, AllIcons.Actions.Close) {
@@ -439,6 +480,7 @@ class ThreadPanel(
     private fun buildReplyRow(): JComponent {
         sendButton.font = JBUI.Fonts.smallFont()
         cancelEditLink.font = JBUI.Fonts.smallFont()
+        addresseeLink.font = JBUI.Fonts.smallFont()
         val quoteLink = ActionLink("") { quoteIntoReply() }.apply {
             icon = AllIcons.Actions.MenuPaste
             toolTipText = "Quote code: insert the editor selection (or this thread's anchor) as a code block"
@@ -455,6 +497,7 @@ class ThreadPanel(
         composerActions = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
             isOpaque = false
             border = JBUI.Borders.emptyTop(2)
+            add(addresseeLink)
             add(quoteLink)
             add(cancelEditLink)
             add(sendButton)
@@ -540,7 +583,8 @@ class ThreadPanel(
         }
 
         ensureStored() // draft threads materialize on first send
-        thread.addMessage(Message(Authors.user, body))
+        thread.addMessage(Message(Authors.user, body, to = addressee))
+        addressTo(null)
         replyArea.text = ""
         setComposerExpanded(false)
         MarginalisStore.getInstance(project).drafts.remove(thread.id)
@@ -560,12 +604,77 @@ class ThreadPanel(
         if (body.isEmpty()) return
         val store = MarginalisStore.getInstance(project)
         val wider = CommentThread(file, line = null, anchorText = null, segment = thread.segment)
-        wider.addMessage(Message(Authors.user, body))
+        wider.addMessage(Message(Authors.user, body, to = addressee))
         replyArea.text = ""
         store.drafts.remove(thread.id)
         onClose()
         store.threads.add(wider)
         WalkthroughNavigator.navigateTo(project, wider)
+    }
+
+    private fun pickAddressee(atOffset: Int) {
+        val composerEditor = replyArea.editor ?: return
+        val agents = knownAgents()
+        if (agents.isEmpty()) return
+        JBPopupFactory.getInstance()
+            .createPopupChooserBuilder(agents)
+            .setTitle("Address To")
+            .setNamerForFiltering { agent -> "${agent.name.orEmpty()} ${agent.id}" }
+            .setRenderer(
+                object : SimpleListCellRenderer<Identity.Agent>() {
+                    override fun customize(
+                        list: JList<out Identity.Agent>,
+                        agent: Identity.Agent,
+                        index: Int,
+                        selected: Boolean,
+                        hasFocus: Boolean,
+                    ) {
+                        text = agent.name?.let { "$it  ·  ${agent.id}" } ?: agent.id
+                    }
+                },
+            )
+            .setItemChosenCallback { agent ->
+                val document = composerEditor.document
+                val mentionEnd = maxOf(composerEditor.caretModel.offset, atOffset + 1)
+                if (document.charsSequence.getOrNull(atOffset) == '@' && mentionEnd <= document.textLength) {
+                    WriteCommandAction.runWriteCommandAction(project) { document.deleteString(atOffset, mentionEnd) }
+                }
+                addressTo(Addressee.Agent(agent.id))
+                saveDraft()
+            }
+            .createPopup()
+            .showInBestPositionFor(composerEditor)
+    }
+
+    private fun knownAgents(): List<Identity.Agent> =
+        Identities.of(MarginalisStore.getInstance(project).threads.all(), Authors.user, handBack.waitingAgents)
+            .filterIsInstance<Identity.Agent>()
+
+    private fun refreshAgentNames() {
+        agentNames = handBack.waitingAgents.associate { it.receiptKey to it.displayName } +
+            Identities.namesByKey(MarginalisStore.getInstance(project).threads.all())
+    }
+
+    private fun addressTo(to: Addressee?) {
+        addressee = to
+        addresseeLink.isVisible = to != null && editingMessageId == null
+        addresseeLink.text = to?.let { "@${addresseeName(it)} ✕" } ?: ""
+    }
+
+    private fun saveDraft() {
+        if (editingMessageId != null) return // edits restore the original on cancel, not a draft
+        val drafts = MarginalisStore.getInstance(project).drafts
+        val text = replyArea.text
+        if (text.isBlank() && addressee == null) {
+            drafts.remove(thread.id)
+        } else {
+            drafts[thread.id] = MarginalisStore.Draft(text, addressee)
+        }
+    }
+
+    private fun addresseeName(to: Addressee): String = when (to) {
+        Addressee.User -> Authors.user.displayName
+        is Addressee.Agent -> agentNames[to.key] ?: to.key
     }
 
     fun focusReply() {
@@ -641,14 +750,29 @@ class ThreadPanel(
         }
     }
 
+    private var watchingThread: AutoCloseable? = null
+    private val threadUpdateQueued = AtomicBoolean(false)
+
+    private fun onThreadChanged() {
+        if (!threadUpdateQueued.compareAndSet(false, true)) return
+        ApplicationManager.getApplication().invokeLater {
+            threadUpdateQueued.set(false)
+            if (project.isDisposed || watchingThread == null) return@invokeLater
+            if (MarginalisStore.getInstance(project).threads.byId(thread.id) == null) onClose() else refresh()
+        }
+    }
+
     override fun addNotify() {
         super.addNotify()
         handBack.addListener(onWaitersChanged)
+        watchingThread = MarginalisStore.getInstance(project).threads.watch(thread.id) { onThreadChanged() }
         refreshSendOptions()
     }
 
     override fun removeNotify() {
         handBack.removeListener(onWaitersChanged)
+        watchingThread?.close()
+        watchingThread = null
         super.removeNotify()
     }
 
@@ -674,6 +798,8 @@ class ThreadPanel(
         )
         refreshSendOptions()
         cancelEditLink.isVisible = editingMessageId != null
+        refreshAgentNames()
+        addressTo(addressee)
         replyArea.setPlaceholder(
             when {
                 thread.messages.isNotEmpty() -> "Reply… (⌘⏎ to submit)"
@@ -687,18 +813,21 @@ class ThreadPanel(
         )
 
         messagesBox.removeAll()
+        messageComponents.clear()
         val timeFormat = messageTimeFormatter()
         // Consecutive agent messages group under one meta line — the second
         // "Claude · 14:02" in a row is noise. User messages always keep
         // theirs: the meta row is where Edit and the seen-check live.
-        var previousAuthor: Author? = null
+        var previous: Message? = null
         for (message in thread.messages) {
-            val grouped = message.author is Author.Agent && message.author == previousAuthor
+            val grouped = message.continues(previous)
             if (messagesBox.componentCount > 0) {
                 messagesBox.add(Box.createVerticalStrut(JBUI.scale(if (grouped) 2 else 8)))
             }
-            messagesBox.add(messageComponent(message, timeFormat, showMeta = !grouped))
-            previousAuthor = message.author
+            val component = messageComponent(message, timeFormat, showMeta = !grouped)
+            messageComponents[message.id] = component
+            messagesBox.add(component)
+            previous = message
         }
         revalidate()
         repaint()
@@ -710,15 +839,20 @@ class ThreadPanel(
      * introduced agents hash their receipt identity into a small palette
      * (user blue is deliberately absent from it).
      */
-    private fun agentColor(agent: Author.Agent): JBColor {
-        if (agent.id == null && agent.displayName == Authors.agent.displayName) return AGENT_PALETTE[0]
-        return AGENT_PALETTE[Math.floorMod(agent.receiptKey.hashCode(), AGENT_PALETTE.size)]
+    private fun agentColor(agentKey: String): JBColor {
+        if (agentKey == Authors.agent.receiptKey) return AGENT_PALETTE[0]
+        return AGENT_PALETTE[Math.floorMod(agentKey.hashCode(), AGENT_PALETTE.size)]
+    }
+
+    private fun addresseeColor(to: Addressee): JBColor = when (to) {
+        Addressee.User -> USER_COLOR
+        is Addressee.Agent -> agentColor(to.key)
     }
 
     private fun messageComponent(message: Message, timeFormat: DateTimeFormatter, showMeta: Boolean): JComponent {
         val authorColor = when (val author = message.author) {
-            is Author.Agent -> agentColor(author)
-            else -> JBColor(0x1565C0, 0x90CAF9) // user: blue
+            is Author.Agent -> agentColor(author.receiptKey)
+            else -> USER_COLOR
         }
         // Each message wears a thin rail in its author's color — enough for
         // the eye to separate turns without reading names, without becoming
@@ -736,7 +870,16 @@ class ThreadPanel(
                 font = JBUI.Fonts.smallFont().asBold()
                 foreground = authorColor
             }
-            metaRow.add(meta, BorderLayout.WEST)
+            val who = JPanel().apply {
+                isOpaque = false
+                layout = BoxLayout(this, BoxLayout.X_AXIS)
+                add(meta)
+                message.to?.let { to ->
+                    add(Box.createHorizontalStrut(JBUI.scale(6)))
+                    add(Chip("@${addresseeName(to)}", QUIET_PILL, addresseeColor(to)))
+                }
+            }
+            metaRow.add(who, BorderLayout.WEST)
         } else {
             // A grouped message's own time is suppressed with its meta line;
             // hover recovers it (operator ask — invisible until wanted).
@@ -747,6 +890,7 @@ class ThreadPanel(
         // until the agent reads it, immutable record after — and once read,
         // the receipt itself becomes visible: the promise "the agent will
         // see this" is only trustworthy if you can see it kept.
+        val trailing = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply { isOpaque = false }
         if (message.author is Author.User && !message.seenByAnyAgent && editingMessageId == null) {
             val editLink = ActionLink("Edit") {
                 editingMessageId = message.id
@@ -755,7 +899,7 @@ class ThreadPanel(
                 focusReply()
             }
             editLink.font = JBUI.Fonts.smallFont()
-            metaRow.add(editLink, BorderLayout.EAST)
+            trailing.add(editLink)
         } else if (editingMessageId == message.id) {
             metaRow.add(
                 JBLabel("editing below ↓").apply {
@@ -768,7 +912,7 @@ class ThreadPanel(
             panel.add(metaRow, BorderLayout.NORTH)
             return panel
         } else if (message.author is Author.User && message.seenByAnyAgent) {
-            metaRow.add(
+            trailing.add(
                 JBLabel("✓ seen").apply {
                     font = JBUI.Fonts.smallFont()
                     // Green, matching the resolve checkmark family — the
@@ -777,9 +921,15 @@ class ThreadPanel(
                     foreground = JBColor(Color(0x2E, 0x7D, 0x32), Color(0xA5, 0xD6, 0xA7))
                     toolTipText = seenByNames(message)
                 },
-                BorderLayout.EAST,
             )
         }
+        trailing.add(
+            ActionLink("") { copyReference(message.id) }.apply {
+                icon = AllIcons.Actions.Copy
+                toolTipText = "Copy reference: ${Reference.of(message.id)}"
+            },
+        )
+        metaRow.add(trailing, BorderLayout.EAST)
         // Markdown-lite body: paragraphs as wrapped HTML panes, fenced code
         // as native highlighted editor fragments. Measured at a conservative
         // width so heights only overestimate, never clip.
@@ -789,11 +939,9 @@ class ThreadPanel(
         return panel
     }
 
-    /** "Seen by Claude" — receipt keys mapped back to display names where the thread knows them. */
+    /** "Seen by Claude" — receipt keys mapped back to display names where the margin knows them. */
     private fun seenByNames(message: Message): String {
-        val agents = thread.messages.map { it.author }.filterIsInstance<Author.Agent>().distinct()
-        val names = message.seenBy.sorted().map { key -> agents.find { it.receiptKey == key }?.displayName ?: key }
-        return "Seen by ${names.joinToString(", ")}"
+        return "Seen by ${message.seenBy.sorted().joinToString(", ") { agentNames[it] ?: it }}"
     }
 
     /**
@@ -822,9 +970,9 @@ class ThreadPanel(
     }
 
     private companion object {
-        // Quieter than either severity: an intent says what kind of answer
-        // is wanted, never how urgently.
-        val INTENT_PILL = JBColor(Color(0xE1, 0xE9, 0xF4), Color(0x36, 0x3E, 0x4B))
+        // Quieter than either severity: an intent or an addressee says what
+        // kind of answer is wanted and from whom, never how urgently.
+        val QUIET_PILL = JBColor(Color(0xE1, 0xE9, 0xF4), Color(0x36, 0x3E, 0x4B))
         val INTENT_TEXT = JBColor(Color(0x2A, 0x4A, 0x7A), Color(0xB6, 0xC7, 0xE0))
 
         fun severityPill(severity: Severity): JBColor = when (severity) {
@@ -836,6 +984,8 @@ class ThreadPanel(
             Severity.BLOCKER -> JBColor(Color.WHITE, Color(0xF5, 0xE3, 0xE3))
             Severity.NIT -> JBColor(Color(0x59, 0x59, 0x59), Color(0xBD, 0xBD, 0xBD))
         }
+
+        val USER_COLOR = JBColor(0x1565C0, 0x90CAF9)
 
         val AGENT_PALETTE = arrayOf(
             JBColor(0x9C27B0, 0xCE93D8), // purple — the anonymous "Agent"

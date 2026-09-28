@@ -29,6 +29,7 @@ class ThreadStore {
         /** Non-null: only threads asking for this kind of response. */
         intent: Intent? = null,
         awaiting: Turn? = null,
+        awaitingFor: String? = null,
         /** Non-null: only threads with messages this agent hasn't seen. */
         unreadFor: String? = null,
         /**
@@ -42,10 +43,13 @@ class ThreadStore {
         (file == null || thread.file == file) &&
             (status == null || thread.status.kind == status) &&
             (intent == null || thread.intent == intent) &&
-            (awaiting == null || thread.turn() == awaiting) &&
+            (awaiting == null || thread.turnFor(awaitingFor) == awaiting) &&
             (unreadFor == null || thread.unreadCountFor(unreadFor) > 0) &&
             (updatedAfter == null || thread.updatedAt > updatedAfter)
     }
+
+    fun hasAwaiting(agent: Author.Agent): Boolean =
+        query(awaiting = Turn.AGENT, awaitingFor = agent.receiptKey).isNotEmpty()
 
     /** Remove one thread entirely. Any live UI attachments are the caller's to clean up. */
     fun remove(id: String): CommentThread? {
@@ -68,6 +72,17 @@ class ThreadStore {
      */
     fun addListener(listener: (CommentThread) -> Unit) {
         listeners.add(listener)
+    }
+
+    private fun removeListener(listener: (CommentThread) -> Unit) {
+        listeners.remove(listener)
+    }
+
+    /** Hears only [id]'s changes, as the stored thread — null once it is gone. */
+    fun watch(id: String, onChange: (CommentThread?) -> Unit): AutoCloseable {
+        val listener: (CommentThread) -> Unit = { changed -> if (changed.id == id) onChange(byId(id)) }
+        addListener(listener)
+        return AutoCloseable { removeListener(listener) }
     }
 
     fun notifyChanged(thread: CommentThread) {

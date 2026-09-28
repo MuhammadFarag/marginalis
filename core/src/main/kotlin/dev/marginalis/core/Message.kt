@@ -14,6 +14,7 @@ class Message(
     val id: String = UUID.randomUUID().toString(),
     val createdAt: Instant = Instant.now(),
     seenBy: Set<String>? = null,
+    val to: Addressee? = null,
 ) {
     /**
      * Revisable only inside the edit window: a user message may change until
@@ -50,4 +51,14 @@ class Message(
         get() = _seenBy.isNotEmpty()
 
     fun seenBy(agentKey: String): Boolean = agentKey in _seenBy
+
+    fun continues(previous: Message?): Boolean =
+        previous != null && author is Author.Agent && author == previous.author && to == null && previous.to == null
+
+    val awaits: Turn
+        get() = when (to) {
+            Addressee.User -> Turn.USER
+            is Addressee.Agent -> Turn.AGENT
+            null -> if (author is Author.Agent) Turn.USER else Turn.AGENT
+        }
 }

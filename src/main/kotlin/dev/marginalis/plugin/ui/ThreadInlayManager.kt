@@ -10,6 +10,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Message
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisStore
 
@@ -37,8 +38,9 @@ object ThreadInlayManager {
     }
 
     /** Open (never close) the panel — used by tool-window navigation. */
-    fun open(project: Project, editor: Editor, thread: CommentThread) {
-        openPanel(project, editor, thread, ensureStored = {})
+    fun open(project: Project, editor: Editor, thread: CommentThread, revealing: Message? = null) {
+        val panel = openPanel(project, editor, thread, ensureStored = {}) ?: return
+        revealing?.let { ApplicationManager.getApplication().invokeLater { panel.reveal(it) } }
     }
 
     /**
@@ -60,12 +62,12 @@ object ThreadInlayManager {
         editor.getUserData(OPEN_INLAYS) ?: mutableMapOf<String, Pair<Inlay<*>, ThreadPanel>>()
             .also { editor.putUserData(OPEN_INLAYS, it) }
 
-    private fun openPanel(project: Project, editor: Editor, thread: CommentThread, ensureStored: () -> Unit) {
+    private fun openPanel(project: Project, editor: Editor, thread: CommentThread, ensureStored: () -> Unit): ThreadPanel? {
         val open = openInlays(editor)
-        open[thread.id]?.let { (inlay, _) ->
+        open[thread.id]?.let { (inlay, panel) ->
             // Document reloads (external file changes) dispose inlays behind
             // our back; a stale map entry must not veto reopening forever.
-            if (inlay.isValid) return
+            if (inlay.isValid) return panel
             open.remove(thread.id)
         }
 
@@ -91,7 +93,7 @@ object ThreadInlayManager {
                 0,
                 offset,
             ),
-        ) ?: return
+        ) ?: return null
         // The panel computes its width from the live viewport; re-render on
         // width changes so an editor resize reflows open panels (scrolling
         // also fires visible-area events — same width, filtered out).
@@ -104,6 +106,7 @@ object ThreadInlayManager {
         open[thread.id] = inlay to panel
         installStoreListener(project, editor)
         ApplicationManager.getApplication().invokeLater { panel.focusDefault() }
+        return panel
     }
 
     private fun close(editor: Editor, threadId: String) {
@@ -126,13 +129,12 @@ object ThreadInlayManager {
     }
 
     /**
-     * One store listener per editor: refreshes any open panel when its thread
-     * changes (agent replies land while the human is looking at the thread),
-     * and closes the panel when its thread is deleted OR resolved — one
-     * rule: only open threads hold editor real estate. A deleted thread's
-     * panel is a ghost; a resolved one's is a conversation that already
-     * folded (its marker drops at the same moment, and Resolve All used to
-     * leave a wall of concluded panels behind — operator finding).
+     * One store listener per editor: closes the panel when its thread is
+     * deleted OR resolved — one rule: only open threads hold editor real
+     * estate. A deleted thread's panel is a ghost; a resolved one's is a
+     * conversation that already folded (its marker drops at the same
+     * moment, and Resolve All used to leave a wall of concluded panels
+     * behind — operator finding). Panels keep their own content current.
      */
     private fun installStoreListener(project: Project, editor: Editor) {
         if (editor.getUserData(LISTENER_INSTALLED) == true) return
@@ -143,8 +145,6 @@ object ThreadInlayManager {
                 if (editor.isDisposed) return@invokeLater
                 if (store.threads.byId(thread.id) == null || thread.status is ThreadStatus.Resolved) {
                     close(editor, thread.id)
-                } else {
-                    editor.getUserData(OPEN_INLAYS)?.get(thread.id)?.second?.refresh()
                 }
             }
         }

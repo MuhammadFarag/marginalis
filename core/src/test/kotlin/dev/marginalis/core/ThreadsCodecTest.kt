@@ -314,4 +314,34 @@ class ThreadsCodecTest {
         assertEquals(null, document.handedBackAt)
         assertEquals(1, document.threads.size)
     }
+
+    @Test
+    fun `each message's addressee survives the trip, and an unaddressed one stays unaddressed`() {
+        val t = CommentThread("a.py", 1, "x")
+        t.addMessage(Message(Author.User("Muhammad"), "for review", to = Addressee.Agent("claude-review")))
+        t.addMessage(Message(Author.Agent("Claude", "claude-review"), "for you", to = Addressee.User))
+        t.addMessage(Message(Author.User("Muhammad"), "for everyone"))
+
+        val encoded = ThreadsCodec.encode(listOf(t))
+        val decoded = ThreadsCodec.decode(encoded).single()
+
+        assertEquals(listOf(Addressee.Agent("claude-review"), Addressee.User, null), decoded.messages.map { it.to })
+        assertEquals(2, Regex("\"to\"").findAll(encoded).count())
+    }
+
+    @Test
+    fun `pre-addressing files and blank addressees load as broadcast`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t1","file":"a.py","line":3,"anchor_text":"x = 1",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z",
+              "messages":[
+                {"id":"m1","author":{"kind":"USER","name":"Muhammad"},"body":"old","created_at":"2026-07-18T12:00:01Z"},
+                {"id":"m2","author":{"kind":"USER","name":"Muhammad"},"body":"odd","created_at":"2026-07-18T12:00:02Z","to":""}
+              ]
+            }]}
+        """.trimIndent()
+
+        assertEquals(listOf(null, null), ThreadsCodec.decode(legacy).single().messages.map { it.to })
+    }
 }

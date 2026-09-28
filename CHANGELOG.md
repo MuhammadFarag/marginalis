@@ -5,6 +5,62 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Added
+
+- `GET comment_identities?project=` (#19): who is already in this
+  margin, marking nothing seen — the user, every agent that wrote (name
+  and id), and ids known only from read receipts (`name: null`), each
+  with messages written, unread depth, and whether it is in a
+  `comment_wait` right now. `project` is required when several are open.
+  The guide's Identity section now says to list identities and reuse
+  your role's before minting an `author_id`.
+- `to` on `comment_add`, `comment_reply` and `comment_add_batch` items
+  (#17): address a message to one `author_id`, or `user`; persisted per
+  message and echoed in listings. Unaddressed stays a broadcast. In the
+  reply composer, typing `@` opens a picker of the margin's agents, and
+  addressed messages wear an @chip in the thread panel. The guide covers
+  addressing roles, and the three-party etiquette: the completer
+  resolves, the requester verifies via `status=resolved&updated_after=`,
+  the user overrules.
+- `comment_list?summary=true` (#20): survey a margin without consuming
+  receipts — thread metadata only, no message bodies, marking nothing
+  seen (`marked_seen: 0`). Each thread's `messages` becomes a count,
+  with `unread` for the caller, `last_author`, and `awaiting` read for
+  the caller's identity. Composes with every filter. The guide gains a
+  first-contact recipe: `comment_identities` → summary survey → read
+  deliberately, scoped by `file` or `awaiting=agent`.
+- References (#23): `mg:` plus the first 8 characters of a thread or
+  message id. "Copy Reference" on the thread panel's toolbar and beside
+  each message puts one on the clipboard; `comment_list?ref=mg:…`
+  resolves it to its thread, flagging the named message
+  `referenced: true`, and answers an ambiguous prefix with a teaching
+  400 listing each candidate's full `ref`. In rendered message bodies
+  a reference outside code becomes a link that opens the thread,
+  scrolled to the message it names. The guide teaches the format.
+
+### Changed
+
+- `awaiting` is computed for the calling identity (#17): a thread whose
+  last message is addressed to another agent is theirs to answer, not
+  yours; one addressed to `user` awaits the user.
+- Hand back is targeted (#17): it wakes only the waiting agents that
+  have something awaiting them; when no waiting agent has anything, all
+  wake with an empty `awaiting`, which still ends the loop.
+
+### Fixed
+
+- The Hand Back button's tooltip names who is waiting ("Hand Back —
+  Claude is waiting"), as 0.1.27 promised; it showed only "Hand Back".
+- A project thread's window keeps itself current: replies, edits and
+  resolution now show while it is open, instead of after reopening it,
+  and deleting the thread elsewhere closes the window.
+- A project thread's window scrolls: it opens at its natural height (up
+  to a cap) and follows new messages while you are at the bottom, without
+  pulling you back down if you scrolled up to read. It closes from its
+  title bar, and an `mg:` reference into it now scrolls to the message.
+
 ## [0.1.27] - 2026-09-27
 
 ### Added

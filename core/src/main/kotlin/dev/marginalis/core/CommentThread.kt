@@ -173,12 +173,19 @@ class CommentThread(
     /** Messages a specific agent hasn't seen — that agent's sweep is keyed by this. */
     fun unreadCountFor(agentKey: String): Int = messages.count { !it.seenBy(agentKey) }
 
-    /** Whose turn: the agent spoke last, so the conversation awaits the user. */
-    fun awaitsUser(): Boolean = messages.lastOrNull()?.author is Author.Agent
+    /** Whose turn: the last word was the agent's, or was addressed to the user. */
+    fun awaitsUser(): Boolean = messages.lastOrNull()?.awaits == Turn.USER
 
-    fun turn(): Turn? = when {
-        status !is ThreadStatus.Open -> null
-        awaitsUser() -> Turn.USER
-        else -> Turn.AGENT
+    fun turn(): Turn? = turnFor(null)
+
+    fun turnFor(agentKey: String?): Turn? {
+        val last = messages.lastOrNull()
+        val turn = when {
+            status !is ThreadStatus.Open -> null
+            last?.awaits == Turn.USER -> Turn.USER
+            else -> Turn.AGENT
+        }
+        val addressee = last?.to
+        return turn?.takeIf { agentKey == null || it == Turn.USER || addressee == null || addressee == Addressee.Agent(agentKey) }
     }
 }

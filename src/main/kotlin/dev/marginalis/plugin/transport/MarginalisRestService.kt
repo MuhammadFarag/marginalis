@@ -21,15 +21,22 @@ import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
+import dev.marginalis.core.Addressee
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Cursor
+import dev.marginalis.core.Identities
+import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
 import dev.marginalis.core.Message
+import dev.marginalis.core.Reference
+import dev.marginalis.core.Referent
+import dev.marginalis.core.Resolution
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
+import dev.marginalis.core.ThreadSummary
 import dev.marginalis.core.Turn
 import dev.marginalis.core.WaitTimeout
 import dev.marginalis.core.getOrElse
@@ -65,17 +72,18 @@ import java.util.Properties
  * Endpoints:
  *   GET  /api/marginalis/ping             -> {status, ide, version, projects}
  *   GET  /api/marginalis/agent_guide      -> the agent contract, as markdown
- *   POST /api/marginalis/comment_add      {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, project?}
+ *   POST /api/marginalis/comment_add      {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, to?, project?}
  *   POST /api/marginalis/comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}
- *   POST /api/marginalis/comment_reply    {thread_id, body}
+ *   POST /api/marginalis/comment_reply    {thread_id, body, to?}
  *   POST /api/marginalis/comment_resolve  {thread_id}
  *   POST /api/marginalis/comment_reopen   {thread_id}
  *   POST /api/marginalis/comment_resolve_all  {file?}
  *   POST /api/marginalis/comment_reanchor {thread_id, line, anchor_text?}
  *   POST /api/marginalis/comment_reanchor_all {file, project?}
  *   POST /api/marginalis/comment_clear_all    {file?}
- *   GET  /api/marginalis/comment_list?file=&status=&intent=&awaiting=&unread_only=&updated_after=&project=&author_name=&author_id=
+ *   GET  /api/marginalis/comment_list?ref=&file=&status=&intent=&awaiting=&unread_only=&summary=&updated_after=&project=&author_name=&author_id=
  *   GET  /api/marginalis/comment_wait?project=&since=&timeout=&author_name=&author_id=
+ *   GET  /api/marginalis/comment_identities?project=
  *   POST /api/marginalis/navigate         {file, line?, anchor_text?, project?}
  *
  * Writing/resolving endpoints (comment_add, comment_reply, comment_resolve,
@@ -89,7 +97,8 @@ import java.util.Properties
  * is also the one call that cannot resolve its project from a path, so it
  * takes `project` whenever more than one is open. No response claims what
  * its thread lacks. Listing marks messages seen and says so
- * explicitly (per-message `newly_seen`, top-level `marked_seen`) — that read
+ * explicitly (per-message `newly_seen`, top-level `marked_seen`); a
+ * `summary` listing carries no bodies and marks nothing — that read
  * receipt is what lets the user trust "the agent will see this on its next
  * turn".
  *
@@ -136,6 +145,7 @@ class MarginalisRestService : RestService() {
             "comment_clear_all" -> post(request, context) { handleClearAll(it, request, context) }
             "comment_list" -> handleCommentList(urlDecoder, request, context)
             "comment_wait" -> handleCommentWait(urlDecoder, request, context)
+            "comment_identities" -> handleCommentIdentities(urlDecoder, request, context)
             "navigate" -> post(request, context) { handleNavigate(it, request, context) }
             else -> sendError(HttpResponseStatus.NOT_FOUND, "unknown endpoint '$endpoint'", request, context)
         }
@@ -331,6 +341,8 @@ class MarginalisRestService : RestService() {
             .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
         val intent = Intent.parse(json.stringOrNull("intent"))
             .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
+        val to = Addressee.parse(json.stringOrNull("to"))
+            .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
 
         // A path resolves the project by itself; without one, the caller has
         // to say which workspace they mean.
@@ -380,7 +392,7 @@ class MarginalisRestService : RestService() {
                 ).also { MarginalisMarkers.attach(project, it, document) }
             }
             val author = agentAuthor(json)
-            created.addMessage(Message(author, body))
+            created.addMessage(Message(author, body, to = to))
             MarginalisStore.getInstance(project).threads.add(created)
             maybeNotify(project, created, author, body)
             thread = created
@@ -411,11 +423,7 @@ class MarginalisRestService : RestService() {
      * is sound; the meaning of the values is judged after this.
      */
     private fun payloadError(json: JsonObject): String? {
-        for ((field, what) in TEXT_FIELDS) {
-            if (json.has(field) && json.stringOrNull(field) == null) {
-                return "'$field' must be a string — $what."
-            }
-        }
+        textFieldError(json, TEXT_FIELDS)?.let { return it }
         if (json.has("body") && json.stringOrNull("body")?.isBlank() == true) {
             return "'body' is empty: a thread with nothing said in it is not worth anchoring. Pass the note text."
         }
@@ -425,6 +433,10 @@ class MarginalisRestService : RestService() {
         }
         return null
     }
+
+    private fun textFieldError(json: JsonObject, fields: List<Pair<String, String>>): String? =
+        fields.firstOrNull { (field, _) -> json.has(field) && json.stringOrNull(field) == null }
+            ?.let { (field, what) -> "'$field' must be a string — $what." }
 
     /**
      * The rules about what may be left out, shared by comment_add and
@@ -517,9 +529,12 @@ class MarginalisRestService : RestService() {
 
     private fun handleCommentReply(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
         val (project, thread) = lookupThread(json, request, context) ?: return
+        textFieldError(json, REPLY_TEXT_FIELDS)
+            ?.let { return sendBadRequest(it, request, context) }
         val body = json.stringOrNull("body")
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
-        val message = Message(agentAuthor(json), body)
+        val to = Addressee.parse(json.stringOrNull("to")).getOrElse { return sendBadRequest(it, request, context) }
+        val message = Message(agentAuthor(json), body, to = to)
         thread.addMessage(message)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         maybeNotify(project, thread, message.author, body)
@@ -795,6 +810,7 @@ class MarginalisRestService : RestService() {
         val awaitingFilter = Turn.parse(params["awaiting"]?.firstOrNull())
             .getOrElse { return sendBadRequest(it, request, context) }
         val unreadOnly = params["unread_only"]?.firstOrNull()?.toBoolean() ?: false
+        val summaryOnly = params["summary"]?.firstOrNull()?.toBoolean() ?: false
         val projectFilter = params["project"]?.firstOrNull()
         // The sweep cursor: hand back the newest 'updated_at' you saw and
         // get only what has moved since. Strictly after, so nothing repeats.
@@ -803,29 +819,44 @@ class MarginalisRestService : RestService() {
             params["updated_after"]?.firstOrNull(),
             "pass back the 'updated_at' of the newest thread your last listing returned.",
         ).getOrElse { return sendBadRequest(it, request, context) }
+        val reference = Reference.parse(params["ref"]?.firstOrNull())
+            .getOrElse { return sendBadRequest(it, request, context) }
         val callerKey = callerKey(params)
+        val referent = reference?.let { ref ->
+            val stores = ApplicationManager.getApplication().runReadAction(Computable { admittedStores(projectFilter) })
+            when (val resolution = ref.resolveIn(stores.values.flatMap { it.threads.all() })) {
+                is Resolution.Found -> resolution.referent
+                is Resolution.Ambiguous -> return send(ambiguityJson(resolution, stores), HttpResponseStatus.BAD_REQUEST, request, context)
+                Resolution.Unknown -> return sendResolutionError(
+                    "no thread or message matches $ref in ${projectFilter?.let { "a project matching '$it'" } ?: "any open project"}.",
+                    request, context,
+                )
+            }
+        }
 
         val threadsJson = JsonArray()
         var markedSeen = 0
         val listedStores = mutableListOf<MarginalisStore>()
 
         ApplicationManager.getApplication().runReadAction {
-            for (project in ProjectManager.getInstance().openProjects) {
-                if (project.isDisposed) continue
-                if (projectFilter != null && !projectMatches(project, projectFilter)) continue
-                val store = MarginalisStore.getInstance(project)
+            for ((project, store) in admittedStores(projectFilter)) {
                 listedStores += store
                 val listed = store.threads.query(
                     file = fileFilter,
                     status = statusFilter,
                     intent = intentFilter,
                     awaiting = awaitingFilter,
+                    awaitingFor = callerKey,
                     unreadFor = if (unreadOnly) callerKey else null,
                     updatedAfter = updatedAfter,
-                )
-                for (rendered in renderThreads(project, store, listed, callerKey)) {
-                    markedSeen += rendered.newlySeen
-                    threadsJson.add(rendered.json)
+                ).filter { referent == null || it === referent.thread }.sortedWith(ThreadOrder.byAnchor)
+                if (summaryOnly) {
+                    listed.forEach { threadsJson.add(summaryJson(project, store, it, callerKey)) }
+                } else {
+                    for (rendered in renderThreads(project, store, listed, callerKey, referent?.message)) {
+                        markedSeen += rendered.newlySeen
+                        threadsJson.add(rendered.json)
+                    }
                 }
             }
         }
@@ -840,6 +871,27 @@ class MarginalisRestService : RestService() {
         )
     }
 
+    private fun admittedStores(projectFilter: String?): Map<Project, MarginalisStore> =
+        ProjectManager.getInstance().openProjects
+            .filter { !it.isDisposed && (projectFilter == null || projectMatches(it, projectFilter)) }
+            .associateWith { MarginalisStore.getInstance(it) }
+
+    private fun ambiguityJson(ambiguous: Resolution.Ambiguous, stores: Map<Project, MarginalisStore>): JsonObject =
+        JsonObject().apply {
+            addProperty("error", ambiguous.reason)
+            add("candidates", JsonArray().apply { ambiguous.candidates.forEach { add(candidateJson(it, stores)) } })
+        }
+
+    private fun candidateJson(candidate: Referent, stores: Map<Project, MarginalisStore>): JsonObject = JsonObject().apply {
+        addProperty("ref", candidate.fullReference.toString())
+        addProperty("thread_id", candidate.thread.id)
+        candidate.message?.let { addProperty("message_id", it.id) }
+        stores.entries.firstOrNull { (_, store) -> store.threads.byId(candidate.thread.id) != null }?.let { (project, _) ->
+            addProperty("project", project.name)
+        }
+        candidate.thread.file?.let { addProperty("file", it) }
+    }
+
     private class RenderedThread(val json: JsonObject, val newlySeen: Int)
 
     private fun renderThreads(
@@ -847,10 +899,17 @@ class MarginalisRestService : RestService() {
         store: MarginalisStore,
         threads: List<CommentThread>,
         callerKey: String,
+        referenced: Message? = null,
     ): List<RenderedThread> =
-        threads.sortedWith(ThreadOrder.byAnchor).map { markSeenAndRender(project, store, it, callerKey) }
+        threads.map { markSeenAndRender(project, store, it, callerKey, referenced) }
 
-    private fun markSeenAndRender(project: Project, store: MarginalisStore, thread: CommentThread, callerKey: String): RenderedThread {
+    private fun markSeenAndRender(
+        project: Project,
+        store: MarginalisStore,
+        thread: CommentThread,
+        callerKey: String,
+        referenced: Message?,
+    ): RenderedThread {
         val messagesJson = JsonArray()
         var newlySeenCount = 0
         for (message in thread.messages) {
@@ -866,46 +925,59 @@ class MarginalisRestService : RestService() {
                     addProperty("body", message.body)
                     addProperty("created_at", message.createdAt.iso())
                     add("seen_by", JsonArray().apply { message.seenBy.sorted().forEach(::add) })
+                    message.to?.let { addProperty("to", it.wire) }
                     if (newlySeen) addProperty("newly_seen", true)
+                    if (message === referenced) addProperty("referenced", true)
                 },
             )
         }
-        val json = JsonObject().apply {
-            addProperty("thread_id", thread.id)
-            addProperty("project", project.name)
-            // Absent as the subject widens: no line once the
-            // file is the address, no file once the project is.
-            thread.file?.let { addProperty("file", it) }
-            val line = store.currentLine(thread)
-            line?.let { addProperty("line", it + 1) }
-            // What that line says NOW: compare it with the
-            // anchor_text you wrote and you know whether the
-            // code moved under the thread — without re-reading
-            // the file.
-            currentAnchorText(project, thread, line)?.let { addProperty("anchor_text", it) }
-            addProperty("status", thread.status.kind.name.lowercase())
-            addProperty("created_at", thread.createdAt.iso())
-            addProperty("updated_at", thread.updatedAt.iso())
-            // Additive: the human anchored this thread to a
-            // span within the line, not the whole line.
-            thread.segment?.let { seg ->
-                add(
-                    "segment",
-                    JsonObject().apply {
-                        addProperty("exact", seg.exact)
-                        if (seg.prefix.isNotEmpty()) addProperty("prefix", seg.prefix)
-                        if (seg.suffix.isNotEmpty()) addProperty("suffix", seg.suffix)
-                    },
-                )
-            }
-            thread.order?.let { addProperty("order", it) }
-            thread.walkthrough?.let { addProperty("walkthrough", it) }
-            thread.severity?.let { addProperty("severity", it.name.lowercase()) }
-            thread.intent?.let { addProperty("intent", it.name.lowercase()) }
-            thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
-            add("messages", messagesJson)
-        }
+        val json = threadHeaderJson(project, store, thread).apply { add("messages", messagesJson) }
         return RenderedThread(json, newlySeenCount)
+    }
+
+    private fun summaryJson(project: Project, store: MarginalisStore, thread: CommentThread, callerKey: String): JsonObject {
+        val summary = ThreadSummary.of(thread, callerKey)
+        return threadHeaderJson(project, store, thread).apply {
+            addProperty("messages", summary.messages)
+            addProperty("unread", summary.unread)
+            summary.lastAuthor?.let { add("last_author", authorJson(it)) }
+            summary.awaiting?.let { addProperty("awaiting", it.name.lowercase()) }
+        }
+    }
+
+    private fun threadHeaderJson(project: Project, store: MarginalisStore, thread: CommentThread): JsonObject = JsonObject().apply {
+        addProperty("thread_id", thread.id)
+        addProperty("project", project.name)
+        // Absent as the subject widens: no line once the
+        // file is the address, no file once the project is.
+        thread.file?.let { addProperty("file", it) }
+        val line = store.currentLine(thread)
+        line?.let { addProperty("line", it + 1) }
+        // What that line says NOW: compare it with the
+        // anchor_text you wrote and you know whether the
+        // code moved under the thread — without re-reading
+        // the file.
+        currentAnchorText(project, thread, line)?.let { addProperty("anchor_text", it) }
+        addProperty("status", thread.status.kind.name.lowercase())
+        addProperty("created_at", thread.createdAt.iso())
+        addProperty("updated_at", thread.updatedAt.iso())
+        // Additive: the human anchored this thread to a
+        // span within the line, not the whole line.
+        thread.segment?.let { seg ->
+            add(
+                "segment",
+                JsonObject().apply {
+                    addProperty("exact", seg.exact)
+                    if (seg.prefix.isNotEmpty()) addProperty("prefix", seg.prefix)
+                    if (seg.suffix.isNotEmpty()) addProperty("suffix", seg.suffix)
+                },
+            )
+        }
+        thread.order?.let { addProperty("order", it) }
+        thread.walkthrough?.let { addProperty("walkthrough", it) }
+        thread.severity?.let { addProperty("severity", it.name.lowercase()) }
+        thread.intent?.let { addProperty("intent", it.name.lowercase()) }
+        thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
     }
 
     // --------------------------------------------------------------- wait
@@ -968,7 +1040,10 @@ class MarginalisRestService : RestService() {
         } else {
             val store = MarginalisStore.getInstance(project)
             val awaiting = ApplicationManager.getApplication().runReadAction(
-                Computable { renderThreads(project, store, store.threads.query(awaiting = Turn.AGENT), callerKey) },
+                Computable {
+                    val owed = store.threads.query(awaiting = Turn.AGENT, awaitingFor = callerKey)
+                    renderThreads(project, store, owed.sortedWith(ThreadOrder.byAnchor), callerKey)
+                },
             )
             JsonObject().apply {
                 addProperty("handed_back", true)
@@ -978,6 +1053,51 @@ class MarginalisRestService : RestService() {
         }
 
     private fun Instant.iso(): String = DateTimeFormatter.ISO_INSTANT.format(this)
+
+    // --------------------------------------------------------- identities
+
+    private fun handleCommentIdentities(urlDecoder: QueryStringDecoder, request: FullHttpRequest, context: ChannelHandlerContext) {
+        if (request.method() !== HttpMethod.GET) {
+            return sendError(HttpResponseStatus.METHOD_NOT_ALLOWED, "comment_identities is a GET", request, context)
+        }
+        val projectFilter = urlDecoder.parameters()["project"]?.firstOrNull()
+        val project = ApplicationManager.getApplication().runReadAction(Computable { resolveProject(projectFilter) })
+            ?: return sendResolutionError(
+                if (projectFilter == null) {
+                    "comment_identities lists one project's margin: pass 'project' (name or root path) — see open_projects."
+                } else {
+                    "no open project matches '$projectFilter' — see open_projects."
+                },
+                request, context,
+            )
+        val store = MarginalisStore.getInstance(project)
+        val identities = Identities.of(store.threads.all(), Authors.user, store.handBack.waitingAgents)
+        sendJson(
+            JsonObject().apply {
+                addProperty("project", project.name)
+                add("identities", JsonArray().apply { identities.forEach { add(identityJson(it)) } })
+            },
+            request, context,
+        )
+    }
+
+    private fun identityJson(identity: Identity): JsonObject = JsonObject().apply {
+        when (identity) {
+            is Identity.User -> {
+                addProperty("kind", "user")
+                addProperty("name", identity.name)
+                addProperty("messages_written", identity.messagesWritten)
+            }
+            is Identity.Agent -> {
+                addProperty("kind", "agent")
+                addProperty("name", identity.name)
+                addProperty("id", identity.id)
+                addProperty("messages_written", identity.messagesWritten)
+                addProperty("unread", identity.unread)
+                addProperty("waiting", identity.waiting)
+            }
+        }
+    }
 
     // ----------------------------------------------------------- navigate
 
@@ -1165,7 +1285,11 @@ class MarginalisRestService : RestService() {
             "author_id" to "your stable identity, which read receipts are keyed by",
             "severity" to "exactly 'blocker' or 'nit'",
             "intent" to "exactly 'finding', 'guidance' or 'question'",
+            "to" to "one author_id to address (as comment_identities lists it), or 'user'. Omit it to address " +
+                "everyone",
         )
+
+        val REPLY_TEXT_FIELDS = TEXT_FIELDS.filter { (field, _) -> field in setOf("body", "author_name", "author_id", "to") }
     }
 
     private fun JsonObject.stringOrNull(key: String): String? =

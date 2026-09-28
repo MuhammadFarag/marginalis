@@ -8,7 +8,6 @@ object WaitingAgents {
         else -> "${names.dropLast(1).joinToString(", ")} and ${names.last()} are waiting"
     }
 
-    fun handBackTooltip(names: List<String>): String =
-        describe(names)?.let { "$it — hand back" }
-            ?: "No agent is waiting — your hand back will be picked up when one starts"
+    fun handBackText(names: List<String>): String =
+        "Hand Back — " + (describe(names) ?: "no agent is waiting; it will be picked up when one starts")
 }

@@ -20,6 +20,8 @@ class HandBackTest {
     private val codex = Author.Agent("Codex")
     private var changes = 0
     private val countChange: () -> Unit = { changes++ }
+    private val owed = mutableSetOf<Author.Agent>()
+    private val targeted = HandBack(hasAwaiting = { it in owed }, clock = { now })
 
     @Test
     fun `a hand back after the cursor answers at once`() {
@@ -164,6 +166,15 @@ class HandBackTest {
     }
 
     @Test
+    fun `waiting agents are known by identity, once each`() {
+        handBack.await(since = t0, timeout = hour, agent = codex)
+        handBack.await(since = t0, timeout = hour, agent = claude)
+        handBack.await(since = null, timeout = hour, agent = codex)
+
+        assertEquals(listOf(codex, claude), handBack.waitingAgents)
+    }
+
+    @Test
     fun `an answered wait drops out, announced once however many woke`() {
         handBack.await(since = t0, timeout = hour, agent = claude)
         handBack.await(since = t0, timeout = hour, agent = codex)
@@ -236,5 +247,71 @@ class HandBackTest {
         handBack.await(since = t0, timeout = hour)
 
         assertEquals(listOf(Author.Agent.ANONYMOUS_NAME), handBack.waitingNames)
+    }
+
+    @Test
+    fun `a hand back wakes only the waiters something awaits`() {
+        val claudeWait = targeted.await(since = t0, timeout = hour, agent = claude)
+        val codexWait = targeted.await(since = t0, timeout = hour, agent = codex)
+        owed += codex
+        now = t0.plusSeconds(1)
+
+        val at = targeted.record()
+
+        assertEquals(at, codexWait.getNow(null))
+        assertFalse(claudeWait.isDone)
+        assertEquals(listOf(claude), targeted.waitingAgents)
+    }
+
+    @Test
+    fun `when nothing awaits any waiter, every waiter wakes — the end-the-loop signal`() {
+        val claudeWait = targeted.await(since = t0, timeout = hour, agent = claude)
+        val codexWait = targeted.await(since = t0, timeout = hour, agent = codex)
+
+        val at = targeted.record()
+
+        assertEquals(at, claudeWait.getNow(null))
+        assertEquals(at, codexWait.getNow(null))
+    }
+
+    @Test
+    fun `work owed only to an agent that is not waiting wakes every waiter`() {
+        val claudeWait = targeted.await(since = t0, timeout = hour, agent = claude)
+        owed += codex
+        now = t0.plusSeconds(1)
+
+        val at = targeted.record()
+
+        assertEquals(at, claudeWait.getNow(null))
+        assertEquals(at, targeted.await(since = t0, timeout = hour, agent = codex).getNow(null))
+    }
+
+    @Test
+    fun `a hand back that passed you by does not answer your next wait at once`() {
+        targeted.await(since = t0, timeout = hour, agent = codex)
+        owed += codex
+        now = t0.plusSeconds(1)
+        targeted.record()
+
+        assertFalse(targeted.await(since = t0, timeout = hour, agent = claude).isDone)
+    }
+
+    @Test
+    fun `a hand back meant for you answers your late wait at once`() {
+        targeted.await(since = t0, timeout = hour, agent = codex)
+        owed += setOf(codex, claude)
+        now = t0.plusSeconds(1)
+        val at = targeted.record()
+
+        assertEquals(at, targeted.await(since = t0, timeout = hour, agent = claude).getNow(null))
+    }
+
+    @Test
+    fun `a hand back that woke everyone answers every late wait at once`() {
+        targeted.await(since = t0, timeout = hour, agent = codex)
+        now = t0.plusSeconds(1)
+        val at = targeted.record()
+
+        assertEquals(at, targeted.await(since = t0, timeout = hour, agent = claude).getNow(null))
     }
 }

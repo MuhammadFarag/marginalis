@@ -7,16 +7,25 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.impl.ContextMenuPopupHandler
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.MessageType
+import com.intellij.openapi.ui.popup.Balloon
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
+import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.ui.HTMLEditorKitBuilder
 import com.intellij.util.ui.JBUI
 import dev.marginalis.core.CodeFence
 import dev.marginalis.core.CodeFences
+import dev.marginalis.core.Parsed
+import dev.marginalis.core.Reference
+import dev.marginalis.core.Resolution
+import dev.marginalis.plugin.store.MarginalisStore
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import java.awt.Component
+import java.awt.event.MouseEvent
 import javax.swing.Box
 import javax.swing.JComponent
 import javax.swing.JEditorPane
@@ -46,7 +55,7 @@ object MarkdownRenderer {
         // unclosed one is still prose to CommonMark.
         for (fence in closedFences(body)) {
             val textBefore = body.substring(consumedUpTo, fence.start)
-            if (textBefore.isNotBlank()) box.add(htmlPane(textBefore, wrapWidth))
+            if (textBefore.isNotBlank()) box.add(htmlPane(project, textBefore, wrapWidth))
             box.add(Box.createVerticalStrut(JBUI.scale(4)))
             // A code block ends at its last line of code: trailing blank
             // lines are layout noise in a rendered message.
@@ -55,7 +64,7 @@ object MarkdownRenderer {
             consumedUpTo = fence.end
         }
         val remainder = body.substring(consumedUpTo)
-        if (remainder.isNotBlank()) box.add(htmlPane(remainder, wrapWidth))
+        if (remainder.isNotBlank()) box.add(htmlPane(project, remainder, wrapWidth))
         return box
     }
 
@@ -81,13 +90,14 @@ object MarkdownRenderer {
 
     private fun closedFences(body: String): List<CodeFence> = CodeFences.find(body).filter { it.closed }
 
-    private fun htmlPane(markdown: String, wrapWidth: Int): JComponent {
+    private fun htmlPane(project: Project, markdown: String, wrapWidth: Int): JComponent {
         val flavour = CommonMarkFlavourDescriptor()
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
         val html = HtmlGenerator(markdown, tree, flavour).generateHtml()
             .removePrefix("<body>").removeSuffix("</body>")
             // Lite scope: no image loading from message bodies.
             .replace(Regex("<img[^>]*>"), "[image]")
+            .let(Reference::linkify)
 
         val pane = JEditorPane()
         val kit = HTMLEditorKitBuilder().withWordWrapViewFactory().build()
@@ -107,7 +117,10 @@ object MarkdownRenderer {
         pane.text = "<html><body>$html</body></html>"
         pane.addHyperlinkListener { e ->
             if (e.eventType == HyperlinkEvent.EventType.ACTIVATED) {
-                e.url?.let { BrowserUtil.browse(it) }
+                when (val reference = Reference.parse(e.description)) {
+                    is Parsed.Ok -> reference.value?.let { follow(project, it, e) }
+                    is Parsed.Invalid -> e.url?.let { BrowserUtil.browse(it) }
+                }
             }
         }
         // Selectable text deserves a right-click: Swing installs no context
@@ -130,6 +143,19 @@ object MarkdownRenderer {
         pane.setSize(wrapWidth, Int.MAX_VALUE)
         pane.alignmentX = Component.LEFT_ALIGNMENT
         return pane
+    }
+
+    private fun follow(project: Project, reference: Reference, click: HyperlinkEvent) {
+        val problem = when (val resolution = reference.resolveIn(MarginalisStore.getInstance(project).threads.all())) {
+            is Resolution.Found -> return WalkthroughNavigator.navigateTo(project, resolution.referent.thread, revealing = resolution.referent.message)
+            is Resolution.Ambiguous -> "${resolution.summary} in this project"
+            Resolution.Unknown -> "$reference names no thread or message in this project"
+        }
+        val source = click.source as JComponent
+        JBPopupFactory.getInstance()
+            .createHtmlTextBalloonBuilder(problem, MessageType.WARNING, null)
+            .createBalloon()
+            .show((click.inputEvent as? MouseEvent)?.let(::RelativePoint) ?: RelativePoint.getCenterOf(source), Balloon.Position.above)
     }
 
     /** Fenced block → read-only editor fragment: real lexer, user's color scheme. */

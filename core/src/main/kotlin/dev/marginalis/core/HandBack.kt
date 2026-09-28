@@ -6,7 +6,10 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
-class HandBack(private val clock: () -> Instant = Instant::now) {
+class HandBack(
+    private val hasAwaiting: (Author.Agent) -> Boolean = { true },
+    private val clock: () -> Instant = Instant::now,
+) {
 
     private val lock = Any()
     private val waiters = LinkedHashMap<CompletableFuture<Instant?>, Author.Agent>()
@@ -16,11 +19,16 @@ class HandBack(private val clock: () -> Instant = Instant::now) {
     var lastAt: Instant? = null
         private set
 
+    private var lastWasTargeted = false
+
     internal val waiting: Int
         get() = synchronized(lock) { waiters.size }
 
+    val waitingAgents: List<Author.Agent>
+        get() = synchronized(lock) { waiters.values.distinct() }
+
     val waitingNames: List<String>
-        get() = synchronized(lock) { waiters.values.map { it.displayName }.distinct() }
+        get() = waitingAgents.map { it.displayName }.distinct()
 
     fun addListener(listener: () -> Unit) {
         listeners += listener
@@ -40,7 +48,9 @@ class HandBack(private val clock: () -> Instant = Instant::now) {
         val at = clock()
         val woken = synchronized(lock) {
             lastAt = at
-            drainWaiters()
+            val owed = waiters.filterValues(hasAwaiting).keys.toList()
+            lastWasTargeted = owed.isNotEmpty()
+            if (lastWasTargeted) owed.onEach(waiters::remove) else drainWaiters()
         }
         woken.forEach { it.complete(at) }
         if (woken.isNotEmpty()) announceChange()
@@ -49,7 +59,8 @@ class HandBack(private val clock: () -> Instant = Instant::now) {
 
     fun await(since: Instant?, timeout: Duration, agent: Author.Agent = Author.Agent.ANONYMOUS): CompletableFuture<Instant?> {
         val waiter = synchronized(lock) {
-            lastAt?.takeIf { since != null && it > since }?.let { return CompletableFuture.completedFuture(it) }
+            lastAt?.takeIf { since != null && it > since && (!lastWasTargeted || hasAwaiting(agent)) }
+                ?.let { return CompletableFuture.completedFuture(it) }
             CompletableFuture<Instant?>().also { waiters[it] = agent }
         }
         announceChange()

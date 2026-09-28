@@ -37,6 +37,61 @@ anonymous "Agent" identity — and consume each other's unread. When
 several agent sessions share a margin, take distinct role-qualified
 names ("Claude · design" / "Claude · impl") with distinct ids.
 
+Before minting an `author_id`, see who is already here:
+`GET comment_identities?project=…` lists every identity the margin
+knows — the user, each agent that wrote (name and id), and ids known
+only from read receipts (`name: null`) — with how much each wrote, how
+many messages it hasn't seen (`unread`), and whether it is in a
+`comment_wait` right now. It marks nothing seen. Reuse your role's
+identity if it is listed: a fresh id finds the whole history unread by
+construction.
+
+## First contact: survey before you read
+
+A margin you have never read is all unread to you, and reading is
+promising: one bare sweep marks the project's whole history seen. On
+first contact, look before you consume:
+
+1. `comment_identities?project=…` — reuse your role's identity if it is
+   listed.
+2. `comment_list?summary=true&project=…&author_id=…` — the survey:
+   every thread's metadata with no message bodies, marking nothing seen
+   (`marked_seen: 0`). Each thread carries `messages` (the count),
+   `unread` (for your identity), `last_author`, and `awaiting` (`agent`
+   when the reply is yours, `user` when it is theirs; absent once
+   closed, or while the last message is addressed to another agent).
+   It composes with every other filter.
+3. Read deliberately — the bodies you are about to answer, scoped by
+   `file=` or `awaiting=agent`. Those reads mark seen, as they should:
+   the receipt belongs to what you actually read.
+
+## Addressing: several parties, one margin
+
+`to` on `comment_add`, `comment_reply` and each `comment_add_batch` item
+addresses that message to one party: an `author_id` as
+`comment_identities` lists it, or `user` for the user. Copy the id
+exactly: an id nobody holds addresses no one present, so the thread
+becomes nobody's debt and wakes no one. Messages carry
+their `to` in listings. Unaddressed is a broadcast — every agent owes
+it — and is the right default for a first round, before anyone knows
+who else is here.
+
+- **Address roles, not sessions.** The thread history is the roster:
+  address the role's `author_id` ("claude-review"), which outlives any
+  one session holding it.
+- **A message addressed to someone else is not your debt.**
+  `awaiting=agent` is computed for your identity: a thread whose last
+  message is addressed to another agent drops out of your list and
+  into theirs; one addressed to `user` awaits the user, whoever wrote
+  it. An agent can hand a thread to another agent by replying with
+  `to` — the thread then awaits that agent, not the user.
+- **The three-party etiquette.** The completer resolves: whoever lands
+  the outcome resolves the thread, as always. The requester verifies:
+  sweep `comment_list?status=resolved&updated_after=<cursor>` for the
+  threads you asked for, and when the outcome falls short, reopen with
+  a reply saying what is missing. The user overrules everyone — their
+  word on a thread settles it, whoever it was addressed to.
+
 ## The three habits
 
 **1. Start every turn with the unread sweep.**
@@ -52,8 +107,10 @@ thread carries `updated_at`; hand the newest one back as
 including threads the user resolved while you were away.
 Unread is what you haven't *seen*; your debt is what you haven't
 *answered*. `comment_list?awaiting=agent&project=…` lists every open
-thread where the user spoke last — reading doesn't shrink it, only a
-reply (or a resolve) does. End the sweep with it empty.
+thread whose last message is yours to answer — the user's, unless it
+was addressed to someone else, or anything addressed to you — reading
+doesn't shrink it, only a reply (or a resolve) does. End the sweep with
+it empty.
 
 **2. Never edit a file that has open threads.**
 `GET comment_list?file=<path>&status=open` before editing. Open threads
@@ -105,10 +162,14 @@ while your wait is armed.
 
 Any agent harness that re-invokes the agent when a background command
 exits turns the click into your wake-up — in Claude Code, run the curl
-with `run_in_background`. Every agent waiting on the project wakes on
-the same hand back. Without an armed wait, nothing reaches you until the
-user types; Claude Code users can close that gap with two hooks that put
-the awaiting threads into every prompt — offer them the recipe at
+with `run_in_background`. A hand back is **targeted**: it wakes only the
+waiting agents that have something awaiting them, and the rest keep
+waiting — a hand back that passed you by does not answer your next wait
+either. Only when no waiting agent has anything awaiting it does every
+waiter wake with an empty `awaiting` — the end-of-loop signal above.
+Without an armed wait, nothing reaches you until the user types; Claude
+Code users can close that gap with two hooks that put the awaiting
+threads into every prompt — offer them the recipe at
 https://github.com/MuhammadFarag/marginalis#if-you-use-claude-code.
 
 ## Anchoring
@@ -209,6 +270,19 @@ prose-wrapped code. Deliberately outside the scope: tables, images,
 and raw HTML degrade to plain text, so stay within the constructs
 above.
 
+## References
+
+`mg:` plus the first 8 characters of a thread's or message's id — e.g.
+`mg:3d4770ad` — cites margin history. The user copies one from a
+thread panel (the thread) or beside any message, and pastes it into
+chat; `comment_list?ref=mg:3d4770ad&project=…` resolves it to that one
+thread, with the named message marked `referenced: true`. Other filters
+still apply. A prefix shared by several ids is a teaching 400 whose
+`candidates` each carry an unambiguous `ref` (the full id) to retry
+with; one matching nothing is a 404. Cite the same way in your own
+bodies: outside code, a reference renders as a link that opens the
+thread, scrolled to the message it names.
+
 ## Walkthroughs
 
 An ordered walk — "look here 1st, 2nd, …" — for reviewing your change,
@@ -272,10 +346,10 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 |---|---|
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
-| `GET comment_list?file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question&awaiting=agent\|user&unread_only=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last hand back) only when the listing covered one project and it has one; example below |
-| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
-| `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults → `{results: [ …success shape… \| {error} ], created}` in request order, 200 unless the envelope itself is malformed |
-| `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}` |
+| `GET comment_list?ref=&file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question&awaiting=agent\|user&unread_only=&summary=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last hand back) only when the listing covered one project and it has one; example below. `summary=true` swaps each thread's `messages` array for counts and marks nothing seen — see First contact. `ref=mg:…` narrows to the referenced thread — see References; ambiguous → 400 `{error, candidates: [{ref, thread_id, message_id?, project, file?}]}` |
+| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, to?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
+| `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults, `to` is per item only → `{results: [ …success shape… \| {error} ], created}` in request order, 200 unless the envelope itself is malformed |
+| `POST comment_reply {thread_id, body, to?, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}`; `to` (an `author_id`, or `user`) addresses the message — omit it to address everyone |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
 | `POST comment_reopen {thread_id}` | resurface a resolved thread → `{thread_id, status}` |
 | `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue, line threads only (file-level → 400) → `{thread_id, line, status}` |
@@ -283,6 +357,7 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed → `{resolved: <count>}` |
 | `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first → `{cleared: <count>}` |
 | `GET comment_wait?project=&since=&timeout=&author_name=&author_id=` | hold until the user hands back — at once if they already did after `since` (ISO-8601, exclusive; omit to wait for the next one) — or until `timeout` seconds pass (default 3600, capped at 14400) → `{handed_back: true, handed_back_at, awaiting: [threads]}` or `{handed_back: false}`; `awaiting` marks seen like `comment_list`; `project` is required when several are open; your `since` is the later of the newest `updated_at` and `handed_back_at` you have seen |
+| `GET comment_identities?project=` | who is in this margin; marks nothing seen → `{project, identities: [{kind: "user", name, messages_written} \| {kind: "agent", name, id, messages_written, unread, waiting}]}` — the user first, then agents by messages written; `name` is null for an identity known only from read receipts; `id` is the receipt key to pass as `author_id`; `project` is required when several are open |
 | `POST navigate {file, line?, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}`; without `line`, opens the file at the top → `{navigated, file}` |
 
 A `comment_list` thread, in full:
@@ -298,7 +373,8 @@ A `comment_list` thread, in full:
     "message_id": "…",
     "author": {"kind": "user", "name": "…"},
     "body": "…", "created_at": "…",
-    "seen_by": ["claude-main"], "newly_seen": true
+    "seen_by": ["claude-main"], "newly_seen": true,
+    "to": "claude-review"
   }]
 }], "marked_seen": 1}
 ```
@@ -314,12 +390,21 @@ not when it is merely read or its line drifts, which is what makes it a
 usable cursor for `updated_after`. `author` is always an object — `kind`
 is `agent` or `user`, and agent authors carry `id`. Thread fields `segment`, `order`,
 `walkthrough`, `severity`, `intent`, and `resolved_by` appear only when
-set.
+set, and so does a message's `to` — and its `referenced`, on a `ref`
+listing.
 `awaiting` narrows to open threads whose last message is the other
-party's: `agent` — the user spoke last, you owe the reply; `user` — an
-agent spoke last, the user owes one. It composes with every other
+party's, as seen by your identity: `agent` — the user spoke last or
+someone addressed you, and you owe the reply (a message addressed to
+another agent is theirs); `user` — an agent spoke last unaddressed, or
+anyone addressed `user`, and the user owes one. It composes with every other
 filter, and listing still marks seen: awaiting is about *answered*, not
 *read*. Any other value is a teaching 400.
+With `summary=true` a thread keeps every field above except the
+message array: `messages` becomes its count, joined by `unread` (your
+identity's), `last_author` (same shape as `author`), and `awaiting`
+(`agent` or `user`, as that filter reads it for you; absent when the
+thread is closed, or when its last message is addressed to another
+agent — their turn, not yours) — and `marked_seen` is always 0.
 `newly_seen` marks messages this very listing consumed for your
 identity; `seen_by` lists the identities that have read the message.
 Timestamps are ISO-8601 UTC; `line` in every response is 1-based and

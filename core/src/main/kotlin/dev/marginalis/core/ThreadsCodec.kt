@@ -76,6 +76,7 @@ object ThreadsCodec {
                             addProperty("body", m.body)
                             addProperty("created_at", m.createdAt.toString())
                             add("seen_by", JsonArray().apply { m.seenBy.sorted().forEach(::add) })
+                            m.to?.let { addProperty("to", it.wire) }
                         },
                     )
                 }
@@ -126,6 +127,7 @@ object ThreadsCodec {
                     id = msg.get("id").asString,
                     createdAt = Instant.parse(msg.get("created_at").asString),
                     seenBy = seenBy(msg),
+                    to = Addressee.parseLenient(msg.get("to")?.takeIf { it.isJsonPrimitive }?.asString),
                 ),
             )
         }

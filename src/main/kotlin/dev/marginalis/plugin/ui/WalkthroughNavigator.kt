@@ -5,6 +5,7 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Message
 import dev.marginalis.core.Walkthrough
 import dev.marginalis.plugin.store.MarginalisStore
 
@@ -33,13 +34,13 @@ object WalkthroughNavigator {
      * exactly where it is and the conversation opens in its own window, so
      * walking through such a step moves nothing but the walk.
      */
-    fun navigateTo(project: Project, thread: CommentThread) {
-        val path = thread.file ?: return ProjectThreadPopup.open(project, thread)
+    fun navigateTo(project: Project, thread: CommentThread, revealing: Message? = null) {
+        val path = thread.file ?: return ProjectThreadPopup.open(project, thread, revealing)
         val base = project.guessProjectDir() ?: return
         val vFile = base.findFileByRelativePath(path) ?: return
         val line = MarginalisStore.getInstance(project).currentLine(thread) ?: 0
         OpenFileDescriptor(project, vFile, line, 0).navigate(true)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
-        ThreadInlayManager.open(project, editor, thread)
+        ThreadInlayManager.open(project, editor, thread, revealing)
     }
 }

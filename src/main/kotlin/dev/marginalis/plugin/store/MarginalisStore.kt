@@ -6,6 +6,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
+import dev.marginalis.core.Addressee
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.HandBack
 import dev.marginalis.core.ThreadStatus
@@ -25,7 +26,7 @@ class MarginalisStore(private val project: Project) : Disposable {
 
     val threads = ThreadStore()
 
-    val handBack = HandBack()
+    val handBack = HandBack(hasAwaiting = threads::hasAwaiting)
 
     fun recordHandBack() {
         handBack.record()
@@ -41,11 +42,14 @@ class MarginalisStore(private val project: Project) : Disposable {
     }
 
     /**
-     * Unsent composer text per thread, so closing a panel mid-thought (one
-     * Esc away) loses nothing: reopen and the words are back. Deliberately
-     * in-memory — a draft is a thought in progress, not a record.
+     * Unsent composer text and addressee per thread, so closing a panel
+     * mid-thought (one Esc away) loses nothing: reopen and the words are
+     * back. Deliberately in-memory — a draft is a thought in progress, not
+     * a record.
      */
-    val drafts = ConcurrentHashMap<String, String>()
+    val drafts = ConcurrentHashMap<String, Draft>()
+
+    data class Draft(val text: String, val to: Addressee?)
 
     private val markers = ConcurrentHashMap<String, RangeHighlighter>()
 
