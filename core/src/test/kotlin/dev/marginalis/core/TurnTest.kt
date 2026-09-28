@@ -2,7 +2,9 @@ package dev.marginalis.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TurnTest {
 
@@ -34,4 +36,34 @@ class TurnTest {
     fun `what the user owes outranks what the agent owes`() {
         assertEquals(Turn.USER, Turn.of(listOf(thread(user), thread(agent), thread(user))))
     }
+
+    @Test
+    fun `a single thread's turn is the other party's once someone has spoken`() {
+        assertEquals(Turn.USER, thread(agent).turn())
+        assertEquals(Turn.AGENT, thread(user).turn())
+    }
+
+    @Test
+    fun `a concluded or orphaned thread is nobody's turn`() {
+        assertNull(thread(user).also { it.resolve(agent) }.turn())
+        assertNull(thread(user).also { it.markOrphaned() }.turn())
+    }
+
+    @Test
+    fun `the awaiting vocabulary names whose turn it is, case-insensitively`() {
+        assertEquals(Turn.AGENT, parsed("agent"))
+        assertEquals(Turn.USER, parsed("USER"))
+        assertNull(parsed(null))
+    }
+
+    @Test
+    fun `an unknown awaiting value is taught, never silently ignored`() {
+        for (raw in listOf("me", "you", "human", "claude", "")) {
+            val parsed = Turn.parse(raw)
+            assertIs<Parsed.Invalid>(parsed, "'$raw' must be rejected")
+            assertTrue(parsed.reason.contains("'agent'") && parsed.reason.contains("'user'"))
+        }
+    }
+
+    private fun parsed(raw: String?): Turn? = (Turn.parse(raw) as Parsed.Ok).value
 }

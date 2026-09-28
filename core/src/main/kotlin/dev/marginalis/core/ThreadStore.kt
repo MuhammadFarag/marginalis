@@ -28,6 +28,7 @@ class ThreadStore {
         status: ThreadStatus.Kind? = null,
         /** Non-null: only threads asking for this kind of response. */
         intent: Intent? = null,
+        awaiting: Turn? = null,
         /** Non-null: only threads with messages this agent hasn't seen. */
         unreadFor: String? = null,
         /**
@@ -41,6 +42,7 @@ class ThreadStore {
         (file == null || thread.file == file) &&
             (status == null || thread.status.kind == status) &&
             (intent == null || thread.intent == intent) &&
+            (awaiting == null || thread.turn() == awaiting) &&
             (unreadFor == null || thread.unreadCountFor(unreadFor) > 0) &&
             (updatedAfter == null || thread.updatedAt > updatedAfter)
     }

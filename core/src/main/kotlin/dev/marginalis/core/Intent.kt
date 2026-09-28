@@ -15,12 +15,6 @@ package dev.marginalis.core
 enum class Intent {
     FINDING, GUIDANCE, QUESTION;
 
-    /** Outcome of [parse]: a valid value ([Ok.intent] null = deliberately unmarked) or a teachable rejection. */
-    sealed interface Parsed {
-        data class Ok(val intent: Intent?) : Parsed
-        data class Invalid(val reason: String) : Parsed
-    }
-
     companion object {
         /**
          * The intent vocabulary — three words, no aliases and no synonyms.
@@ -28,7 +22,7 @@ enum class Intent {
          * thread: the rejection is what tells a misinformed agent to correct
          * course (severity's rule, and for the same reason).
          */
-        fun parse(raw: String?): Parsed {
+        fun parse(raw: String?): Parsed<Intent?> {
             if (raw == null) return Parsed.Ok(null)
             return when (raw.lowercase()) {
                 "finding" -> Parsed.Ok(FINDING)
@@ -42,6 +36,6 @@ enum class Intent {
         }
 
         /** Persistence tolerance: unknown values load as unmarked rather than failing the whole file. */
-        fun parseLenient(raw: String?): Intent? = (parse(raw) as? Parsed.Ok)?.intent
+        fun parseLenient(raw: String?): Intent? = parse(raw).getOrElse { null }
     }
 }

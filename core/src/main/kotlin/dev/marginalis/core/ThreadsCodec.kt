@@ -13,18 +13,32 @@ import java.time.Instant
  */
 object ThreadsCodec {
 
-    fun encode(threads: List<CommentThread>): String {
+    fun encode(threads: List<CommentThread>, handedBackAt: Instant? = null): String {
         val root = JsonObject().apply {
             addProperty("version", 1)
+            handedBackAt?.let { addProperty("handed_back_at", it.toString()) }
             add("threads", JsonArray().apply { threads.forEach { add(threadJson(it)) } })
         }
         return root.toString()
     }
 
-    fun decode(text: String): List<CommentThread> {
-        val root = JsonParser.parseString(text).asJsonObject
-        return root.getAsJsonArray("threads").map { thread(it.asJsonObject) }
+    data class Document(val threads: List<CommentThread>, val handedBackAt: Instant?) {
+        companion object {
+            val EMPTY = Document(emptyList(), null)
+        }
     }
+
+    fun decodeDocument(text: String): Document {
+        val root = JsonParser.parseString(text).asJsonObject
+        return Document(
+            threads = root.getAsJsonArray("threads").map { thread(it.asJsonObject) },
+            handedBackAt = root.get("handed_back_at")?.takeIf { it.isJsonPrimitive }?.asString?.let(::instantOrNull),
+        )
+    }
+
+    fun decode(text: String): List<CommentThread> = decodeDocument(text).threads
+
+    private fun instantOrNull(text: String): Instant? = runCatching { Instant.parse(text) }.getOrNull()
 
     private fun threadJson(thread: CommentThread): JsonObject = JsonObject().apply {
         addProperty("id", thread.id)

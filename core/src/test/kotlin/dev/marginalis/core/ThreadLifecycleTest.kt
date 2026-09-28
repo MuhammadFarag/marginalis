@@ -293,6 +293,23 @@ class ThreadLifecycleTest {
     }
 
     @Test
+    fun `store queries filter by whose turn it is, composing with the other filters`() {
+        val userSpokeLast = thread().also { it.addMessage(Message(user, "why?")) }
+        val agentSpokeLast = thread().also { it.addMessage(Message(agent, "because")) }
+        val elsewhereUserSpokeLast = CommentThread("b.py", 1, "x").also { it.addMessage(Message(user, "and here?")) }
+        val concluded = thread().also {
+            it.addMessage(Message(user, "thanks"))
+            it.resolve(user)
+        }
+        val store = ThreadStore()
+        listOf(userSpokeLast, agentSpokeLast, elsewhereUserSpokeLast, concluded).forEach(store::add)
+
+        assertEquals(listOf(userSpokeLast, elsewhereUserSpokeLast), store.query(awaiting = Turn.AGENT))
+        assertEquals(listOf(agentSpokeLast), store.query(awaiting = Turn.USER))
+        assertEquals(listOf(userSpokeLast), store.query(file = "a.py", awaiting = Turn.AGENT))
+    }
+
+    @Test
     fun `store change notifications fire for add, remove, and clear`() {
         val store = ThreadStore()
         val seen = mutableListOf<String>()

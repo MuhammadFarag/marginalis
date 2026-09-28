@@ -52,12 +52,14 @@ class MarginalisStartup : ProjectActivity {
             }
             AppExecutorUtil.getAppExecutorService().execute {
                 if (!project.isDisposed) {
-                    MarginalisPersistence.save(project, store.threads.all())
+                    MarginalisPersistence.save(project, store.snapshot())
                 }
             }
         }
 
-        val persisted = MarginalisPersistence.load(project)
+        val loaded = MarginalisPersistence.load(project)
+        store.handBack.restore(loaded.handedBackAt)
+        val persisted = loaded.threads
         if (persisted.isNotEmpty()) {
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater

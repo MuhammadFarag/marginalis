@@ -9,6 +9,29 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
+- Hand back (#24): "Hand Back" in the tool window and "Submit & hand
+  back" on the composer tell every waiting agent it's their turn. Agents
+  end a turn with `GET comment_wait?project=&since=&timeout=`, held
+  without tying up a server thread until the next hand back (at once if
+  one already happened after `since`) or the timeout — default one hour,
+  capped at four — and answered with the `awaiting=agent` threads as the
+  to-do list. `since` is the later of the newest `updated_at` and the
+  last `handed_back_at` seen, so one click wakes an agent once;
+  `comment_list` on a single project now reports that project's
+  `handed_back_at` for a fresh session's opening cursor. The last hand
+  back persists in `.idea/marginalis.json`.
+  The gestures show who is listening: the Hand Back button (a paper
+  plane) names the waiting agents in its tooltip and dims when none is, and "Submit & hand back" is
+  offered only while one waits — both live as waits start and end.
+  The guide teaches the end-of-turn wait, and that a hand back with
+  nothing awaiting the agent ends the loop, as a timeout does; the README
+  adds a Claude Code hook recipe for when no wait is armed.
+- `comment_list?awaiting=agent|user` (#18): open threads whose last word
+  is the other party's — `agent` lists what the agent still owes you,
+  `user` what you owe it. Composes with every other filter; the guide's
+  sweep now teaches that the awaiting set, not raw unread, is the debt.
+  The tool window's "Awaiting You" lens gains its mirror, "Awaiting
+  Agent".
 - Project view shows the turn glyph beside file names with open threads
   (#4) — the editor tab's ● (you owe a reply) / ○ (the agent does), now
   visible for files that aren't open. One rule in core (`Turn`) feeds the

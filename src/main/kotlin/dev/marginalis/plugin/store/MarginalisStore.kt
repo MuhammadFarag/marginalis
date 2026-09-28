@@ -1,12 +1,16 @@
 package dev.marginalis.plugin.store
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.Project
+import com.intellij.util.concurrency.AppExecutorUtil
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.HandBack
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.ThreadStore
+import dev.marginalis.core.ThreadsCodec
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -17,9 +21,24 @@ import java.util.concurrent.ConcurrentHashMap
  * everything else (persistence, re-anchoring, display without an editor).
  */
 @Service(Service.Level.PROJECT)
-class MarginalisStore {
+class MarginalisStore(private val project: Project) : Disposable {
 
     val threads = ThreadStore()
+
+    val handBack = HandBack()
+
+    fun recordHandBack() {
+        handBack.record()
+        AppExecutorUtil.getAppExecutorService().execute {
+            if (!project.isDisposed) MarginalisPersistence.save(project, snapshot())
+        }
+    }
+
+    fun snapshot() = ThreadsCodec.Document(threads.all(), handBack.lastAt)
+
+    override fun dispose() {
+        handBack.releaseAll()
+    }
 
     /**
      * Unsent composer text per thread, so closing a panel mid-thought (one

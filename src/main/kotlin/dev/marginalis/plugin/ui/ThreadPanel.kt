@@ -10,6 +10,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
@@ -27,6 +28,7 @@ import com.intellij.util.ui.UIUtil
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Message
+import dev.marginalis.core.SendOption
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.settings.MarginalisSettings
@@ -73,14 +75,14 @@ class ThreadPanel(
     private val statusLabel = JBLabel()
 
     /**
-     * Submit, with the wider destinations hanging off it — the
-     * Commit/Commit-and-Push shape. The default action always does what the
-     * composer says it will; the dropdown offers the rungs above wherever
-     * this draft started, and only while nothing has been sent yet (see
-     * [refresh]).
+     * Submit, with the alternatives hanging off it — the Commit/Commit-and-Push
+     * shape. The default action always does what the composer says it will;
+     * [refresh] decides what the dropdown offers.
      */
     private val submitAction = object : AbstractAction("Submit") {
-        override fun actionPerformed(e: ActionEvent?) = sendReply()
+        override fun actionPerformed(e: ActionEvent?) {
+            sendReply()
+        }
     }
     private val commentOnFileAction = object : AbstractAction("Comment on file instead") {
         override fun actionPerformed(e: ActionEvent?) = submitWiderThan(file = thread.file)
@@ -88,7 +90,13 @@ class ThreadPanel(
     private val commentOnProjectAction = object : AbstractAction("Comment on project instead") {
         override fun actionPerformed(e: ActionEvent?) = submitWiderThan(file = null)
     }
-    private val sendButton = JBOptionButton(submitAction, arrayOf(commentOnFileAction, commentOnProjectAction))
+    private val handBack = MarginalisStore.getInstance(project).handBack
+    private val submitAndHandBackAction = object : AbstractAction("Submit & hand back") {
+        override fun actionPerformed(e: ActionEvent?) {
+            if (sendReply()) MarginalisStore.getInstance(project).recordHandBack()
+        }
+    }
+    private val sendButton = JBOptionButton(submitAction, arrayOf(submitAndHandBackAction))
     private val replyRow = JPanel(BorderLayout()).apply {
         isOpaque = false
         border = JBUI.Borders.emptyTop(4)
@@ -173,7 +181,9 @@ class ThreadPanel(
         // keymaps) before the component ever sees the event. A component-
         // local shortcut outranks the keymap while the composer has focus.
         object : DumbAwareAction() {
-            override fun actionPerformed(e: AnActionEvent) = sendReply()
+            override fun actionPerformed(e: AnActionEvent) {
+                sendReply()
+            }
         }.registerCustomShortcutSet(
             CustomShortcutSet(
                 KeyboardShortcut(KeyStroke.getKeyStroke("meta ENTER"), null),
@@ -508,9 +518,9 @@ class ThreadPanel(
         focusReply()
     }
 
-    private fun sendReply() {
+    private fun sendReply(): Boolean {
         val body = replyArea.text.trim()
-        if (body.isEmpty()) return
+        if (body.isEmpty()) return false
 
         val editing = editingMessageId?.let { id -> thread.messages.find { it.id == id } }
         if (editing != null) {
@@ -526,7 +536,7 @@ class ThreadPanel(
             replyArea.text = ""
             setComposerExpanded(false)
             MarginalisStore.getInstance(project).threads.notifyChanged(thread)
-            return
+            return true
         }
 
         ensureStored() // draft threads materialize on first send
@@ -535,6 +545,7 @@ class ThreadPanel(
         setComposerExpanded(false)
         MarginalisStore.getInstance(project).drafts.remove(thread.id)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+        return true
     }
 
     /**
@@ -609,6 +620,38 @@ class ThreadPanel(
         return if (i >= 0 && walk.size > 1) " · step ${i + 1}/${walk.size}" else ""
     }
 
+    private fun refreshSendOptions() {
+        sendButton.options = SendOption.offered(
+            thread,
+            isDraft = isDraft(),
+            isEditing = editingMessageId != null,
+            anyoneWaiting = handBack.waitingNames.isNotEmpty(),
+        ).map {
+            when (it) {
+                SendOption.HAND_BACK -> submitAndHandBackAction
+                SendOption.COMMENT_ON_FILE -> commentOnFileAction
+                SendOption.COMMENT_ON_PROJECT -> commentOnProjectAction
+            }
+        }.toTypedArray()
+    }
+
+    private val onWaitersChanged: () -> Unit = {
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) refreshSendOptions()
+        }
+    }
+
+    override fun addNotify() {
+        super.addNotify()
+        handBack.addListener(onWaitersChanged)
+        refreshSendOptions()
+    }
+
+    override fun removeNotify() {
+        handBack.removeListener(onWaitersChanged)
+        super.removeNotify()
+    }
+
     /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
         statusLabel.text = when {
@@ -629,15 +672,7 @@ class ThreadPanel(
                 else -> "Reply"
             },
         )
-        // Retargeting is offered only where it is still a choice — a thread
-        // being started — and only upward: a reply belongs to the thread it
-        // is in, and nothing widens past the project.
-        sendButton.options = when {
-            !isDraft() -> emptyArray()
-            thread.isProjectLevel -> emptyArray()
-            thread.isFileLevel -> arrayOf(commentOnProjectAction)
-            else -> arrayOf(commentOnFileAction, commentOnProjectAction)
-        }
+        refreshSendOptions()
         cancelEditLink.isVisible = editingMessageId != null
         replyArea.setPlaceholder(
             when {

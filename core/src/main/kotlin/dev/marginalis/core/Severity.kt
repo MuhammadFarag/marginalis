@@ -14,12 +14,6 @@ package dev.marginalis.core
 enum class Severity {
     BLOCKER, NIT;
 
-    /** Outcome of [parse]: a valid value ([Ok.severity] null = deliberately unmarked) or a teachable rejection. */
-    sealed interface Parsed {
-        data class Ok(val severity: Severity?) : Parsed
-        data class Invalid(val reason: String) : Parsed
-    }
-
     companion object {
         /**
          * The severity vocabulary — deliberately just the two ends, no
@@ -28,7 +22,7 @@ enum class Severity {
          * to correct course (the skill teaches the vocabulary; the API
          * enforces it).
          */
-        fun parse(raw: String?): Parsed {
+        fun parse(raw: String?): Parsed<Severity?> {
             if (raw == null) return Parsed.Ok(null)
             return when (raw.lowercase()) {
                 "blocker" -> Parsed.Ok(BLOCKER)
@@ -41,6 +35,6 @@ enum class Severity {
         }
 
         /** Persistence tolerance: unknown values load as unmarked rather than failing the whole file. */
-        fun parseLenient(raw: String?): Severity? = (parse(raw) as? Parsed.Ok)?.severity
+        fun parseLenient(raw: String?): Severity? = parse(raw).getOrElse { null }
     }
 }

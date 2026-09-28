@@ -1,6 +1,7 @@
 package dev.marginalis.plugin.ui.toolwindow
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.ActivityTracker
 import com.intellij.ide.CommonActionsManager
 import com.intellij.ide.OccurenceNavigator
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -16,6 +17,8 @@ import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -36,10 +39,12 @@ import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.Turn
+import dev.marginalis.core.WaitingAgents
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileLevelThreads
 import dev.marginalis.plugin.ui.FileTurn
+import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ProjectThreadPopup
 import dev.marginalis.plugin.ui.WalkthroughNavigator
@@ -78,6 +83,7 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
                 common.createNextOccurenceAction(panel),
                 LastStepAction(panel),
                 FilterMenuAction(panel),
+                HandBackAction(),
                 ResolveAllAction(),
                 ClearAllAction(),
             ),
@@ -105,6 +111,11 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
         refreshBadge()
+
+        val refreshToolbar: () -> Unit = { ActivityTracker.getInstance().inc() }
+        val handBack = MarginalisStore.getInstance(project).handBack
+        handBack.addListener(refreshToolbar)
+        Disposer.register(content) { handBack.removeListener(refreshToolbar) }
     }
 
     private companion object {
@@ -165,7 +176,8 @@ internal enum class TreeFilter(
 ) {
     ALL("All", "No margin threads yet", { true }),
     BLOCKERS("Blockers Only", "No blockers", { it.severity == Severity.BLOCKER }),
-    AWAITING("Awaiting You", "Nothing awaiting you", { it.status is ThreadStatus.Open && it.awaitsUser() }),
+    AWAITING_USER("Awaiting You", "Nothing awaiting you", { it.turn() == Turn.USER }),
+    AWAITING_AGENT("Awaiting Agent", "Nothing awaiting the agent", { it.turn() == Turn.AGENT }),
     FINDINGS("Findings", "No findings", { it.intent == Intent.FINDING }),
     GUIDANCE("Guidance", "No guidance", { it.intent == Intent.GUIDANCE }),
     QUESTIONS("Questions", "No questions", { it.intent == Intent.QUESTION }),
@@ -191,6 +203,24 @@ private class FilterMenuAction(private val panel: MarginalisToolWindowPanel) :
                 }
             })
         }
+    }
+}
+
+private class HandBackAction :
+    AnAction("Hand Back", "Hand the turn back to the agent: every agent waiting on this project wakes", MarginalisIcons.HandBack) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val project = e.project ?: return
+        val waitingNames = MarginalisStore.getInstance(project).handBack.waitingNames
+        e.presentation.icon =
+            if (waitingNames.isNotEmpty()) MarginalisIcons.HandBack else IconLoader.getDisabledIcon(MarginalisIcons.HandBack)
+        e.presentation.description = WaitingAgents.handBackTooltip(waitingNames)
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        MarginalisStore.getInstance(project).recordHandBack()
     }
 }
 
@@ -272,7 +302,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     /**
      * Display filters — and because step-walking follows the tree as
      * displayed, each filter turns the walk into a purposeful sweep:
-     * BLOCKERS + next-step is the pre-merge gate check, AWAITING +
+     * BLOCKERS + next-step is the pre-merge gate check, AWAITING_USER +
      * next-step is "walk what needs me". Each empty state is the answer
      * everyone wants to read.
      *
@@ -732,7 +762,7 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     if (thread.severity == Severity.NIT) SimpleTextAttributes.GRAYED_ATTRIBUTES
                     else SimpleTextAttributes.REGULAR_ATTRIBUTES,
                 )
-                Turn.of(listOf(thread))?.let { turn ->
+                thread.turn()?.let { turn ->
                     append("  ${FileTurn.glyph(turn)}", if (turn == Turn.USER) VIOLET_ATTRS else BLUE_ATTRS)
                 }
             }

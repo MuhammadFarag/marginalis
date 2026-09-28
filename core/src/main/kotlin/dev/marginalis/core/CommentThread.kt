@@ -175,4 +175,10 @@ class CommentThread(
 
     /** Whose turn: the agent spoke last, so the conversation awaits the user. */
     fun awaitsUser(): Boolean = messages.lastOrNull()?.author is Author.Agent
+
+    fun turn(): Turn? = when {
+        status !is ThreadStatus.Open -> null
+        awaitsUser() -> Turn.USER
+        else -> Turn.AGENT
+    }
 }

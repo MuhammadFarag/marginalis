@@ -32,7 +32,7 @@ class MarginalisUnloadListener : DynamicPluginListener {
             if (project.isDisposed) continue
             val store = MarginalisStore.getInstance(project)
             store.syncLines()
-            MarginalisPersistence.save(project, store.threads.all())
+            MarginalisPersistence.save(project, store.snapshot())
             val ours = store.threads.all().mapNotNull { store.removeMarker(it) } + store.clearFileGlyphs()
             for (marker in ours) {
                 if (marker.isValid) {

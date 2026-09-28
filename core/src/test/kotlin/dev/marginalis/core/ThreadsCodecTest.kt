@@ -283,4 +283,35 @@ class ThreadsCodecTest {
         assertIs<Author.Agent>(author)
         assertEquals("soa-42", author.id)
     }
+
+    @Test
+    fun `the project's last hand back survives the trip`() {
+        val at = Instant.parse("2026-09-27T10:15:30Z")
+
+        val encoded = ThreadsCodec.encode(listOf(CommentThread("a.py", 1, "x")), handedBackAt = at)
+        val document = ThreadsCodec.decodeDocument(encoded)
+
+        assertEquals(at, document.handedBackAt)
+        assertEquals(1, document.threads.size)
+    }
+
+    @Test
+    fun `a project never handed back writes nothing, and older files read as never`() {
+        val encoded = ThreadsCodec.encode(emptyList())
+
+        assertFalse(encoded.contains("handed_back_at"))
+        assertEquals(null, ThreadsCodec.decodeDocument(encoded).handedBackAt)
+        assertEquals(null, ThreadsCodec.decodeDocument("""{"version":1,"threads":[]}""").handedBackAt)
+    }
+
+    @Test
+    fun `an unreadable hand back time reads as never, and the threads still load`() {
+        val encoded = ThreadsCodec.encode(listOf(CommentThread("a.py", 1, "x")))
+            .replace("{\"version\":1,", "{\"version\":1,\"handed_back_at\":\"yesterday-ish\",")
+
+        val document = ThreadsCodec.decodeDocument(encoded)
+
+        assertEquals(null, document.handedBackAt)
+        assertEquals(1, document.threads.size)
+    }
 }

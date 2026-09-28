@@ -50,6 +50,10 @@ and answer in-thread — a user reply is guaranteed a response. Every
 thread carries `updated_at`; hand the newest one back as
 `updated_after=` and a later sweep returns only what has moved —
 including threads the user resolved while you were away.
+Unread is what you haven't *seen*; your debt is what you haven't
+*answered*. `comment_list?awaiting=agent&project=…` lists every open
+thread where the user spoke last — reading doesn't shrink it, only a
+reply (or a resolve) does. End the sweep with it empty.
 
 **2. Never edit a file that has open threads.**
 `GET comment_list?file=<path>&status=open` before editing. Open threads
@@ -63,6 +67,49 @@ gutter marker disappears at that moment. A user reply of "do it" is
 approval, not completion: make the edit first, then resolve. If the
 user resolves a thread themselves while action seems pending, ask
 rather than assuming. Resolve immediately only when no action is needed.
+
+## Ending a turn: wait for the hand back
+
+When the user has finished a round — read your replies, answered what
+they wanted to — they **hand back**: a "Hand Back" button in the
+Marginalis tool window, or "Submit & hand back" on the reply composer.
+It is project-wide ("I've finished this round"), and it is how you learn
+you are wanted.
+
+End every turn the same way: leave your replies, then start the wait as
+a **background command** and stop.
+
+```
+curl -s "http://127.0.0.1:63342/api/marginalis/comment_wait?project=…&since=<cursor>&author_name=…&author_id=…"
+```
+
+`since` is your cursor: the later of the newest `updated_at` and the
+`handed_back_at` from the sweep or wake that started this turn — not
+the timestamp of your own replies. A `comment_list?project=…` listing
+carries the project's last `handed_back_at` in its envelope; a wake
+carries the one that woke you. So a hand back the user made while you
+were still working answers at once instead of being missed, and one you
+have already answered never wakes you twice. The wait's **completion is
+the signal**: `handed_back: true` means the user wants you now, and its
+`awaiting` list (the `awaiting=agent` set, same thread shape as
+`comment_list`) is your to-do list — answer each, then wait again.
+`handed_back: false` is a timeout (default one hour) or a closing IDE:
+the user stepped away. Do **not** re-arm; they will type when they are
+back.
+
+A hand back with nothing awaiting you ends the loop — stop waiting,
+exactly as on a timeout. That is how the user closes a round: they
+resolve the threads they are done with and hand back once more. The
+user sees whether you are waiting — the hand-back gestures name you
+while your wait is armed.
+
+Any agent harness that re-invokes the agent when a background command
+exits turns the click into your wake-up — in Claude Code, run the curl
+with `run_in_background`. Every agent waiting on the project wakes on
+the same hand back. Without an armed wait, nothing reaches you until the
+user types; Claude Code users can close that gap with two hooks that put
+the awaiting threads into every prompt — offer them the recipe at
+https://github.com/MuhammadFarag/marginalis#if-you-use-claude-code.
 
 ## Anchoring
 
@@ -225,7 +272,7 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 |---|---|
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
-| `GET comment_list?file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question&unread_only=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen}` — example below |
+| `GET comment_list?file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question&awaiting=agent\|user&unread_only=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last hand back) only when the listing covered one project and it has one; example below |
 | `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
 | `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults → `{results: [ …success shape… \| {error} ], created}` in request order, 200 unless the envelope itself is malformed |
 | `POST comment_reply {thread_id, body, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}` |
@@ -235,6 +282,7 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 | `POST comment_reanchor_all {file, project?}` | rescue every orphan on one file, searching the whole file by content → `{file, results: [{thread_id, line?, status}], rescued}` |
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed → `{resolved: <count>}` |
 | `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first → `{cleared: <count>}` |
+| `GET comment_wait?project=&since=&timeout=&author_name=&author_id=` | hold until the user hands back — at once if they already did after `since` (ISO-8601, exclusive; omit to wait for the next one) — or until `timeout` seconds pass (default 3600, capped at 14400) → `{handed_back: true, handed_back_at, awaiting: [threads]}` or `{handed_back: false}`; `awaiting` marks seen like `comment_list`; `project` is required when several are open; your `since` is the later of the newest `updated_at` and `handed_back_at` you have seen |
 | `POST navigate {file, line?, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}`; without `line`, opens the file at the top → `{navigated, file}` |
 
 A `comment_list` thread, in full:
@@ -267,6 +315,11 @@ usable cursor for `updated_after`. `author` is always an object — `kind`
 is `agent` or `user`, and agent authors carry `id`. Thread fields `segment`, `order`,
 `walkthrough`, `severity`, `intent`, and `resolved_by` appear only when
 set.
+`awaiting` narrows to open threads whose last message is the other
+party's: `agent` — the user spoke last, you owe the reply; `user` — an
+agent spoke last, the user owes one. It composes with every other
+filter, and listing still marks seen: awaiting is about *answered*, not
+*read*. Any other value is a teaching 400.
 `newly_seen` marks messages this very listing consumed for your
 identity; `seen_by` lists the identities that have read the message.
 Timestamps are ISO-8601 UTC; `line` in every response is 1-based and

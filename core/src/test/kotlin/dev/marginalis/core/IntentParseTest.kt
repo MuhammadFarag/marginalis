@@ -26,7 +26,7 @@ class IntentParseTest {
         // synonym for one of the three, and synonyms rot a closed vocabulary.
         for (raw in listOf("issue", "note", "todo", "decision", "praise", "suggestion", "")) {
             val parsed = Intent.parse(raw)
-            assertIs<Intent.Parsed.Invalid>(parsed, "'$raw' must be rejected")
+            assertIs<Parsed.Invalid>(parsed, "'$raw' must be rejected")
             assertTrue(parsed.reason.contains("finding"), "the rejection names the vocabulary")
             assertTrue(parsed.reason.contains("guidance") && parsed.reason.contains("question"))
         }
@@ -40,5 +40,5 @@ class IntentParseTest {
         assertEquals(Intent.FINDING, Intent.parseLenient("finding"))
     }
 
-    private fun ok(raw: String?): Intent? = (Intent.parse(raw) as Intent.Parsed.Ok).intent
+    private fun ok(raw: String?): Intent? = (Intent.parse(raw) as Parsed.Ok).value
 }

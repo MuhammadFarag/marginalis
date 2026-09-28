@@ -20,14 +20,19 @@ import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.concurrency.AppExecutorUtil
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Cursor
 import dev.marginalis.core.Intent
 import dev.marginalis.core.Message
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
+import dev.marginalis.core.Turn
+import dev.marginalis.core.WaitTimeout
+import dev.marginalis.core.getOrElse
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
@@ -35,9 +40,12 @@ import dev.marginalis.plugin.ui.MarginalisMarkers
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import io.netty.buffer.Unpooled
+import io.netty.channel.ChannelFutureListener
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.DefaultFullHttpResponse
+import io.netty.handler.codec.http.DefaultHttpRequest
 import io.netty.handler.codec.http.FullHttpRequest
+import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpHeaderNames
 import io.netty.handler.codec.http.HttpMethod
 import io.netty.handler.codec.http.HttpResponseStatus
@@ -47,7 +55,6 @@ import org.jetbrains.ide.RestService
 import java.nio.file.Path
 import java.time.Instant
 import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
 import java.util.Properties
 
 /**
@@ -67,7 +74,8 @@ import java.util.Properties
  *   POST /api/marginalis/comment_reanchor {thread_id, line, anchor_text?}
  *   POST /api/marginalis/comment_reanchor_all {file, project?}
  *   POST /api/marginalis/comment_clear_all    {file?}
- *   GET  /api/marginalis/comment_list?file=&status=&intent=&unread_only=&updated_after=&project=&author_name=&author_id=
+ *   GET  /api/marginalis/comment_list?file=&status=&intent=&awaiting=&unread_only=&updated_after=&project=&author_name=&author_id=
+ *   GET  /api/marginalis/comment_wait?project=&since=&timeout=&author_name=&author_id=
  *   POST /api/marginalis/navigate         {file, line?, anchor_text?, project?}
  *
  * Writing/resolving endpoints (comment_add, comment_reply, comment_resolve,
@@ -127,6 +135,7 @@ class MarginalisRestService : RestService() {
             "comment_reanchor_all" -> post(request, context) { handleReanchorAll(it, request, context) }
             "comment_clear_all" -> post(request, context) { handleClearAll(it, request, context) }
             "comment_list" -> handleCommentList(urlDecoder, request, context)
+            "comment_wait" -> handleCommentWait(urlDecoder, request, context)
             "navigate" -> post(request, context) { handleNavigate(it, request, context) }
             else -> sendError(HttpResponseStatus.NOT_FOUND, "unknown endpoint '$endpoint'", request, context)
         }
@@ -194,9 +203,13 @@ class MarginalisRestService : RestService() {
      * `author_name` (+ optional stable `author_id`); an unintroduced agent
      * is just "Agent". Applied wherever the agent writes or resolves.
      */
-    private fun agentAuthor(json: JsonObject): Author.Agent {
-        val name = json.stringOrNull("author_name")
-        val id = json.stringOrNull("author_id")
+    private fun agentAuthor(json: JsonObject): Author.Agent =
+        agentAuthor(json.stringOrNull("author_name"), json.stringOrNull("author_id"))
+
+    private fun agentAuthor(params: Map<String, List<String>>): Author.Agent =
+        agentAuthor(params["author_name"]?.firstOrNull(), params["author_id"]?.firstOrNull())
+
+    private fun agentAuthor(name: String?, id: String?): Author.Agent {
         if (name == null && id == null) return Authors.agent
         return Author.Agent(name ?: Authors.agent.displayName, id)
     }
@@ -314,14 +327,10 @@ class MarginalisRestService : RestService() {
         val projectFilter = json.stringOrNull("project")
         // Garbage in either vocabulary gets a teaching 400, not a silently
         // unmarked thread. The two are independent: any intent, any severity.
-        val severity = when (val parsed = Severity.parse(json.stringOrNull("severity"))) {
-            is Severity.Parsed.Invalid -> return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, parsed.reason)
-            is Severity.Parsed.Ok -> parsed.severity
-        }
-        val intent = when (val parsed = Intent.parse(json.stringOrNull("intent"))) {
-            is Intent.Parsed.Invalid -> return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, parsed.reason)
-            is Intent.Parsed.Ok -> parsed.intent
-        }
+        val severity = Severity.parse(json.stringOrNull("severity"))
+            .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
+        val intent = Intent.parse(json.stringOrNull("intent"))
+            .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
 
         // A path resolves the project by itself; without one, the caller has
         // to say which workspace they mean.
@@ -781,99 +790,42 @@ class MarginalisRestService : RestService() {
         }
         // "All the open guidance for the file I am about to edit" — the
         // query this filter exists for.
-        val intentFilter = when (val parsed = Intent.parse(params["intent"]?.firstOrNull())) {
-            is Intent.Parsed.Invalid -> return sendError(HttpResponseStatus.BAD_REQUEST, parsed.reason, request, context)
-            is Intent.Parsed.Ok -> parsed.intent
-        }
+        val intentFilter = Intent.parse(params["intent"]?.firstOrNull())
+            .getOrElse { return sendBadRequest(it, request, context) }
+        val awaitingFilter = Turn.parse(params["awaiting"]?.firstOrNull())
+            .getOrElse { return sendBadRequest(it, request, context) }
         val unreadOnly = params["unread_only"]?.firstOrNull()?.toBoolean() ?: false
         val projectFilter = params["project"]?.firstOrNull()
         // The sweep cursor: hand back the newest 'updated_at' you saw and
         // get only what has moved since. Strictly after, so nothing repeats.
-        val updatedAfter = params["updated_after"]?.firstOrNull()?.let {
-            try {
-                Instant.parse(it)
-            } catch (e: DateTimeParseException) {
-                return sendError(
-                    HttpResponseStatus.BAD_REQUEST,
-                    "'updated_after' must be an ISO-8601 instant (e.g. 2026-08-14T09:30:00Z) — pass back the " +
-                        "'updated_at' of the newest thread your last listing returned.",
-                    request, context,
-                )
-            }
-        }
-        // The caller's read receipts are their own: identity via the same
-        // author params (query-string here), anonymous callers share "Agent".
-        val callerKey = (params["author_id"]?.firstOrNull() ?: params["author_name"]?.firstOrNull())
-            ?: Authors.agent.receiptKey
+        val updatedAfter = Cursor.parse(
+            "updated_after",
+            params["updated_after"]?.firstOrNull(),
+            "pass back the 'updated_at' of the newest thread your last listing returned.",
+        ).getOrElse { return sendBadRequest(it, request, context) }
+        val callerKey = callerKey(params)
 
         val threadsJson = JsonArray()
         var markedSeen = 0
-        val timeFormat = DateTimeFormatter.ISO_INSTANT
+        val listedStores = mutableListOf<MarginalisStore>()
 
         ApplicationManager.getApplication().runReadAction {
             for (project in ProjectManager.getInstance().openProjects) {
                 if (project.isDisposed) continue
                 if (projectFilter != null && !projectMatches(project, projectFilter)) continue
                 val store = MarginalisStore.getInstance(project)
-                val listed = store.threads
-                    .query(fileFilter, statusFilter, intentFilter, if (unreadOnly) callerKey else null, updatedAfter)
-                    .sortedWith(ThreadOrder.byAnchor)
-                for (thread in listed) {
-                    val messagesJson = JsonArray()
-                    for (message in thread.messages) {
-                        val newlySeen = !message.seenBy(callerKey)
-                        if (newlySeen) {
-                            message.markSeenBy(callerKey)
-                            markedSeen++
-                        }
-                        messagesJson.add(
-                            JsonObject().apply {
-                                addProperty("message_id", message.id)
-                                add("author", authorJson(message.author))
-                                addProperty("body", message.body)
-                                addProperty("created_at", timeFormat.format(message.createdAt))
-                                add("seen_by", JsonArray().apply { message.seenBy.sorted().forEach(::add) })
-                                if (newlySeen) addProperty("newly_seen", true)
-                            },
-                        )
-                    }
-                    threadsJson.add(
-                        JsonObject().apply {
-                            addProperty("thread_id", thread.id)
-                            addProperty("project", project.name)
-                            // Absent as the subject widens: no line once the
-                            // file is the address, no file once the project is.
-                            thread.file?.let { addProperty("file", it) }
-                            val line = store.currentLine(thread)
-                            line?.let { addProperty("line", it + 1) }
-                            // What that line says NOW: compare it with the
-                            // anchor_text you wrote and you know whether the
-                            // code moved under the thread — without re-reading
-                            // the file.
-                            currentAnchorText(project, thread, line)?.let { addProperty("anchor_text", it) }
-                            addProperty("status", thread.status.kind.name.lowercase())
-                            addProperty("created_at", timeFormat.format(thread.createdAt))
-                            addProperty("updated_at", timeFormat.format(thread.updatedAt))
-                            // Additive: the human anchored this thread to a
-                            // span within the line, not the whole line.
-                            thread.segment?.let { seg ->
-                                add(
-                                    "segment",
-                                    JsonObject().apply {
-                                        addProperty("exact", seg.exact)
-                                        if (seg.prefix.isNotEmpty()) addProperty("prefix", seg.prefix)
-                                        if (seg.suffix.isNotEmpty()) addProperty("suffix", seg.suffix)
-                                    },
-                                )
-                            }
-                            thread.order?.let { addProperty("order", it) }
-                            thread.walkthrough?.let { addProperty("walkthrough", it) }
-                            thread.severity?.let { addProperty("severity", it.name.lowercase()) }
-                            thread.intent?.let { addProperty("intent", it.name.lowercase()) }
-                            thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
-                            add("messages", messagesJson)
-                        },
-                    )
+                listedStores += store
+                val listed = store.threads.query(
+                    file = fileFilter,
+                    status = statusFilter,
+                    intent = intentFilter,
+                    awaiting = awaitingFilter,
+                    unreadFor = if (unreadOnly) callerKey else null,
+                    updatedAfter = updatedAfter,
+                )
+                for (rendered in renderThreads(project, store, listed, callerKey)) {
+                    markedSeen += rendered.newlySeen
+                    threadsJson.add(rendered.json)
                 }
             }
         }
@@ -882,10 +834,150 @@ class MarginalisRestService : RestService() {
             JsonObject().apply {
                 add("threads", threadsJson)
                 addProperty("marked_seen", markedSeen)
+                listedStores.singleOrNull()?.handBack?.lastAt?.let { addProperty("handed_back_at", it.iso()) }
             },
             request, context,
         )
     }
+
+    private class RenderedThread(val json: JsonObject, val newlySeen: Int)
+
+    private fun renderThreads(
+        project: Project,
+        store: MarginalisStore,
+        threads: List<CommentThread>,
+        callerKey: String,
+    ): List<RenderedThread> =
+        threads.sortedWith(ThreadOrder.byAnchor).map { markSeenAndRender(project, store, it, callerKey) }
+
+    private fun markSeenAndRender(project: Project, store: MarginalisStore, thread: CommentThread, callerKey: String): RenderedThread {
+        val messagesJson = JsonArray()
+        var newlySeenCount = 0
+        for (message in thread.messages) {
+            val newlySeen = !message.seenBy(callerKey)
+            if (newlySeen) {
+                message.markSeenBy(callerKey)
+                newlySeenCount++
+            }
+            messagesJson.add(
+                JsonObject().apply {
+                    addProperty("message_id", message.id)
+                    add("author", authorJson(message.author))
+                    addProperty("body", message.body)
+                    addProperty("created_at", message.createdAt.iso())
+                    add("seen_by", JsonArray().apply { message.seenBy.sorted().forEach(::add) })
+                    if (newlySeen) addProperty("newly_seen", true)
+                },
+            )
+        }
+        val json = JsonObject().apply {
+            addProperty("thread_id", thread.id)
+            addProperty("project", project.name)
+            // Absent as the subject widens: no line once the
+            // file is the address, no file once the project is.
+            thread.file?.let { addProperty("file", it) }
+            val line = store.currentLine(thread)
+            line?.let { addProperty("line", it + 1) }
+            // What that line says NOW: compare it with the
+            // anchor_text you wrote and you know whether the
+            // code moved under the thread — without re-reading
+            // the file.
+            currentAnchorText(project, thread, line)?.let { addProperty("anchor_text", it) }
+            addProperty("status", thread.status.kind.name.lowercase())
+            addProperty("created_at", thread.createdAt.iso())
+            addProperty("updated_at", thread.updatedAt.iso())
+            // Additive: the human anchored this thread to a
+            // span within the line, not the whole line.
+            thread.segment?.let { seg ->
+                add(
+                    "segment",
+                    JsonObject().apply {
+                        addProperty("exact", seg.exact)
+                        if (seg.prefix.isNotEmpty()) addProperty("prefix", seg.prefix)
+                        if (seg.suffix.isNotEmpty()) addProperty("suffix", seg.suffix)
+                    },
+                )
+            }
+            thread.order?.let { addProperty("order", it) }
+            thread.walkthrough?.let { addProperty("walkthrough", it) }
+            thread.severity?.let { addProperty("severity", it.name.lowercase()) }
+            thread.intent?.let { addProperty("intent", it.name.lowercase()) }
+            thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
+            add("messages", messagesJson)
+        }
+        return RenderedThread(json, newlySeenCount)
+    }
+
+    // --------------------------------------------------------------- wait
+
+    /**
+     * Held, never blocking: execute() runs on a Netty I/O thread, so the
+     * request is parked on the project's [HandBack] and answered later from
+     * a pooled thread.
+     */
+    private fun handleCommentWait(urlDecoder: QueryStringDecoder, request: FullHttpRequest, context: ChannelHandlerContext) {
+        if (request.method() !== HttpMethod.GET) {
+            return sendError(HttpResponseStatus.METHOD_NOT_ALLOWED, "comment_wait is a GET", request, context)
+        }
+        val params = urlDecoder.parameters()
+        val since = Cursor.parse(
+            "since",
+            params["since"]?.firstOrNull(),
+            "pass the later of the newest 'updated_at' and the 'handed_back_at' from the sweep or wake that " +
+                "started your turn; omit it to wait for the next hand back.",
+        ).getOrElse { return sendBadRequest(it, request, context) }
+        val timeout = WaitTimeout.parse(params["timeout"]?.firstOrNull())
+            .getOrElse { return sendBadRequest(it, request, context) }
+        val projectFilter = params["project"]?.firstOrNull()
+        val project = ApplicationManager.getApplication().runReadAction(Computable { resolveProject(projectFilter) })
+            ?: return sendResolutionError(
+                if (projectFilter == null) {
+                    "comment_wait waits on one project: pass 'project' (name or root path) — see open_projects."
+                } else {
+                    "no open project matches '$projectFilter' — see open_projects."
+                },
+                request, context,
+            )
+        val caller = agentAuthor(params)
+        val requestHead = DefaultHttpRequest(request.protocolVersion(), request.method(), request.uri(), request.headers().copy())
+        val closeFuture = context.channel().closeFuture()
+
+        val waited = MarginalisStore.getInstance(project).handBack.await(since, timeout, caller)
+        val cancelOnHangUp = ChannelFutureListener { waited.cancel(false) }
+        closeFuture.addListener(cancelOnHangUp)
+        waited.whenComplete { _, _ -> closeFuture.removeListener(cancelOnHangUp) }
+        waited.whenCompleteAsync(
+            { handedBackAt, _ ->
+                if (waited.isCancelled) return@whenCompleteAsync
+                try {
+                    sendJson(waitAnswer(project, handedBackAt, caller.receiptKey), requestHead, context)
+                } catch (e: Exception) {
+                    send(
+                        JsonObject().apply { addProperty("error", "comment_wait failed: ${e.message}") },
+                        HttpResponseStatus.INTERNAL_SERVER_ERROR, requestHead, context,
+                    )
+                }
+            },
+            AppExecutorUtil.getAppExecutorService(),
+        )
+    }
+
+    private fun waitAnswer(project: Project, handedBackAt: Instant?, callerKey: String): JsonObject =
+        if (handedBackAt == null || project.isDisposed) {
+            JsonObject().apply { addProperty("handed_back", false) }
+        } else {
+            val store = MarginalisStore.getInstance(project)
+            val awaiting = ApplicationManager.getApplication().runReadAction(
+                Computable { renderThreads(project, store, store.threads.query(awaiting = Turn.AGENT), callerKey) },
+            )
+            JsonObject().apply {
+                addProperty("handed_back", true)
+                addProperty("handed_back_at", handedBackAt.iso())
+                add("awaiting", JsonArray().apply { awaiting.forEach { add(it.json) } })
+            }
+        }
+
+    private fun Instant.iso(): String = DateTimeFormatter.ISO_INSTANT.format(this)
 
     // ----------------------------------------------------------- navigate
 
@@ -981,6 +1073,10 @@ class MarginalisRestService : RestService() {
         if (line >= document.lineCount) return thread.anchorText
         return lineText(document, line)
     }
+
+    // The caller's read receipts are their own: identity via the same
+    // author params (query-string here), anonymous callers share "Agent".
+    private fun callerKey(params: Map<String, List<String>>): String = agentAuthor(params).receiptKey
 
     private fun authorJson(author: Author): JsonObject = JsonObject().apply {
         addProperty("kind", if (author is Author.Agent) "agent" else "user")
@@ -1078,7 +1174,7 @@ class MarginalisRestService : RestService() {
     private fun JsonObject.intOrNull(key: String): Int? =
         get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
 
-    private fun sendJson(json: JsonObject, request: FullHttpRequest, context: ChannelHandlerContext) {
+    private fun sendJson(json: JsonObject, request: HttpRequest, context: ChannelHandlerContext) {
         send(json, HttpResponseStatus.OK, request, context)
     }
 
@@ -1091,7 +1187,11 @@ class MarginalisRestService : RestService() {
         send(JsonObject().apply { addProperty("error", message) }, status, request, context)
     }
 
-    private fun send(json: JsonObject, status: HttpResponseStatus, request: FullHttpRequest, context: ChannelHandlerContext) {
+    private fun sendBadRequest(reason: String, request: FullHttpRequest, context: ChannelHandlerContext) {
+        sendError(HttpResponseStatus.BAD_REQUEST, reason, request, context)
+    }
+
+    private fun send(json: JsonObject, status: HttpResponseStatus, request: HttpRequest, context: ChannelHandlerContext) {
         val bytes = json.toString().toByteArray(Charsets.UTF_8)
         val response = DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, Unpooled.wrappedBuffer(bytes))
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json; charset=utf-8")

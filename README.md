@@ -77,7 +77,8 @@ API reference. CI checks that it mentions every endpoint. The API itself
 is plain JSON over the built-in server:
 
 ```
-GET  ping · agent_guide · comment_list?file=&status=&unread_only=&project=
+GET  ping · agent_guide · comment_list?file=&status=&unread_only=&awaiting=&project=
+GET  comment_wait?project=&since=&timeout=               (held until you hand back)
 POST comment_add {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?}
 POST comment_reply {thread_id, body} · comment_resolve · comment_reopen
 POST comment_reanchor {thread_id, line, anchor_text?}   (orphan rescue)
@@ -102,6 +103,60 @@ globally, so the skill is available in every project rather than only
 the current one. `-y` accepts the prompts, so the command runs
 unattended. The skill teaches an agent to find the server, fetch the
 guide, and follow it. Plain HTTP; no wrapper scripts.
+
+### Handing back
+
+When you have finished a round, click **Hand Back** in the Marginalis
+tool window (or pick **Submit & hand back** on the reply composer). An
+agent that ended its turn by starting `comment_wait` as a background
+command wakes up, once per click, with the list of threads awaiting
+its reply. The guide teaches the pattern and its cursor; a wait that
+times out (after an hour by default) is not re-armed — the agent
+assumes you stepped away.
+
+### If you use Claude Code
+
+Without an armed wait, nothing reaches the agent until you type. These
+hooks close that gap: every prompt you submit carries the threads
+awaiting the agent's reply, with your unanswered messages in full, and
+each session opens by pointing the agent at the guide and at the same
+list. Add to `.claude/settings.json` (or
+`~/.claude/settings.json`), with `author_id` set to the identity your
+agent uses in the margin:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sfG --max-time 3 http://127.0.0.1:63342/api/marginalis/comment_list --data-urlencode \"project=$CLAUDE_PROJECT_DIR\" -d awaiting=agent -d author_id=claude | jq -r '\"Marginalis is running: GET http://127.0.0.1:63342/api/marginalis/agent_guide and follow it.\", (.threads | select(length > 0) | \"Marginalis: \\(length) thread(s) await your reply:\", (.[] | \"- \\(.thread_id) at \\(.file // \"(project)\")\\(if .line then \":\\(.line)\" else \"\" end)\", (.messages | (map(.author.kind == \"agent\") | rindex(true) // -1) as $i | .[$i + 1:][] | \"  \\(.author.name): \\(.body)\")))'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sfG --max-time 3 http://127.0.0.1:63342/api/marginalis/comment_list --data-urlencode \"project=$CLAUDE_PROJECT_DIR\" -d awaiting=agent -d author_id=claude | jq -r '.threads | select(length > 0) | \"Marginalis: \\(length) thread(s) await your reply:\", (.[] | \"- \\(.thread_id) at \\(.file // \"(project)\")\\(if .line then \":\\(.line)\" else \"\" end)\", (.messages | (map(.author.kind == \"agent\") | rindex(true) // -1) as $i | .[$i + 1:][] | \"  \\(.author.name): \\(.body)\"))'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Both hooks print nothing when the IDE isn't running. The listing marks
+those threads' messages seen for that `author_id`, as any read does —
+which is honest, because their bodies are what the hook hands the
+agent. It also means a message you wrote can no longer be edited once
+a hook has listed it, and the agent's own `unread_only` sweep won't
+return it again.
 
 ## Building from source
 

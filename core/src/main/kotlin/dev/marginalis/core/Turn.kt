@@ -17,11 +17,23 @@ enum class Turn {
     companion object {
         /** Null when nothing is open — no one owes anything. */
         fun of(threads: List<CommentThread>): Turn? {
-            val open = threads.filter { it.status is ThreadStatus.Open }
+            val turns = threads.mapNotNull { it.turn() }
             return when {
-                open.isEmpty() -> null
-                open.any { it.awaitsUser() } -> USER
+                turns.isEmpty() -> null
+                USER in turns -> USER
                 else -> AGENT
+            }
+        }
+
+        fun parse(raw: String?): Parsed<Turn?> {
+            if (raw == null) return Parsed.Ok(null)
+            return when (raw.lowercase()) {
+                "agent" -> Parsed.Ok(AGENT)
+                "user" -> Parsed.Ok(USER)
+                else -> Parsed.Invalid(
+                    "invalid awaiting '$raw' — use 'agent' (the user spoke last: the agent owes a reply) or " +
+                        "'user' (an agent spoke last: the user owes one); omit to list regardless of whose turn it is.",
+                )
             }
         }
     }

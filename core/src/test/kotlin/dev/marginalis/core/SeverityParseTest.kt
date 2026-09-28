@@ -9,22 +9,22 @@ class SeverityParseTest {
 
     @Test
     fun `canonical vocabulary, case-insensitively`() {
-        assertEquals(Severity.Parsed.Ok(Severity.BLOCKER), Severity.parse("blocker"))
-        assertEquals(Severity.Parsed.Ok(Severity.BLOCKER), Severity.parse("BLOCKER"))
-        assertEquals(Severity.Parsed.Ok(Severity.NIT), Severity.parse("nit"))
-        assertEquals(Severity.Parsed.Ok(null), Severity.parse(null))
+        assertEquals(Parsed.Ok(Severity.BLOCKER), Severity.parse("blocker"))
+        assertEquals(Parsed.Ok(Severity.BLOCKER), Severity.parse("BLOCKER"))
+        assertEquals(Parsed.Ok(Severity.NIT), Severity.parse("nit"))
+        assertEquals(Parsed.Ok(null), Severity.parse(null))
     }
 
     @Test
     fun `no aliases — legacy words are rejections that steer the agent, not synonyms`() {
-        assertIs<Severity.Parsed.Invalid>(Severity.parse("high"))
-        assertIs<Severity.Parsed.Invalid>(Severity.parse("medium"))
-        assertIs<Severity.Parsed.Invalid>(Severity.parse("low"))
+        assertIs<Parsed.Invalid>(Severity.parse("high"))
+        assertIs<Parsed.Invalid>(Severity.parse("medium"))
+        assertIs<Parsed.Invalid>(Severity.parse("low"))
     }
 
     @Test
     fun `garbage is a teachable rejection, never a silently unmarked thread`() {
-        assertIs<Severity.Parsed.Invalid>(Severity.parse("urgent"))
+        assertIs<Parsed.Invalid>(Severity.parse("urgent"))
     }
 
     @Test
