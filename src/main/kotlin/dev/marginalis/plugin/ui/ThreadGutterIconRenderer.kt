@@ -1,16 +1,12 @@
 package dev.marginalis.plugin.ui
 
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.ui.BadgeIconSupplier
-import dev.marginalis.core.AggregateState
 import dev.marginalis.core.CommentThread
-import dev.marginalis.core.Intent
 import javax.swing.Icon
 
 /**
@@ -18,7 +14,7 @@ import javax.swing.Icon
  * stands for one thread or several (segments made same-line threads
  * ordinary). Solo thread: click toggles its panel. Several: click opens a
  * chooser. Status merges pessimistically — any unread shows unread, any
- * orphan shows the warning.
+ * orphan shows the dashed frame.
  *
  * Two positions use it: a line's own threads, and — beside line 1 — a
  * file's file-level threads, which are collapsed conversations too.
@@ -29,36 +25,7 @@ class ThreadGutterIconRenderer(
     private val threads: List<CommentThread>,
 ) : GutterIconRenderer() {
 
-    /**
-     * The base glyph answers "what is being asked of me here?" when the
-     * threads agree on an intent — an eye for something found, a bulb for
-     * how to write this, a question mark for an answer wanted — and
-     * otherwise names the subject: a page for threads about the whole file
-     * (these sit beside line 1, where their panel unfolds), the balloon for
-     * a line's ordinary conversation. Shapes, not colors, so the triage
-     * survives themes and color blindness. Threads that disagree fall back
-     * to the subject rather than one of them winning.
-     */
-    private val base: Icon = when (threads.map { it.intent }.distinct().singleOrNull()) {
-        Intent.FINDING -> AllIcons.General.InspectionsEye
-        Intent.GUIDANCE -> AllIcons.Actions.IntentionBulb
-        Intent.QUESTION -> AllIcons.General.ContextHelp
-        null -> if (threads.all { it.isFileLevel }) AllIcons.FileTypes.Any_type else AllIcons.General.Balloon
-    }
-
-    /** Status rides on top of whatever the base says, as a badge. */
-    private val badges = BadgeIconSupplier(base)
-
-    // A badge dot for unread, not a different balloon: the
-    // BalloonInformation swap was too subtle to spot and leaned on color
-    // alone. The precedence itself is core's AggregateState.
-    override fun getIcon(): Icon = when (AggregateState.of(threads)) {
-        AggregateState.RESOLVED -> AllIcons.General.GreenCheckmark
-        AggregateState.ORPHANED -> AllIcons.General.Warning
-        AggregateState.OPEN_BLOCKER -> badges.errorIcon
-        AggregateState.UNREAD -> badges.infoIcon
-        AggregateState.OPEN -> badges.originalIcon
-    }
+    override fun getIcon(): Icon = MarginalisIcons.markOf(threads)
 
     override fun getTooltipText(): String {
         if (threads.size == 1) {

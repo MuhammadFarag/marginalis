@@ -7,6 +7,7 @@ import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
 import dev.marginalis.core.Addressee
+import dev.marginalis.core.FileTurns
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.HandBack
 import dev.marginalis.core.ThreadStatus
@@ -25,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap
 class MarginalisStore(private val project: Project) : Disposable {
 
     val threads = ThreadStore()
+
+    val fileTurns = FileTurns()
 
     val handBack = HandBack(hasAwaiting = threads::hasAwaiting)
 

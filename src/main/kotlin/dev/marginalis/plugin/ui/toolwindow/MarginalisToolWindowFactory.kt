@@ -23,32 +23,37 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.pom.Navigatable
-import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
+import com.intellij.ui.render.RenderingUtil
 import com.intellij.ui.treeStructure.Tree
-import dev.marginalis.core.AggregateState
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.components.BorderLayoutPanel
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Intent
 import dev.marginalis.core.PathTrie
 import dev.marginalis.core.Severity
+import dev.marginalis.core.StripeBadge
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.Turn
+import dev.marginalis.core.TurnSignal
+import dev.marginalis.core.TurnTally
 import dev.marginalis.core.WaitingAgents
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileLevelThreads
-import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ProjectThreadPopup
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
+import java.awt.Component
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.JMenuItem
@@ -57,6 +62,7 @@ import javax.swing.JPopupMenu
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
+import javax.swing.tree.TreeCellRenderer
 import javax.swing.tree.TreePath
 
 /**
@@ -90,20 +96,11 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
         )
 
         // "Is it my turn?" answered from anywhere: a badge on the stripe icon
-        // and a count next to the title whenever open threads await the user
-        // (the agent spoke last). The margin is turn-based; this is the turn
-        // signal, not presence.
+        // whenever open threads await the user (the agent spoke last). The
+        // margin is turn-based; this is the turn signal, not presence.
         val refreshBadge = {
-            val open = MarginalisStore.getInstance(project).threads.all()
-                .filter { it.status is ThreadStatus.Open }
-            val awaiting = open.count { it.awaitsUser() }
-            // Red = act, blue = read: open blockers outrank the turn signal
-            // (core's AggregateState precedence, mapped to stripe icons).
-            toolWindow.setIcon(
-                if (AggregateState.of(open) == AggregateState.OPEN_BLOCKER) STRIPE_ICON.getErrorIcon(true)
-                else STRIPE_ICON.getInfoIcon(awaiting > 0),
-            )
-            content.displayName = if (awaiting > 0) "$awaiting awaiting you" else ""
+            val threads = MarginalisStore.getInstance(project).threads.all()
+            toolWindow.setIcon(MarginalisIcons.toolWindow(StripeBadge.of(threads)))
         }
         MarginalisStore.getInstance(project).threads.addListener {
             ApplicationManager.getApplication().invokeLater {
@@ -117,10 +114,6 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
         handBack.addListener(refreshToolbar)
         Disposer.register(content) { handBack.removeListener(refreshToolbar) }
     }
-
-    private companion object {
-        val STRIPE_ICON = BadgeIconSupplier(AllIcons.Toolwindows.ToolWindowMessages)
-    }
 }
 
 /**
@@ -130,7 +123,7 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
  * whether the tree has a Project section or not.
  */
 private class CommentOnProjectAction :
-    AnAction("Comment on Project", "Start a margin thread about this project as a whole", AllIcons.Nodes.Module) {
+    AnAction("Comment on Project", "Start a margin thread about this project as a whole", MarginalisIcons.ProjectMark) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -687,7 +680,73 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     private fun navigateTo(thread: CommentThread) = WalkthroughNavigator.navigateTo(project, thread)
 }
 
-private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
+private class MarginalisTreeRenderer : TreeCellRenderer {
+    private val words = RowWords()
+    private val yourMove = turnLabel(Turn.USER)
+    private val agentsMove = turnLabel(Turn.AGENT)
+    private val cell = BorderLayoutPanel().addToCenter(words).addToRight(
+        BorderLayoutPanel().addToCenter(yourMove).addToRight(agentsMove).andTransparent(),
+    )
+
+    override fun getTreeCellRendererComponent(
+        tree: JTree,
+        value: Any?,
+        selected: Boolean,
+        expanded: Boolean,
+        leaf: Boolean,
+        row: Int,
+        hasFocus: Boolean,
+    ): Component {
+        words.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
+        val spokenTurn = showTurnSignals((value as? DefaultMutableTreeNode)?.userObject)
+        cell.accessibleContext.accessibleName = listOfNotNull(words.accessibleContext.accessibleName, spokenTurn)
+            .filter { it.isNotBlank() }
+            .joinToString(", ")
+        val foreground = RenderingUtil.getForeground(tree, selected)
+        yourMove.foreground = foreground
+        agentsMove.foreground = foreground
+        cell.isOpaque = words.isOpaque
+        cell.background = words.background
+        return cell
+    }
+
+    private fun showTurnSignals(data: Any?): String? = when (data) {
+        is NodeData.FileNode -> {
+            val tally = TurnTally.of(data.threads)
+            yourMove.showCount(tally.user)
+            agentsMove.showCount(tally.agent)
+            TurnSignal.spoken(tally)
+        }
+        is NodeData.ThreadNode -> {
+            val turn = data.thread.turn()
+            yourMove.showBare(turn == Turn.USER)
+            agentsMove.showBare(turn == Turn.AGENT)
+            turn?.let(TurnSignal::spoken)
+        }
+        else -> {
+            yourMove.isVisible = false
+            agentsMove.isVisible = false
+            null
+        }
+    }
+
+    private fun turnLabel(turn: Turn) = JBLabel(MarginalisIcons.turnSignal(turn)).apply {
+        iconTextGap = JBUI.scale(2)
+        border = JBUI.Borders.emptyLeft(6)
+    }
+
+    private fun JBLabel.showCount(count: Int) {
+        isVisible = count > 0
+        text = count.toString()
+    }
+
+    private fun JBLabel.showBare(shown: Boolean) {
+        isVisible = shown
+        text = ""
+    }
+}
+
+private class RowWords : ColoredTreeCellRenderer() {
     override fun customizeCellRenderer(
         tree: JTree,
         value: Any?,
@@ -707,7 +766,7 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 }
             }
             is NodeData.ProjectNode -> {
-                icon = AllIcons.Nodes.Module
+                icon = MarginalisIcons.ProjectMark
                 append("Project", SimpleTextAttributes.REGULAR_ATTRIBUTES)
                 append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             }
@@ -722,24 +781,10 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                 icon = FileTypeManager.getInstance().getFileTypeByFileName(data.name).icon
                     ?: AllIcons.FileTypes.Any_type
                 append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                // Turn dots are for live conversations only — under Resolved
-                // they'd be noise about turns already over.
-                val open = data.threads.filter { it.status is ThreadStatus.Open }
-                val needsYou = open.count { it.awaitsUser() }
-                val onClaude = open.size - needsYou
-                if (needsYou > 0) append("  ${FileTurn.glyph(Turn.USER)}$needsYou", VIOLET_ATTRS)
-                if (onClaude > 0) append("  ${FileTurn.glyph(Turn.AGENT)}$onClaude", BLUE_ATTRS)
             }
             is NodeData.ThreadNode -> {
                 val thread = data.thread
-                icon = when {
-                    thread.status is ThreadStatus.Resolved -> AllIcons.General.GreenCheckmark
-                    thread.status is ThreadStatus.Orphaned -> AllIcons.General.Warning
-                    // Each width its own mark: the project, the file, a line.
-                    thread.isProjectLevel -> AllIcons.Nodes.Module
-                    thread.isFileLevel -> AllIcons.FileTypes.Any_type
-                    else -> AllIcons.General.Balloon
-                }
+                icon = MarginalisIcons.markOf(listOf(thread))
                 if (data.walkthroughPrefix != null) {
                     append("${data.walkthroughPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
@@ -762,9 +807,6 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
                     if (thread.severity == Severity.NIT) SimpleTextAttributes.GRAYED_ATTRIBUTES
                     else SimpleTextAttributes.REGULAR_ATTRIBUTES,
                 )
-                thread.turn()?.let { turn ->
-                    append("  ${FileTurn.glyph(turn)}", if (turn == Turn.USER) VIOLET_ATTRS else BLUE_ATTRS)
-                }
             }
             else -> {}
         }
@@ -773,7 +815,5 @@ private class MarginalisTreeRenderer : ColoredTreeCellRenderer() {
     private companion object {
         // Same families as the thread-panel author colors.
         val INTENT_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x37618E, 0x9CC0E8))
-        val VIOLET_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x9C27B0, 0xCE93D8))
-        val BLUE_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x1565C0, 0x90CAF9))
     }
 }

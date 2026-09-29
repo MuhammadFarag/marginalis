@@ -388,7 +388,7 @@ class ThreadPanel(
                 e.presentation.icon = AllIcons.General.GreenCheckmark
             } else {
                 e.presentation.text = "Reopen"
-                e.presentation.icon = AllIcons.General.Balloon
+                e.presentation.icon = MarginalisIcons.LineMark
             }
         }
 

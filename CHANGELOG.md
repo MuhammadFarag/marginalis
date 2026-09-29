@@ -5,6 +5,23 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Changed
+
+- One icon family from the plugin icon (#25). Gutter marks and tool
+  window rows are brand-colored outline bubbles whose glyph and hue say
+  the intent; file threads fold a corner, project threads peek an arc;
+  resolved marks dim and orphaned ones sit in a dashed amber frame. Turn
+  signals replace ● / ○: a violet envelope ✉ (your move) and a blue
+  plane ✈ (the agent's) badge the file's own icon in editor tabs and the
+  Project view — nothing trails the file name any more — and trail the
+  tool window's file and thread rows. The stripe badge is the envelope
+  (red still wins for an open blocker), and the tool window icon is a
+  miniature of the plugin icon. The "N awaiting you" title count is gone
+  for now: it counted every open thread owed, which didn't match the
+  badges on screen — what to count is deferred to #26.
+
 ## [0.1.28] - 2026-09-28
 
 ### Added

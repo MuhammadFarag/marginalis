@@ -1,11 +1,9 @@
 package dev.marginalis.plugin
 
-import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.startup.ProjectActivity
@@ -17,6 +15,7 @@ import dev.marginalis.core.CommentThread
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisPersistence
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.MarginalisMarkers
 
 /**
@@ -26,8 +25,8 @@ import dev.marginalis.plugin.ui.MarginalisMarkers
  *    a persisted line is only a hint; no match within the search window
  *    means ORPHANED, never a guessed anchor.
  * 2. Keep collapsed state honest on every change: markers dropped on
- *    resolve/delete, re-attached on reopen, renderers refreshed, tab-title
- *    and Project-view glyphs updated.
+ *    resolve/delete, re-attached on reopen, renderers refreshed, and the
+ *    turn badge on file icons (tabs, Project view) redrawn when it changes.
  * 3. Persist on every change (small file, background thread).
  */
 class MarginalisStartup : ProjectActivity {
@@ -39,16 +38,7 @@ class MarginalisStartup : ProjectActivity {
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 syncMarker(project, thread)
-                // Refresh this file's tab and Project-view node so the turn
-                // glyph tracks the change. Deliberately the base-class API:
-                // FileEditorManagerEx's variant is 2026.1+ and broke the
-                // 2025.2 floor in CI.
-                thread.file?.let { path ->
-                    project.guessProjectDir()?.findFileByRelativePath(path)?.let { vFile ->
-                        FileEditorManager.getInstance(project).updateFilePresentation(vFile)
-                        ProjectView.getInstance(project).currentProjectViewPane?.updateFrom(vFile, false, false)
-                    }
-                }
+                thread.file?.let { FileTurn.track(project, it) }
             }
             AppExecutorUtil.getAppExecutorService().execute {
                 if (!project.isDisposed) {
@@ -68,7 +58,9 @@ class MarginalisStartup : ProjectActivity {
                     store.threads.addSilently(thread)
                 }
                 // Attach assigns solo icons; group shared lines per file.
-                persisted.mapNotNull { it.file }.distinct().forEach { MarginalisMarkers.refreshIcons(project, it) }
+                val files = persisted.mapNotNull { it.file }.distinct()
+                files.forEach { MarginalisMarkers.refreshIcons(project, it) }
+                files.forEach { FileTurn.track(project, it) }
                 // One notification refreshes every UI surface after bulk load.
                 persisted.lastOrNull()?.let { store.threads.notifyChanged(it) }
             }

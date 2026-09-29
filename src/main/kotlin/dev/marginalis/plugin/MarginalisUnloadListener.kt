@@ -6,13 +6,17 @@ import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.project.ProjectManager
 import dev.marginalis.plugin.store.MarginalisPersistence
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.ThreadInlayManager
+import dev.marginalis.plugin.ui.TurnSignalIconPatcher
 
 /**
  * Hot reload's other half (MarginalisStartup being the load half): before a
  * dynamic unload, remove every trace of this plugin's classes from platform
- * structures that outlive the classloader. Two of them exist:
+ * structures that outlive the classloader. Three of them exist:
  *
+ *  - file icons in tabs and the Project view wear the turn badge — the
+ *    patcher stands down and they are redrawn bare;
  *  - gutter highlighters live on the persistent document markup model, each
  *    holding a ThreadGutterIconRenderer — both the per-thread markers and
  *    the per-file glyphs beside line 1;
@@ -28,8 +32,10 @@ class MarginalisUnloadListener : DynamicPluginListener {
     override fun beforePluginUnload(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {
         if (pluginDescriptor.pluginId.idString != "dev.marginalis.plugin") return
 
+        TurnSignalIconPatcher.withdraw()
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue
+            FileTurn.redrawAll(project)
             val store = MarginalisStore.getInstance(project)
             store.syncLines()
             MarginalisPersistence.save(project, store.snapshot())

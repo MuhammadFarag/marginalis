@@ -105,8 +105,8 @@ object MarginalisMarkers {
     }
 
     /**
-     * The one glyph a file's open file-level threads get: a page icon in the
-     * gutter beside line 1, where the panel unfolds. It is display only —
+     * The one glyph a file's open file-level threads get: the folded-corner mark in
+     * the gutter beside line 1, where the panel unfolds. It is display only —
      * kept out of the thread→marker registry precisely so nothing reads a
      * line off it and nothing orphans when line 1 changes. A file-level
      * thread's fate is its file's, and only its file's.

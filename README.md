@@ -44,9 +44,15 @@ editable until an agent has read it.
   in prose.
 - **Walkthroughs.** Ordered steps across files for reviewing a change.
   Resolving a step advances to the next.
-- **Turn signals, not presence.** A stripe badge and "N awaiting you"
-  when the agent spoke last. A clickable balloon when a reply lands in a
-  file that is not on screen. Nothing pulses.
+- **Turn signals, not presence.** Files wear a small badge on their icon
+  in tabs and the Project view: a violet envelope ✉ when it's your move,
+  a blue plane ✈ when it's the agent's. The tool window's stripe icon
+  carries the envelope whenever something awaits you. A
+  clickable balloon when a reply lands in a file that is not on screen.
+  Nothing pulses.
+- **Brand marks.** Gutter marks are outline speech bubbles in the
+  plugin's own colors, the intent (finding, guidance, question) drawn
+  inside; file threads fold a corner, project threads peek an arc.
 - **A real composer.** Markdown with structure highlighting, code fences
   rendered through the IDE's own color scheme, quote-the-selection in one
   click, and drafts that survive closing the panel.

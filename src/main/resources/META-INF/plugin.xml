@@ -27,9 +27,10 @@
         <li><b>Anchored threads</b> — comment on a line, or select the exact words
         (Alt+Shift+M); anchors track edits and re-find their content after
         restarts instead of drifting.</li>
-        <li><b>Turn signals</b> — editor-tab glyphs, gutter badges, and a
-        tool-window count answer "is it my turn?" at a glance; a balloon arrives
-        when the agent posts in a file you don't have open.</li>
+        <li><b>Turn signals</b> — file-icon badges in tabs and the Project view,
+        gutter badges, and a tool-window count answer "is it my turn?" at a
+        glance; a balloon arrives when the agent posts in a file you don't have
+        open.</li>
         <li><b>Severity as a gate</b> — the agent marks findings <i>blocker</i>
         ("act before this proceeds") or <i>nit</i> ("dismiss guilt-free"); filter
         the tree to what actually gates the merge.</li>
@@ -60,7 +61,7 @@
         <action id="marginalis.addComment"
                 class="dev.marginalis.plugin.actions.AddCommentAction"
                 text="Add Marginalis Comment"
-                icon="AllIcons.General.Balloon"
+                icon="/icons/mark_line_none.svg"
                 description="Start a margin thread on the current line — or on the selected text — for the agent to pick up">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <!-- alt shift M: the ctrl-alt row is refactoring territory on the
@@ -73,7 +74,7 @@
         <action id="marginalis.commentOnFile"
                 class="dev.marginalis.plugin.actions.CommentOnFileAction"
                 text="Comment on File"
-                icon="AllIcons.FileTypes.Any_type"
+                icon="/icons/mark_file_none.svg"
                 description="Start a margin thread about this file as a whole — no line, nothing to drift">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="marginalis.addComment"/>
         </action>
@@ -95,12 +96,10 @@
         <!-- Cross-file visibility: all threads, grouped by file. -->
         <!-- Left: this is a navigation surface, and navigation lives on the left. -->
         <toolWindow id="Marginalis" anchor="left"
-                    icon="AllIcons.Toolwindows.ToolWindowMessages"
+                    icon="/icons/marginalisToolWindow.svg"
                     factoryClass="dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindowFactory"/>
-        <!-- At-a-glance: tab-title glyph for files with open threads. -->
-        <editorTabTitleProvider implementation="dev.marginalis.plugin.ui.MarginalisTabTitleProvider"/>
-        <!-- The same glyph beside file names in the Project view. -->
-        <projectViewNodeDecorator implementation="dev.marginalis.plugin.ui.MarginalisProjectViewDecorator"/>
+        <!-- At-a-glance: the turn signal badges the file's own icon — editor tabs and the Project view alike. -->
+        <fileIconPatcher implementation="dev.marginalis.plugin.ui.TurnSignalIconPatcher"/>
         <!-- The turn signal's long arm: agent posts in unfocused files. -->
         <notificationGroup id="Marginalis" displayType="BALLOON"/>
         <!-- Navigation consent + display name; app-level, these follow the user. -->

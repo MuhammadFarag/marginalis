@@ -50,8 +50,8 @@ exchange](images/thread-anatomy.png)
 
 ## The tool window
 
-Every thread in the project, grouped by file, with step positions and
-the "awaiting you" count. Double-click any row to open the thread beside
+Every thread in the project, grouped by file, with step positions.
+Double-click any row to open the thread beside
 its code.
 
 ![The Marginalis tool window with a five-step guided
