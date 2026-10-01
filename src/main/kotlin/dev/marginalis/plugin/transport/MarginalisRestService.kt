@@ -24,6 +24,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import dev.marginalis.core.Addressee
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.Author
+import dev.marginalis.core.Classification
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Cursor
 import dev.marginalis.core.Identities
@@ -33,7 +34,6 @@ import dev.marginalis.core.Message
 import dev.marginalis.core.Reference
 import dev.marginalis.core.Referent
 import dev.marginalis.core.Resolution
-import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.ThreadSummary
@@ -248,10 +248,11 @@ class MarginalisRestService : RestService() {
         val order = json.intOrNull("order")
         val walkthroughLabel = json.stringOrNull("walkthrough")
         val projectFilter = json.stringOrNull("project")
-        val severity = Severity.parse(json.stringOrNull("severity"))
-            .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
-        val intent = Intent.parse(json.stringOrNull("intent"))
-            .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
+        val classification = Classification.parse(
+            intent = json.stringOrNull("intent"),
+            severity = json.stringOrNull("severity"),
+            label = json.stringOrNull("label"),
+        ).getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
         val to = Addressee.parse(json.stringOrNull("to"))
             .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
 
@@ -276,7 +277,8 @@ class MarginalisRestService : RestService() {
             val created = if (wireLine == null || file == null || vFile == null) {
                 CommentThread(
                     file, line = null, anchorText = null,
-                    order = order, walkthrough = walkthroughLabel, severity = severity, intent = intent,
+                    order = order, walkthrough = walkthroughLabel, severity = classification.severity,
+                    intent = classification.intent, label = classification.label,
                 )
             } else {
                 val document = FileDocumentManager.getInstance().getDocument(vFile)
@@ -295,7 +297,8 @@ class MarginalisRestService : RestService() {
                 adjusted = placed.adjusted
                 CommentThread(
                     file, placed.line, lineText(document, placed.line),
-                    order = order, walkthrough = walkthroughLabel, severity = severity, intent = intent,
+                    order = order, walkthrough = walkthroughLabel, severity = classification.severity,
+                    intent = classification.intent, label = classification.label,
                 ).also { MarginalisMarkers.attach(project, it, document) }
             }
             val author = agentAuthor(json)
@@ -767,6 +770,7 @@ class MarginalisRestService : RestService() {
                     addProperty("created_at", message.createdAt.iso())
                     add("seen_by", JsonArray().apply { message.seenBy.sorted().forEach(::add) })
                     message.to?.let { addProperty("to", it.wire) }
+                    if (message.agrees) addProperty("agrees", true)
                     if (newlySeen) addProperty("newly_seen", true)
                     if (message === referenced) addProperty("referenced", true)
                 },
@@ -810,6 +814,7 @@ class MarginalisRestService : RestService() {
         thread.walkthrough?.let { addProperty("walkthrough", it) }
         thread.severity?.let { addProperty("severity", it.name.lowercase()) }
         thread.intent?.let { addProperty("intent", it.name.lowercase()) }
+        thread.label?.let { addProperty("label", it) }
         thread.resolvedBy?.let { addProperty("resolved_by", it.displayName) }
     }
 
@@ -1067,7 +1072,8 @@ class MarginalisRestService : RestService() {
             "author_name" to "how you want to be shown in the margin",
             "author_id" to "your stable identity, which read receipts are keyed by",
             "severity" to "exactly 'blocker' or 'nit'",
-            "intent" to "exactly 'finding', 'guidance' or 'question'",
+            "intent" to "exactly 'finding', 'guidance', 'question' or 'fyi'",
+            "label" to "a word or two naming the kind of fyi, e.g. 'praise' or 'heads-up'",
             "to" to "one author_id to address (as comment_identities lists it), or 'user'. Omit it to address " +
                 "everyone",
         )

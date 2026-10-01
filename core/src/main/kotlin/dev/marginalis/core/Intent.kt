@@ -2,7 +2,7 @@ package dev.marginalis.core
 
 /** Deliberately independent of [Severity]: the two compose freely (a guidance blocker is legitimate). */
 enum class Intent {
-    FINDING, GUIDANCE, QUESTION;
+    FINDING, GUIDANCE, QUESTION, FYI;
 
     companion object {
         /**
@@ -15,9 +15,11 @@ enum class Intent {
                 "finding" -> Parsed.Ok(FINDING)
                 "guidance" -> Parsed.Ok(GUIDANCE)
                 "question" -> Parsed.Ok(QUESTION)
+                "fyi" -> Parsed.Ok(FYI)
                 else -> Parsed.Invalid(
                     "invalid intent '$raw' — use 'finding' (something to fix), 'guidance' (how to write the " +
-                        "code around here) or 'question' (an answer is wanted); omit for an ordinary comment.",
+                        "code around here), 'question' (an answer is wanted) or 'fyi' (nothing is owed: praise, " +
+                        "context, a heads-up); omit for an ordinary comment.",
                 )
             }
         }

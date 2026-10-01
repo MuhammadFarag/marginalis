@@ -149,20 +149,6 @@ class ThreadLifecycleTest {
     }
 
     @Test
-    fun `turn state follows the last author`() {
-        val t = thread()
-        t.addMessage(Message(agent, "question"))
-        assertTrue(t.awaitsUser())
-        t.addMessage(Message(user, "answer"))
-        assertFalse(t.awaitsUser())
-    }
-
-    @Test
-    fun `empty thread awaits nobody`() {
-        assertFalse(thread().awaitsUser())
-    }
-
-    @Test
     fun `message body is revisable — the read receipt is the boundary the UI enforces`() {
         val m = Message(user, "draft")
         m.body = "final"

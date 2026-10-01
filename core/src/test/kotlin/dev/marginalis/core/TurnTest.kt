@@ -63,6 +63,7 @@ class TurnTest {
             val parsed = Turn.parse(raw)
             assertIs<Parsed.Invalid>(parsed, "'$raw' must be rejected")
             assertTrue(parsed.reason.contains("'agent'") && parsed.reason.contains("'user'"))
+            assertTrue(parsed.reason.contains("fyi"), "the user's debt excludes a read fyi")
         }
     }
 

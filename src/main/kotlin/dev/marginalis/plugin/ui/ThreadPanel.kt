@@ -10,6 +10,8 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.command.undo.UndoManager
@@ -22,6 +24,8 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.IdeFrame
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleListCellRenderer
@@ -36,6 +40,8 @@ import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
+import dev.marginalis.core.Intent
+import dev.marginalis.core.Mark
 import dev.marginalis.core.Message
 import dev.marginalis.core.Reference
 import dev.marginalis.core.SendOption
@@ -55,6 +61,7 @@ import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.awt.datatransfer.StringSelection
 import java.awt.event.ActionEvent
+import java.awt.event.HierarchyEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.time.ZoneId
@@ -70,6 +77,7 @@ import javax.swing.JComponent
 import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
+import javax.swing.SwingConstants
 
 class ThreadPanel(
     private val project: Project,
@@ -109,6 +117,14 @@ class ThreadPanel(
     private lateinit var composerHolder: JComponent
     private lateinit var composerActions: JComponent
     private lateinit var collapsedReply: JComponent
+    private val agreeLink = ActionLink("Agree") { agree() }.apply {
+        icon = MarginalisIcons.Agree
+        font = JBUI.Fonts.smallFont()
+        border = JBUI.Borders.emptyLeft(12)
+    }
+    private var agreeableId: String? = null
+    private var renderedMessages: List<Message> = emptyList()
+    private var whileAttached: Disposable? = null
     private var composerExpanded = false
     private var addressee: Addressee? = null
     private var agentNames: Map<String, String> = emptyMap()
@@ -201,6 +217,9 @@ class ThreadPanel(
         )
         // Reading mode needs a focus home for Esc and the walk shortcuts.
         isFocusable = true
+        addHierarchyListener { e ->
+            if (e.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L && isShowing) markReadIfSeenLater()
+        }
         MarginalisStore.getInstance(project).drafts[thread.id]?.let {
             replyArea.text = it.text
             addressee = it.to
@@ -245,8 +264,14 @@ class ThreadPanel(
         val left = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
-            thread.intent?.let { intent ->
-                add(Chip(intent.name.lowercase(), QUIET_PILL, INTENT_TEXT))
+            add(
+                JBLabel(MarginalisIcons.mark(Mark.of(listOf(thread)))).apply {
+                    toolTipText = thread.intent?.name?.lowercase() ?: "ordinary comment"
+                },
+            )
+            add(Box.createHorizontalStrut(JBUI.scale(6)))
+            if (thread.intent == Intent.FYI) {
+                add(Chip(thread.label ?: "fyi", FYI_PILL, FYI_TEXT))
                 add(Box.createHorizontalStrut(JBUI.scale(6)))
             }
             thread.severity?.let { severity ->
@@ -380,6 +405,7 @@ class ThreadPanel(
 
     fun reveal(message: Message) {
         messageComponents[message.id]?.let { it.scrollRectToVisible(Rectangle(it.size)) }
+        markReadIfSeen()
     }
 
     private fun closeAction(): AnAction = object : AnAction("Close", null, AllIcons.Actions.Close) {
@@ -439,6 +465,7 @@ class ThreadPanel(
                 JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
                     isOpaque = false
                     add(ActionLink("Reply…") { focusReply() }.apply { font = JBUI.Fonts.smallFont() })
+                    add(agreeLink)
                     add(
                         JBLabel("⌘⏎ submits").apply {
                             font = JBUI.Fonts.smallFont()
@@ -510,6 +537,26 @@ class ThreadPanel(
         MarginalisStore.getInstance(project).drafts.remove(thread.id)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         return true
+    }
+
+    private fun agree() {
+        val agreed = thread.agreeable()?.takeIf { it.id == agreeableId }
+        val agent = agreed?.author as? Author.Agent
+        if (agent == null) {
+            refresh()
+            return
+        }
+        thread.addMessage(Message.agreement(by = Authors.user, with = agent))
+        MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+    }
+
+    private fun markReadIfSeen() {
+        if (!isShowing || visibleRect.isEmpty || !ApplicationManager.getApplication().isActive) return
+        if (thread.markReadByUser(renderedMessages)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+    }
+
+    private fun markReadIfSeenLater() {
+        ApplicationManager.getApplication().invokeLater { markReadIfSeen() }
     }
 
     private fun submitWiderThan(file: String?) {
@@ -597,6 +644,7 @@ class ThreadPanel(
 
     fun focusDefault() {
         if (isDraft() || replyArea.text.isNotBlank()) focusReply() else requestFocusInWindow()
+        markReadIfSeen()
     }
 
     private fun nextStepIfAutoAdvancing(): CommentThread? {
@@ -652,7 +700,12 @@ class ThreadPanel(
         ApplicationManager.getApplication().invokeLater {
             threadUpdateQueued.set(false)
             if (project.isDisposed || watchingThread == null) return@invokeLater
-            if (MarginalisStore.getInstance(project).threads.byId(thread.id) == null) onClose() else refresh()
+            if (MarginalisStore.getInstance(project).threads.byId(thread.id) == null) {
+                onClose()
+            } else {
+                refresh()
+                markReadIfSeen()
+            }
         }
     }
 
@@ -661,9 +714,21 @@ class ThreadPanel(
         handBack.addListener(onWaitersChanged)
         watchingThread = MarginalisStore.getInstance(project).threads.watch(thread.id) { onThreadChanged() }
         refreshSendOptions()
+        val attached = Disposer.newDisposable(MarginalisStore.getInstance(project), "Marginalis thread panel")
+        whileAttached = attached
+        ApplicationManager.getApplication().messageBus.connect(attached).subscribe(
+            ApplicationActivationListener.TOPIC,
+            object : ApplicationActivationListener {
+                override fun applicationActivated(ideFrame: IdeFrame) = markReadIfSeenLater()
+            },
+        )
+        editor?.scrollingModel?.addVisibleAreaListener({ markReadIfSeen() }, attached)
+        markReadIfSeenLater()
     }
 
     override fun removeNotify() {
+        whileAttached?.let(Disposer::dispose)
+        whileAttached = null
         handBack.removeListener(onWaitersChanged)
         watchingThread?.close()
         watchingThread = null
@@ -689,6 +754,10 @@ class ThreadPanel(
         )
         refreshSendOptions()
         cancelEditLink.isVisible = editingMessageId != null
+        val agreeable = thread.agreeable()
+        agreeableId = agreeable?.id
+        agreeLink.isVisible = agreeable != null && !isDraft()
+        agreeLink.toolTipText = agreeable?.let { "Agree with ${it.author.displayName}: replies \"Agreed.\" and passes the turn" }
         refreshAgentNames()
         addressTo(addressee)
         replyArea.setPlaceholder(
@@ -704,7 +773,8 @@ class ThreadPanel(
         messageComponents.clear()
         val timeFormat = messageTimeFormatter()
         var previous: Message? = null
-        for (message in thread.messages) {
+        renderedMessages = thread.messages
+        for (message in renderedMessages) {
             val grouped = message.continues(previous)
             if (messagesBox.componentCount > 0) {
                 messagesBox.add(Box.createVerticalStrut(JBUI.scale(if (grouped) 2 else 8)))
@@ -729,7 +799,25 @@ class ThreadPanel(
         is Addressee.Agent -> agentColor(to.key)
     }
 
+    private fun agreementLine(message: Message, timeFormat: DateTimeFormatter): JComponent {
+        val line = JBLabel(
+            "${message.author.displayName} agreed · ${timeFormat.format(message.createdAt)}",
+            MarginalisIcons.Agree,
+            SwingConstants.LEADING,
+        ).apply {
+            font = JBUI.Fonts.smallFont()
+            foreground = USER_COLOR
+            if (message.seenByAnyAgent) toolTipText = seenByNames(message)
+        }
+        return JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border = JBUI.Borders.emptyLeft(9)
+            add(line, BorderLayout.WEST)
+        }
+    }
+
     private fun messageComponent(message: Message, timeFormat: DateTimeFormatter, showMeta: Boolean): JComponent {
+        if (message.agrees) return agreementLine(message, timeFormat)
         val authorColor = when (val author = message.author) {
             is Author.Agent -> agentColor(author.receiptKey)
             else -> USER_COLOR
@@ -830,7 +918,8 @@ class ThreadPanel(
 
     private companion object {
         val QUIET_PILL = JBColor(Color(0xE1, 0xE9, 0xF4), Color(0x36, 0x3E, 0x4B))
-        val INTENT_TEXT = JBColor(Color(0x2A, 0x4A, 0x7A), Color(0xB6, 0xC7, 0xE0))
+        val FYI_PILL = JBColor(Color(0x8A, 0x94, 0xA6, 0x4D), Color(0x8A, 0x94, 0xA6, 0x59))
+        val FYI_TEXT = JBColor(Color(0x46, 0x53, 0x6A), Color(0xB9, 0xC4, 0xD8))
 
         fun severityPill(severity: Severity): JBColor = when (severity) {
             Severity.BLOCKER -> JBColor(Color(0xDB, 0x58, 0x60), Color(0xC7, 0x54, 0x50))

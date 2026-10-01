@@ -9,10 +9,11 @@ import kotlin.test.assertTrue
 class IntentParseTest {
 
     @Test
-    fun `the vocabulary is three words, case-insensitively`() {
+    fun `the vocabulary is four words, case-insensitively`() {
         assertEquals(Intent.FINDING, ok("finding"))
         assertEquals(Intent.GUIDANCE, ok("GUIDANCE"))
         assertEquals(Intent.QUESTION, ok("Question"))
+        assertEquals(Intent.FYI, ok("fyi"))
     }
 
     @Test
@@ -27,6 +28,7 @@ class IntentParseTest {
             assertIs<Parsed.Invalid>(parsed, "'$raw' must be rejected")
             assertTrue(parsed.reason.contains("finding"), "the rejection names the vocabulary")
             assertTrue(parsed.reason.contains("guidance") && parsed.reason.contains("question"))
+            assertTrue(parsed.reason.contains("'fyi' (nothing is owed"), "fyi is taught with its meaning")
         }
     }
 

@@ -11,6 +11,8 @@ class Message(
     val createdAt: Instant = Instant.now(),
     seenBy: Set<String>? = null,
     val to: Addressee? = null,
+    val agrees: Boolean = false,
+    readByUser: Boolean = false,
 ) {
     /** A user message may be revised only until an agent reads it. */
     @Volatile
@@ -37,6 +39,16 @@ class Message(
 
     fun seenBy(agentKey: String): Boolean = agentKey in _seenBy
 
+    @Volatile
+    var readByUser: Boolean = readByUser || author is Author.User
+        private set
+
+    fun markReadByUser(): Boolean {
+        if (readByUser) return false
+        readByUser = true
+        return true
+    }
+
     fun continues(previous: Message?): Boolean =
         previous != null && author is Author.Agent && author == previous.author && to == null && previous.to == null
 
@@ -46,4 +58,9 @@ class Message(
             is Addressee.Agent -> Turn.AGENT_OWES
             null -> if (author is Author.Agent) Turn.USER_OWES else Turn.AGENT_OWES
         }
+
+    companion object {
+        fun agreement(by: Author.User, with: Author.Agent): Message =
+            Message(by, "Agreed.", to = Addressee.Agent(with.receiptKey), agrees = true)
+    }
 }

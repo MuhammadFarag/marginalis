@@ -20,10 +20,17 @@ class CommentThread(
     val segment: Segment? = null,
     val severity: Severity? = null,
     val intent: Intent? = null,
+    val label: String? = null,
 ) {
     init {
         require((line == null) == (anchorText == null)) {
             "an anchor is a line and its text together; a thread has both or neither"
+        }
+        require(label == null || intent == Intent.FYI) {
+            "a label names a kind of fyi; only an fyi carries one"
+        }
+        require(intent != Intent.FYI || severity == null) {
+            "an fyi asks for nothing, so it carries no severity"
         }
         require(line == null || file != null) {
             "a line is a place in a file; a thread without a file has no line to hold"
@@ -107,11 +114,17 @@ class CommentThread(
         this.updatedAt = updatedAt
     }
 
+    fun markReadByUser(shown: List<Message> = messages): Boolean = shown.map { it.markReadByUser() }.any { it }
+
+    fun agreeable(): Message? =
+        messages.lastOrNull()?.takeIf { it.author is Author.Agent && turn() == Turn.USER_OWES }
+
+    private val isReadFyi: Boolean
+        get() = intent == Intent.FYI && messages.all { it.author is Author.Agent && it.readByUser }
+
     fun unreadCount(): Int = messages.count { !it.seenByAnyAgent }
 
     fun unreadCountFor(agentKey: String): Int = messages.count { !it.seenBy(agentKey) }
-
-    fun awaitsUser(): Boolean = messages.lastOrNull()?.awaits == Turn.USER_OWES
 
     fun turn(): Turn? = turnFor(null)
 
@@ -119,6 +132,7 @@ class CommentThread(
         val last = messages.lastOrNull()
         val turn = when {
             status !is ThreadStatus.Open -> null
+            isReadFyi -> null
             last?.awaits == Turn.USER_OWES -> Turn.USER_OWES
             else -> Turn.AGENT_OWES
         }

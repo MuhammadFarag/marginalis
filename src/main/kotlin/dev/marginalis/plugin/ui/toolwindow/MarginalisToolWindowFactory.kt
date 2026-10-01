@@ -25,7 +25,6 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.pom.Navigatable
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.PopupHandler
-import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -151,6 +150,7 @@ internal enum class TreeFilter(
     FINDINGS("Findings", "No findings", { it.intent == Intent.FINDING }),
     GUIDANCE("Guidance", "No guidance", { it.intent == Intent.GUIDANCE }),
     QUESTIONS("Questions", "No questions", { it.intent == Intent.QUESTION }),
+    FYI("FYI", "No FYIs", { it.intent == Intent.FYI }),
 }
 
 private class FilterMenuAction(private val panel: MarginalisToolWindowPanel) :
@@ -620,10 +620,9 @@ private class MarginalisTreeRenderer : TreeCellRenderer {
             TurnSignal.spoken(tally)
         }
         is NodeData.ThreadNode -> {
-            val turn = data.thread.turn()
-            yourMove.showBare(turn == Turn.USER_OWES)
-            agentsMove.showBare(turn == Turn.AGENT_OWES)
-            turn?.let(TurnSignal::spoken)
+            yourMove.isVisible = false
+            agentsMove.isVisible = false
+            data.thread.turn()?.let(TurnSignal::spoken)
         }
         else -> {
             yourMove.isVisible = false
@@ -640,11 +639,6 @@ private class MarginalisTreeRenderer : TreeCellRenderer {
     private fun JBLabel.showCount(count: Int) {
         isVisible = count > 0
         text = count.toString()
-    }
-
-    private fun JBLabel.showBare(shown: Boolean) {
-        isVisible = shown
-        text = ""
     }
 }
 
@@ -684,18 +678,12 @@ private class RowWords : ColoredTreeCellRenderer() {
             }
             is NodeData.ThreadNode -> {
                 val thread = data.thread
-                icon = MarginalisIcons.markOf(listOf(thread))
+                icon = MarginalisIcons.withLeadingTurnSignal(MarginalisIcons.markOf(listOf(thread)), thread.turn())
                 if (data.walkthroughPrefix != null) {
                     append("${data.walkthroughPrefix}  ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 }
                 val where = thread.line?.let { "L${it + 1}" } ?: if (thread.isProjectLevel) "project" else "file"
                 append("$where  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                thread.intent?.let { append("${it.name.lowercase()}  ", INTENT_ATTRS) }
-                when (thread.severity) {
-                    Severity.BLOCKER -> append("blocker  ", SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    Severity.NIT -> append("nit  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    null -> {}
-                }
                 val preview = MarkdownRenderer.previewText(thread.messages.firstOrNull()?.body ?: "")
                 append(
                     StringUtil.shortenTextWithEllipsis(preview, 70, 0),
@@ -705,9 +693,5 @@ private class RowWords : ColoredTreeCellRenderer() {
             }
             else -> {}
         }
-    }
-
-    private companion object {
-        val INTENT_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x37618E, 0x9CC0E8))
     }
 }

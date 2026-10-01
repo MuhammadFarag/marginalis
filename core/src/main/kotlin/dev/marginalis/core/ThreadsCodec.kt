@@ -54,6 +54,7 @@ object ThreadsCodec {
         thread.walkthrough?.let { addProperty("walkthrough", it) }
         thread.severity?.let { addProperty("severity", it.name) }
         thread.intent?.let { addProperty("intent", it.name) }
+        thread.label?.let { addProperty("label", it) }
         addProperty("status", thread.status.kind.name)
         addProperty("created_at", thread.createdAt.toString())
         addProperty("updated_at", thread.updatedAt.toString())
@@ -70,6 +71,8 @@ object ThreadsCodec {
                             addProperty("created_at", m.createdAt.toString())
                             add("seen_by", JsonArray().apply { m.seenBy.sorted().forEach(::add) })
                             m.to?.let { addProperty("to", it.wire) }
+                            if (m.agrees) addProperty("agrees", true)
+                            if (m.author is Author.Agent && m.readByUser) addProperty("read_by_user", true)
                         },
                     )
                 }
@@ -81,6 +84,7 @@ object ThreadsCodec {
         // A line without "anchor_text" is a legacy thread, not a file-level one:
         // it keeps its line with an empty fingerprint.
         val line = json.get("line")?.takeIf { it.isJsonPrimitive }?.asInt
+        val intent = Intent.parseLenient(json.get("intent")?.takeIf { it.isJsonPrimitive }?.asString)
         val thread = CommentThread(
             file = json.get("file")?.takeIf { it.isJsonPrimitive }?.asString,
             line = line,
@@ -100,8 +104,10 @@ object ThreadsCodec {
                     )
                 }
             },
-            severity = Severity.parseLenient(json.get("severity")?.takeIf { it.isJsonPrimitive }?.asString),
-            intent = Intent.parseLenient(json.get("intent")?.takeIf { it.isJsonPrimitive }?.asString),
+            severity = Severity.parseLenient(json.get("severity")?.takeIf { it.isJsonPrimitive }?.asString)
+                .takeIf { intent != Intent.FYI },
+            intent = intent,
+            label = FyiLabel.parseLenient(json.get("label")?.takeIf { it.isJsonPrimitive }?.asString, intent),
         )
         for (m in json.getAsJsonArray("messages")) {
             val msg = m.asJsonObject
@@ -113,6 +119,8 @@ object ThreadsCodec {
                     createdAt = Instant.parse(msg.get("created_at").asString),
                     seenBy = seenBy(msg),
                     to = Addressee.parseLenient(msg.get("to")?.takeIf { it.isJsonPrimitive }?.asString),
+                    agrees = msg.flag("agrees"),
+                    readByUser = msg.flag("read_by_user"),
                 ),
             )
         }
@@ -144,6 +152,9 @@ object ThreadsCodec {
             emptySet()
         }
     }
+
+    private fun JsonObject.flag(key: String): Boolean =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asBoolean == true
 
     private fun authorJson(author: Author): JsonObject = JsonObject().apply {
         when (author) {

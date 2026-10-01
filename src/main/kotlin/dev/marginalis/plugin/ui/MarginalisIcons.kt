@@ -3,6 +3,8 @@ package dev.marginalis.plugin.ui
 import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.LayeredIcon
+import com.intellij.ui.RowIcon
+import com.intellij.util.ui.EmptyIcon
 import dev.marginalis.core.AggregateState
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Mark
@@ -15,6 +17,7 @@ import javax.swing.SwingConstants
 
 object MarginalisIcons {
     val HandBack = load("handBack")
+    val Agree = load("agree")
 
     private val marks: Map<Mark, Icon> = Mark.all().associateWith { mark ->
         load("mark_${mark.subject.name.lowercase()}_${mark.intent?.name?.lowercase() ?: "none"}")
@@ -27,6 +30,9 @@ object MarginalisIcons {
 
     private val turnSignals = mapOf(Turn.USER_OWES to load("turnYou"), Turn.AGENT_OWES to load("turnAgent"))
     private val turnBadges = mapOf(Turn.USER_OWES to load("turnYouBadge"), Turn.AGENT_OWES to load("turnAgentBadge"))
+    private val turnSignalGap = EmptyIcon.create(3, 16)
+    private val noTurnSignal = EmptyIcon.create(16)
+    private val markWithTurn = ConcurrentHashMap<Pair<Icon, Turn?>, Icon>()
 
     private val toolWindow = load("marginalisToolWindow")
     private val toolWindowBadged = mapOf(
@@ -34,7 +40,14 @@ object MarginalisIcons {
         StripeBadge.AWAITING_YOU to badged(toolWindow, turnBadges.getValue(Turn.USER_OWES)),
     )
 
+    fun mark(mark: Mark): Icon = marks.getValue(mark)
+
     fun turnSignal(turn: Turn): Icon = turnSignals.getValue(turn)
+
+    fun withLeadingTurnSignal(mark: Icon, turn: Turn?): Icon =
+        markWithTurn.computeIfAbsent(mark to turn) {
+            RowIcon(mark, turnSignalGap, turn?.let(turnSignals::getValue) ?: noTurnSignal)
+        }
 
     fun withTurnBadge(fileIcon: Icon, turn: Turn): Icon = badged(fileIcon, turnBadges.getValue(turn))
 

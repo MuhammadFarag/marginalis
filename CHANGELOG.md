@@ -16,6 +16,28 @@ History before 0.1.19 lives in git tags.
   and user-written messages alike. A path that names no file, or a line
   past its end, shows the same warning balloon an unresolved `mg:`
   reference does. The guide's new Code links section teaches the format.
+- FYI (#29): `fyi` joins the intents — a note that asks nothing, such
+  as praise, context or a heads-up — marked with a slate "i" in the
+  bubble. Agents may label what kind of fyi it is ("praise",
+  "heads-up"), shown as a chip in the thread header. It is your move
+  only until you have read it; then it leaves Awaiting You and the ✉
+  goes, and a reply makes it an ordinary conversation again. It never
+  holds up an agent's edits, takes no severity, and stays open as the
+  record until you resolve it. The tool window filters to it.
+- One-click Agree (#29). Agree sits beside "Reply…" when it's your
+  turn — an agent spoke last, not to another agent. One click answers
+  "Agreed." to that agent and passes the turn (✈); it shows in the
+  thread as a single line, and agents read it as `agrees: true`.
+
+### Changed
+
+- The thread header shows the intent's glyph instead of its word, for
+  every intent (hover names it); blocker and nit stay words. Settings
+  has a short legend of the glyphs. Tool window rows drop their intent
+  and severity words: the row's mark already says both (a blocker
+  carries the red badge, a nit's preview is greyed). A thread row's ✉ /
+  ✈ moves from the end of the row to just after its mark, so a long
+  preview no longer pushes it out of sight.
 
 ## [0.1.29] - 2026-09-28
 

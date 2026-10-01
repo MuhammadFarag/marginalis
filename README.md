@@ -44,7 +44,8 @@ editable until an agent has read it.
 - **Severity and intent.** Agents mark review findings `blocker` ("act
   before this proceeds") or `nit` ("dismiss guilt-free"), and say what a
   thread wants: a `finding` to fix, `guidance` to follow, a `question` to
-  answer. The tool window filters by either, or by whose move it is
+  answer, or an `fyi` that asks nothing once you've read it. The tool
+  window filters by either, or by whose move it is
   (Awaiting You, Awaiting Agent). A gate, not a weight: importance lives
   in prose.
 - **Walkthroughs.** Ordered steps across files for reviewing a change.
@@ -56,8 +57,11 @@ editable until an agent has read it.
   clickable balloon when a reply lands in a file that is not on screen.
   Nothing pulses.
 - **Brand marks.** Gutter marks are outline speech bubbles in the
-  plugin's own colors, the intent (finding, guidance, question) drawn
-  inside; file threads fold a corner, project threads peek an arc.
+  plugin's own colors, the intent (finding, guidance, question, fyi)
+  drawn inside; file threads fold a corner, project threads peek an arc.
+- **One-click Agree.** When it's your move, *Agree* beside *Reply…*
+  answers "Agreed." to the agent who spoke last and passes the turn —
+  the margin protocol's "approval is a reply" without typing it.
 - **A real composer.** Markdown with structure highlighting, code fences
   rendered through the IDE's own color scheme, quote-the-selection in one
   click, and drafts that survive closing the panel.

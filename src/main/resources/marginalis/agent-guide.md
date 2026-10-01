@@ -117,6 +117,10 @@ it empty.
 are unfinished conversations; drive each to resolution first — its
 conclusion becomes part of your edit, or reply why it needs no action
 and resolve. Editing underneath an open thread orphans the discussion.
+An fyi is the exception: an `intent: fyi` thread doesn't block the
+edit — it stays open as the record until the user resolves it, and you
+never resolve it. Replies on it still reach you through your sweep. If
+your edit orphans it, leave it for the user to decide.
 
 **3. The resolver is the completer.**
 `RESOLVED` means "the outcome is in the code, or explicitly moot" — the
@@ -238,16 +242,31 @@ is not severity; importance lives in your prose, argued with reasons.
 
 `intent` on `comment_add` says what kind of response the thread wants —
 a **gate, not a weight**, exactly like severity and completely
-independent of it. Three words, nothing else:
+independent of it. Four words, nothing else:
 
 - `finding` — something here is wrong. It ends when the code is fixed.
 - `guidance` — how the code around here should be written. It ends when
   the new code follows it, which is usually not the moment you read it.
 - `question` — you genuinely want an answer. It ends when you get one.
+- `fyi` — nothing is owed. Typical uses: praise ("this is the right
+  boundary — keep it"), code you copied from elsewhere, context, a
+  heads-up. If anything should be done or answered, it isn't an fyi. The
+  user owes it only a read; once read, it leaves `awaiting=user`. It
+  ends when the user resolves it — never you — and it never blocks an
+  edit. It never gates, so it takes no `severity` (a teaching 400 says
+  so). Don't pad a review with it.
 
-Omit it for everything else, which is most threads: an ordinary comment
+`label` on `comment_add` (fyi only) names what kind of fyi it is —
+`praise`, `copied`, `context` and `heads-up` are the usual ones — and
+the user sees it on the thread. It is lowercased; a–z and 0–9, single
+spaces or hyphens between words, at most 20 characters, and not a word
+the margin already uses (`blocker`, `nit`, an intent). It is set at
+creation and never changes; on any other intent, or malformed, it is a
+teaching 400. `comment_list` returns it when set.
+
+Omit `intent` for everything else, which is most threads: an ordinary comment
 asks for nothing in particular, and marking everything makes the marks
-meaningless. Anything outside the three words is a teaching 400 — fix
+meaningless. Anything outside the four words is a teaching 400 — fix
 the word or drop the field, never retry with a synonym. Never write the
 intent into the body ("Question:", "FINDING —"): the UI carries it, and
 `comment_list?intent=` is how it is found.
@@ -361,8 +380,8 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 |---|---|
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
-| `GET comment_list?ref=&file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question&awaiting=agent\|user&unread_only=&summary=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last hand back) only when the listing covered one project and it has one; example below. `summary=true` swaps each thread's `messages` array for counts and marks nothing seen — see First contact. `ref=mg:…` narrows to the referenced thread — see References; ambiguous → 400 `{error, candidates: [{ref, thread_id, message_id?, project, file?}]}` |
-| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, to?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
+| `GET comment_list?ref=&file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question\|fyi&awaiting=agent\|user&unread_only=&summary=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last hand back) only when the listing covered one project and it has one; example below. `summary=true` swaps each thread's `messages` array for counts and marks nothing seen — see First contact. `ref=mg:…` narrows to the referenced thread — see References; ambiguous → 400 `{error, candidates: [{ref, thread_id, message_id?, project, file?}]}` |
+| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, label?, to?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
 | `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults, `to` is per item only → `{results: [ …success shape… \| {error} ], created}` in request order, 200 unless the envelope itself is malformed |
 | `POST comment_reply {thread_id, body, to?, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}`; `to` (an `author_id`, or `user`) addresses the message — omit it to address everyone |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
@@ -404,22 +423,28 @@ when the conversation does (a message, a resolve, a reopen, a rescue) and
 not when it is merely read or its line drifts, which is what makes it a
 usable cursor for `updated_after`. `author` is always an object — `kind`
 is `agent` or `user`, and agent authors carry `id`. Thread fields `segment`, `order`,
-`walkthrough`, `severity`, `intent`, and `resolved_by` appear only when
+`walkthrough`, `severity`, `intent`, `label`, and `resolved_by` appear only when
 set, and so does a message's `to` — and its `referenced`, on a `ref`
-listing.
+listing. `agrees: true` marks a message the user posted with one click
+(body `Agreed.`, addressed to the agent whose message it answers):
+treat it as approval of that message. Only the user can agree.
 `awaiting` narrows to open threads whose last message is the other
 party's, as seen by your identity: `agent` — the user spoke last or
 someone addressed you, and you owe the reply (a message addressed to
 another agent is theirs); `user` — an agent spoke last unaddressed, or
-anyone addressed `user`, and the user owes one. It composes with every other
+anyone addressed `user`, and the user owes one. An fyi is the
+exception: the user owes it only a read, and an agent's further word on
+it owes only a read again — until the user replies, which makes it an
+ordinary conversation. It composes with every other
 filter, and listing still marks seen: awaiting is about *answered*, not
 *read*. Any other value is a teaching 400.
 With `summary=true` a thread keeps every field above except the
 message array: `messages` becomes its count, joined by `unread` (your
 identity's), `last_author` (same shape as `author`), and `awaiting`
 (`agent` or `user`, as that filter reads it for you; absent when the
-thread is closed, or when its last message is addressed to another
-agent — their turn, not yours) — and `marked_seen` is always 0.
+thread is closed, when it is an fyi the user has already read, or when
+its last message is addressed to another agent — their turn, not
+yours) — and `marked_seen` is always 0.
 `newly_seen` marks messages this very listing consumed for your
 identity; `seen_by` lists the identities that have read the message.
 Timestamps are ISO-8601 UTC; `line` in every response is 1-based and

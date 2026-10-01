@@ -21,6 +21,7 @@ class MarkTest {
         assertEquals(Mark(MarkSubject.LINE, Intent.FINDING), Mark.of(listOf(onLine(Intent.FINDING), onLine(Intent.FINDING))))
         assertEquals(Mark(MarkSubject.FILE, Intent.GUIDANCE), Mark.of(listOf(onFile(Intent.GUIDANCE))))
         assertEquals(Mark(MarkSubject.PROJECT, Intent.QUESTION), Mark.of(listOf(onProject(Intent.QUESTION))))
+        assertEquals(Mark(MarkSubject.LINE, Intent.FYI), Mark.of(listOf(onLine(Intent.FYI))))
     }
 
     @Test
@@ -38,7 +39,7 @@ class MarkTest {
     @Test
     fun `every subject and intent pairing is a distinct mark`() {
         val all = Mark.all()
-        assertEquals(12, all.size)
-        assertEquals(12, all.toSet().size)
+        assertEquals(15, all.size)
+        assertEquals(15, all.toSet().size)
     }
 }

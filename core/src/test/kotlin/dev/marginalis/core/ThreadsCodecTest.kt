@@ -341,4 +341,95 @@ class ThreadsCodecTest {
 
         assertEquals(listOf(null, null), ThreadsCodec.decode(legacy).single().messages.map { it.to })
     }
+
+    @Test
+    fun `an agreement survives the trip, and ordinary messages write no flag`() {
+        val agent = Author.Agent("Claude", "claude-main")
+        val t = CommentThread("a.py", 1, "x")
+        t.addMessage(Message(agent, "Rename it?"))
+        t.addMessage(Message.agreement(by = Author.User("Muhammad"), with = agent))
+
+        val encoded = ThreadsCodec.encode(listOf(t))
+        val decoded = ThreadsCodec.decode(encoded).single()
+
+        assertEquals(listOf(false, true), decoded.messages.map { it.agrees })
+        assertEquals(1, Regex("\"agrees\"").findAll(encoded).count())
+    }
+
+    @Test
+    fun `what the user has read survives the trip`() {
+        val agent = Author.Agent("Claude", "claude-main")
+        val read = CommentThread("a.py", 1, "x", intent = Intent.FYI).also {
+            it.addMessage(Message(agent, "Lovely."))
+            it.markReadByUser()
+        }
+        val unread = CommentThread("a.py", 2, "y", intent = Intent.FYI).also { it.addMessage(Message(agent, "Neat.")) }
+
+        val (readBack, unreadBack) = ThreadsCodec.decode(ThreadsCodec.encode(listOf(read, unread)))
+
+        assertEquals(listOf(true), readBack.messages.map { it.readByUser })
+        assertEquals(listOf(false), unreadBack.messages.map { it.readByUser })
+        assertEquals(null, readBack.turn())
+    }
+
+    @Test
+    fun `pre-fyi files load with nothing agreed and agent words unread by the user`() {
+        val legacy = """
+            {"version":1,"threads":[{
+              "id":"t1","file":"a.py","line":3,"anchor_text":"x = 1","intent":"FINDING",
+              "status":"OPEN","created_at":"2026-07-18T12:00:00Z",
+              "messages":[
+                {"id":"m1","author":{"kind":"AGENT","name":"Claude","id":"claude-main"},"body":"bug","created_at":"2026-07-18T12:00:01Z","seen_by":["claude-main"]},
+                {"id":"m2","author":{"kind":"USER","name":"Muhammad"},"body":"ok","created_at":"2026-07-18T12:00:02Z","seen_by":[]}
+              ]
+            }]}
+        """.trimIndent()
+
+        val messages = ThreadsCodec.decode(legacy).single().messages
+
+        assertEquals(listOf(false, false), messages.map { it.agrees })
+        assertEquals(listOf(false, true), messages.map { it.readByUser })
+    }
+
+    @Test
+    fun `an fyi's label survives the trip, and its absence stays absent`() {
+        val labelled = CommentThread("a.py", 1, "x", intent = Intent.FYI, label = "praise")
+        val bare = CommentThread("a.py", 2, "y", intent = Intent.FYI)
+
+        val encoded = ThreadsCodec.encode(listOf(labelled, bare))
+        val (labelledBack, bareBack) = ThreadsCodec.decode(encoded)
+
+        assertEquals("praise", labelledBack.label)
+        assertEquals(null, bareBack.label)
+        assertEquals(1, Regex("\"label\"").findAll(encoded).count())
+    }
+
+    @Test
+    fun `an invalid stored label loads as none, and the thread still loads`() {
+        val stored = """
+            {"version":1,"threads":[
+              {"id":"t1","file":"a.py","intent":"FYI","label":"not_a label!","status":"OPEN",
+               "created_at":"2026-07-18T12:00:00Z","messages":[]},
+              {"id":"t2","file":"a.py","intent":"FINDING","label":"praise","status":"OPEN",
+               "created_at":"2026-07-18T12:00:00Z","messages":[]}
+            ]}
+        """.trimIndent()
+
+        assertEquals(listOf(null, null), ThreadsCodec.decode(stored).map { it.label })
+    }
+
+    @Test
+    fun `an fyi stored with a severity loads without one`() {
+        val stored = """
+            {"version":1,"threads":[
+              {"id":"t1","file":"a.py","intent":"FYI","severity":"BLOCKER","status":"OPEN",
+               "created_at":"2026-07-18T12:00:00Z","messages":[]}
+            ]}
+        """.trimIndent()
+
+        val thread = ThreadsCodec.decode(stored).single()
+
+        assertEquals(Intent.FYI, thread.intent)
+        assertEquals(null, thread.severity)
+    }
 }

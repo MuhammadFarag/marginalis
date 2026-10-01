@@ -20,7 +20,8 @@ enum class Turn(val wireName: String) {
             val turn = entries.firstOrNull { it.wireName == raw.lowercase() }
                 ?: return Parsed.Invalid(
                     "invalid awaiting '$raw' — use 'agent' (the user spoke last: the agent owes a reply) or " +
-                        "'user' (an agent spoke last: the user owes one); omit to list regardless of whose turn it is.",
+                        "'user' (an agent spoke last: the user owes one, except on an fyi already read); omit to list " +
+                        "regardless of whose turn it is.",
                 )
             return Parsed.Ok(turn)
         }

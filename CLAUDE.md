@@ -34,8 +34,9 @@ is running the plugin:
 
 - Sweep unread margin comments at the start of a turn; replies land there,
   born unread.
-- Never edit a file with open threads — drive each to resolution first
-  (its conclusion becomes part of the edit, or reply why it needs none).
+- Never edit a file with open threads (fyi excepted) — drive each to
+  resolution first (its conclusion becomes part of the edit, or reply why
+  it needs none).
 - The resolver is the completer: RESOLVED means the outcome is in the
   code (or explicitly moot). Approval is a reply; land the change, then
   resolve.
