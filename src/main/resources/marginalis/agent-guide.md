@@ -262,7 +262,8 @@ is the cheapest way to learn what its authors already decided.
 ## Message bodies
 
 Bodies render as CommonMark — use it wherever structure helps:
-emphasis, inline code, links (clickable, opened in the user's browser),
+emphasis, inline code, links (web links open in the user's browser,
+code links in the editor — see Code links),
 lists, and headings (rescaled to margin proportions). Fenced code
 blocks display as read-only editor fragments with native syntax
 highlighting — tag your fences with a language and prefer them to
@@ -282,6 +283,20 @@ still apply. A prefix shared by several ids is a teaching 400 whose
 with; one matching nothing is a 404. Cite the same way in your own
 bodies: outside code, a reference renders as a link that opens the
 thread, scrolled to the message it names.
+
+## Code links
+
+When a body points at code elsewhere — "also implemented in
+`Clabo.do_the_thing()`" — link it so the user clicks instead of
+searching: `[Clabo.do_the_thing()](src/Clabo.kt#L42)`. The target is a
+path relative to the project root, optionally with a GitHub line
+anchor: `#L42` puts the caret on line 42 (1-based, as you read files),
+`#L42-L50` also selects the range, and no anchor just opens the file.
+A path with spaces goes in `<…>` or spells them `%20`. Nothing else is
+a code link — absolute paths, `..`, and other anchor forms are
+refused. Links resolve on click, against the file as it is then; a
+file that doesn't exist or a line past its end shows the user a
+warning instead of guessing.
 
 ## Walkthroughs
 

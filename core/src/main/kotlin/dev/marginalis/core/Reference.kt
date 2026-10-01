@@ -29,6 +29,8 @@ class Reference internal constructor(idPrefix: String) {
 
         fun of(id: String): Reference = Reference(id.take(SHORT_LENGTH))
 
+        fun looksLike(target: String): Boolean = target.trim().startsWith(SCHEME, ignoreCase = true)
+
         fun parse(text: String?): Parsed<Reference?> {
             if (text == null) return Parsed.Ok(null)
             val match = SYNTAX.matchEntire(text.trim())

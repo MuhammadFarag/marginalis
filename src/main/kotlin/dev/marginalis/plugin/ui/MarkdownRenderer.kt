@@ -10,12 +10,14 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageType
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.ui.HTMLEditorKitBuilder
 import com.intellij.util.ui.JBUI
 import dev.marginalis.core.CodeFence
+import dev.marginalis.core.CodeLink
 import dev.marginalis.core.CodeFences
 import dev.marginalis.core.Parsed
 import dev.marginalis.core.Reference
@@ -100,12 +102,7 @@ object MarkdownRenderer {
         pane.font = JBUI.Fonts.label()
         pane.text = "<html><body>$html</body></html>"
         pane.addHyperlinkListener { e ->
-            if (e.eventType == HyperlinkEvent.EventType.ACTIVATED) {
-                when (val reference = Reference.parse(e.description)) {
-                    is Parsed.Ok -> reference.value?.let { follow(project, it, e) }
-                    is Parsed.Invalid -> e.url?.let { BrowserUtil.browse(it) }
-                }
-            }
+            if (e.eventType == HyperlinkEvent.EventType.ACTIVATED) activate(project, e)
         }
         // Swing installs no context menu on a JEditorPane.
         pane.componentPopupMenu = JPopupMenu().also { menu ->
@@ -127,15 +124,35 @@ object MarkdownRenderer {
         return pane
     }
 
+    private fun activate(project: Project, click: HyperlinkEvent) {
+        val target = click.description ?: return
+        val reference = Reference.parse(target)
+        val url = click.url
+        when {
+            reference is Parsed.Ok -> reference.value?.let { follow(project, it, click) }
+            reference is Parsed.Invalid && Reference.looksLike(target) -> warn(reference.reason, click)
+            url != null -> BrowserUtil.browse(url)
+            target.startsWith('#') -> Unit
+            else -> when (val link = CodeLink.parse(target)) {
+                is Parsed.Ok -> CodeLinkNavigator.navigateTo(project, link.value, onUnresolved = { warn(it, click) })
+                is Parsed.Invalid -> warn(link.reason, click)
+            }
+        }
+    }
+
     private fun follow(project: Project, reference: Reference, click: HyperlinkEvent) {
         val problem = when (val resolution = reference.resolveIn(MarginalisStore.getInstance(project).threads.all())) {
             is Resolution.Found -> return WalkthroughNavigator.navigateTo(project, resolution.referent.thread, revealing = resolution.referent.message)
             is Resolution.Ambiguous -> "${resolution.summary} in this project"
             Resolution.Unknown -> "$reference names no thread or message in this project"
         }
+        warn(problem, click)
+    }
+
+    private fun warn(problem: String, click: HyperlinkEvent) {
         val source = click.source as JComponent
         JBPopupFactory.getInstance()
-            .createHtmlTextBalloonBuilder(problem, MessageType.WARNING, null)
+            .createHtmlTextBalloonBuilder(StringUtil.escapeXmlEntities(problem), MessageType.WARNING, null)
             .createBalloon()
             .show((click.inputEvent as? MouseEvent)?.let(::RelativePoint) ?: RelativePoint.getCenterOf(source), Balloon.Position.above)
     }

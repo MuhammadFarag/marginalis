@@ -5,6 +5,18 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Added
+
+- Code links in margin messages (#27): a markdown link whose target is
+  a project-relative path — `[Clabo.do_the_thing()](src/Clabo.kt#L42)`
+  — opens the file in the editor on click, with the caret on the line;
+  `#L42-L50` also selects the range, and no anchor opens the file. Agent-
+  and user-written messages alike. A path that names no file, or a line
+  past its end, shows the same warning balloon an unresolved `mg:`
+  reference does. The guide's new Code links section teaches the format.
+
 ## [0.1.29] - 2026-09-28
 
 ### Changed

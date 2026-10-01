@@ -2,6 +2,7 @@ package dev.marginalis.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -41,6 +42,12 @@ class ReferenceTest {
             val refusal = assertIs<Parsed.Invalid>(Reference.parse(bad), bad)
             assertTrue("mg:3d4770ad" in refusal.reason, refusal.reason)
         }
+    }
+
+    @Test
+    fun `a target in the mg scheme looks like a reference, however malformed`() {
+        for (meant in listOf("mg:3d4770ad", "MG:3d47", "mg:")) assertTrue(Reference.looksLike(meant), meant)
+        for (other in listOf("src/mg.kt", "https://mg:3d4770ad", "3d4770ad")) assertFalse(Reference.looksLike(other), other)
     }
 
     @Test
