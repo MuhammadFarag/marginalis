@@ -1,6 +1,7 @@
 package dev.marginalis.plugin.settings
 
 import com.intellij.openapi.options.Configurable
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
@@ -9,7 +10,6 @@ import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import javax.swing.JComponent
 
-/** The "Marginalis" page under the IDE settings tree. */
 class MarginalisConfigurable : Configurable {
 
     private var panel: com.intellij.openapi.ui.DialogPanel? = null
@@ -17,7 +17,8 @@ class MarginalisConfigurable : Configurable {
     override fun getDisplayName(): String = "Marginalis"
 
     override fun createComponent(): JComponent {
-        val state = MarginalisSettings.getInstance().state
+        val settings = MarginalisSettings.getInstance()
+        val state = settings.state
         val created = panel {
             row {
                 checkBox("Allow agent navigation")
@@ -47,23 +48,11 @@ class MarginalisConfigurable : Configurable {
                     .bindSelected(state::notifyOnAgentReply)
             }
             row("Time format:") {
-                comboBox(listOf("Auto (system)", "12-hour", "24-hour"))
+                comboBox(TimeFormat.entries, SimpleListCellRenderer.create("") { it.label })
                     .comment("Message timestamps in thread panels.")
                     .bindItem(
-                        {
-                            when (state.timeFormat) {
-                                "12" -> "12-hour"
-                                "24" -> "24-hour"
-                                else -> "Auto (system)"
-                            }
-                        },
-                        {
-                            state.timeFormat = when (it) {
-                                "12-hour" -> "12"
-                                "24-hour" -> "24"
-                                else -> "AUTO"
-                            }
-                        },
+                        { settings.timeFormat },
+                        { settings.timeFormat = it ?: TimeFormat.AUTO },
                     )
             }
         }

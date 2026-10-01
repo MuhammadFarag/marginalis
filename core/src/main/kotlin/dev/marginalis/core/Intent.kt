@@ -1,26 +1,13 @@
 package dev.marginalis.core
 
-/**
- * What kind of response a thread is asking for — a gate, not a weight, the
- * same shape [Severity] has and deliberately independent of it.
- * FINDING: something is wrong here, and the thread ends by fixing it.
- * GUIDANCE: how the code around here should be written, ending by being
- * followed. QUESTION: an answer is genuinely wanted, ending in one.
- *
- * Omitted is the common case: an ordinary comment asks for nothing in
- * particular, and marking everything would make the marks meaningless. The
- * two vocabularies compose freely — a guidance blocker ("do NOT bring the
- * rejected approach back") is a legitimate and useful thing to say.
- */
+/** Deliberately independent of [Severity]: the two compose freely (a guidance blocker is legitimate). */
 enum class Intent {
     FINDING, GUIDANCE, QUESTION;
 
     companion object {
         /**
-         * The intent vocabulary — three words, no aliases and no synonyms.
-         * An unknown value is [Parsed.Invalid], never a silently unmarked
-         * thread: the rejection is what tells a misinformed agent to correct
-         * course (severity's rule, and for the same reason).
+         * No aliases. Unknown values are rejected, never silently unmarked:
+         * the rejection is what corrects a misinformed agent.
          */
         fun parse(raw: String?): Parsed<Intent?> {
             if (raw == null) return Parsed.Ok(null)
@@ -35,7 +22,7 @@ enum class Intent {
             }
         }
 
-        /** Persistence tolerance: unknown values load as unmarked rather than failing the whole file. */
+        /** For persistence: an unknown value loads as unmarked rather than failing the whole file. */
         fun parseLenient(raw: String?): Intent? = parse(raw).getOrElse { null }
     }
 }

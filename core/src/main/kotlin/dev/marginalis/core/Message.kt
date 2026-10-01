@@ -4,10 +4,6 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * One utterance in a thread. Defaults are for newly written messages;
- * explicit id/createdAt/seenBy are supplied when rehydrating from disk.
- */
 class Message(
     val author: Author,
     body: String,
@@ -16,11 +12,7 @@ class Message(
     seenBy: Set<String>? = null,
     val to: Addressee? = null,
 ) {
-    /**
-     * Revisable only inside the edit window: a user message may change until
-     * an agent reads it. The read receipt is the boundary between "still
-     * mine" and "conversational record".
-     */
+    /** A user message may be revised only until an agent reads it. */
     @Volatile
     var body: String = body
 
@@ -32,13 +24,7 @@ class Message(
         }
     }
 
-    /**
-     * Per-agent read receipts: the [Author.Agent.receiptKey]s that have
-     * listed this message. Agents are only present during their turns, so
-     * the user needs "which agents will already know this" — and with
-     * several agents sharing a margin, one agent's sweep must not consume
-     * another's unread.
-     */
+    /** [Author.Agent.receiptKey]s. Per agent, so one agent's sweep can't consume another's unread. */
     val seenBy: Set<String>
         get() = _seenBy
 
@@ -46,7 +32,6 @@ class Message(
         _seenBy.add(agentKey)
     }
 
-    /** Read by at least one agent — the edit-window boundary and the user's "consumed" signal. */
     val seenByAnyAgent: Boolean
         get() = _seenBy.isNotEmpty()
 
@@ -57,8 +42,8 @@ class Message(
 
     val awaits: Turn
         get() = when (to) {
-            Addressee.User -> Turn.USER
-            is Addressee.Agent -> Turn.AGENT
-            null -> if (author is Author.Agent) Turn.USER else Turn.AGENT
+            Addressee.User -> Turn.USER_OWES
+            is Addressee.Agent -> Turn.AGENT_OWES
+            null -> if (author is Author.Agent) Turn.USER_OWES else Turn.AGENT_OWES
         }
 }

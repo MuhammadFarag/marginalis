@@ -11,11 +11,6 @@ import com.intellij.openapi.vfs.VirtualFile
 import dev.marginalis.core.Turn
 import dev.marginalis.plugin.store.MarginalisStore
 
-/**
- * A file's turn signal, as every file-icon surface shows it — the editor tab
- * and the Project view — so the two read identically by construction
- * ([TurnSignalIconPatcher]). The tool window speaks the same grammar with counts.
- */
 object FileTurn {
 
     fun of(project: Project, file: VirtualFile): Turn? {
@@ -39,11 +34,10 @@ object FileTurn {
             .forEach { redraw(project, it) }
     }
 
-    // Plain files' Project-view icons sit in the platform's deferred-icon cache,
-    // which only this topic (or a PSI/VFS change) clears — a turn change arrives
-    // over HTTP with neither. Tabs refresh via updateFilePresentation, which is
-    // deliberately the base-class API: FileEditorManagerEx's variant is 2026.1+
-    // and broke the 2025.2 floor in CI.
+    // Project-view file icons sit in the platform's deferred-icon cache, which
+    // only this topic (or a PSI/VFS change) clears — a turn change has neither.
+    // updateFilePresentation is deliberately the base-class API:
+    // FileEditorManagerEx's variant is 2026.1+ and breaks the 2025.2 floor.
     private fun redraw(project: Project, file: VirtualFile) {
         ApplicationManager.getApplication().messageBus
             .syncPublisher(VirtualFileAppearanceListener.TOPIC).virtualFileAppearanceChanged(file)

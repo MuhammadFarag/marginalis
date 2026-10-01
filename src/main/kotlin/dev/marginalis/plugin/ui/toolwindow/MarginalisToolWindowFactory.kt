@@ -65,21 +65,11 @@ import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreeCellRenderer
 import javax.swing.tree.TreePath
 
-/**
- * The cross-file answer to "which files have notes?": every thread in the
- * project, each status section as a directory tree — Open expanded,
- * Resolved folded (the session's record of what concluded, consulted by
- * file). Double-click or F4 (Jump to Source) navigates to the anchor line
- * and opens the thread panel.
- */
 class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val panel = MarginalisToolWindowPanel(project)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
         toolWindow.contentManager.addContent(content)
-        // Walk the steps of a section like a walkthrough: first/prev/next/last.
-        // Prev/next are platform occurrence actions, so they arrive with the
-        // standard icons and shortcuts (⌘⌥↑ / ⌘⌥↓).
         val common = CommonActionsManager.getInstance()
         toolWindow.setTitleActions(
             listOf(
@@ -95,9 +85,6 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
             ),
         )
 
-        // "Is it my turn?" answered from anywhere: a badge on the stripe icon
-        // whenever open threads await the user (the agent spoke last). The
-        // margin is turn-based; this is the turn signal, not presence.
         val refreshBadge = {
             val threads = MarginalisStore.getInstance(project).threads.all()
             toolWindow.setIcon(MarginalisIcons.toolWindow(StripeBadge.of(threads)))
@@ -117,10 +104,8 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
 }
 
 /**
- * Start a thread about the project itself. Deliberately a toolbar action
- * rather than something hanging off a node: creation must never depend on
- * the thing it creates already existing (#15's lesson), so this is here
- * whether the tree has a Project section or not.
+ * Deliberately a toolbar action, not a node action: creating a project thread
+ * must not depend on the tree already having a Project node.
  */
 private class CommentOnProjectAction :
     AnAction("Comment on Project", "Start a margin thread about this project as a whole", MarginalisIcons.ProjectMark) {
@@ -132,7 +117,6 @@ private class CommentOnProjectAction :
     }
 }
 
-/** Jump to a section's first step; disabled when already there. */
 private class FirstStepAction(private val panel: MarginalisToolWindowPanel) :
     AnAction("First Step", "Go to the first step in this section", AllIcons.Actions.Play_first) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
@@ -144,7 +128,6 @@ private class FirstStepAction(private val panel: MarginalisToolWindowPanel) :
     override fun actionPerformed(e: AnActionEvent) = panel.goFirst()
 }
 
-/** Jump to a section's last step; disabled when already there. */
 private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
     AnAction("Last Step", "Go to the last step in this section", AllIcons.Actions.Play_last) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
@@ -156,12 +139,6 @@ private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
     override fun actionPerformed(e: AnActionEvent) = panel.goLast()
 }
 
-/**
- * The lenses, each carrying its own test and its own empty state so the two
- * can never drift apart. Walking follows the filtered tree, so every lens is
- * also a purposeful sweep: blockers before a merge, guidance before editing
- * a file, questions when catching up.
- */
 internal enum class TreeFilter(
     val title: String,
     val empty: String,
@@ -169,17 +146,13 @@ internal enum class TreeFilter(
 ) {
     ALL("All", "No margin threads yet", { true }),
     BLOCKERS("Blockers Only", "No blockers", { it.severity == Severity.BLOCKER }),
-    AWAITING_USER("Awaiting You", "Nothing awaiting you", { it.turn() == Turn.USER }),
-    AWAITING_AGENT("Awaiting Agent", "Nothing awaiting the agent", { it.turn() == Turn.AGENT }),
+    AWAITING_USER("Awaiting You", "Nothing awaiting you", { it.turn() == Turn.USER_OWES }),
+    AWAITING_AGENT("Awaiting Agent", "Nothing awaiting the agent", { it.turn() == Turn.AGENT_OWES }),
     FINDINGS("Findings", "No findings", { it.intent == Intent.FINDING }),
     GUIDANCE("Guidance", "No guidance", { it.intent == Intent.GUIDANCE }),
     QUESTIONS("Questions", "No questions", { it.intent == Intent.QUESTION }),
 }
 
-/**
- * The funnel, generalized: one filter, three lenses. Walking follows the
- * filtered tree, so each lens is also a walk.
- */
 private class FilterMenuAction(private val panel: MarginalisToolWindowPanel) :
     DefaultActionGroup("Filter", "Filter the tree", AllIcons.General.Filter), DumbAware {
     init {
@@ -217,7 +190,6 @@ private class HandBackAction :
     }
 }
 
-/** Resolve every open/orphaned thread — the "consolidation is done" sweep. */
 private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread resolved", AllIcons.Actions.Selectall) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
@@ -250,7 +222,6 @@ private class ResolveAllAction : AnAction("Resolve All", "Mark every open thread
     }
 }
 
-/** Delete everything, including the resolved log. Destructive; confirms first. */
 private class ClearAllAction : AnAction("Delete All", "Delete all threads, including resolved ones", AllIcons.Actions.GC) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
@@ -279,8 +250,6 @@ private class ClearAllAction : AnAction("Delete All", "Delete all threads, inclu
 
 private sealed class NodeData {
     class Section(val title: String, val count: Int, val blockers: Int = 0) : NodeData()
-
-    /** The threads about the workspace itself — no path, so no place in the file tree. */
     class ProjectNode(val count: Int) : NodeData()
     class DirNode(val name: String, val count: Int) : NodeData()
     class FileNode(val name: String, val threads: List<CommentThread>) : NodeData()
@@ -292,18 +261,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
 
     private val tree = Tree()
 
-    /**
-     * Display filters — and because step-walking follows the tree as
-     * displayed, each filter turns the walk into a purposeful sweep:
-     * BLOCKERS + next-step is the pre-merge gate check, AWAITING_USER +
-     * next-step is "walk what needs me". Each empty state is the answer
-     * everyone wants to read.
-     *
-     * MUST be declared before the init block: init calls rebuild(), which
-     * reads this — Kotlin initializes in declaration order, and a property
-     * declared below init is still null when init runs (found the hard
-     * way: NPE on tool-window creation, v0.1.17).
-     */
+    /** Must be declared before init: init calls rebuild(), which reads it. */
     var filter: TreeFilter = TreeFilter.ALL
         set(value) {
             field = value
@@ -320,9 +278,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
                 if (e.clickCount == 2) selectedThread()?.let { navigateTo(it) }
             }
         })
-        // Right-click triage: the same discoverability rule the message
-        // panes got — and scoped: a thread row acts on itself, a file or
-        // directory node acts on everything beneath it.
         tree.addMouseListener(object : PopupHandler() {
             override fun invokePopup(comp: java.awt.Component, x: Int, y: Int) {
                 val path = tree.getPathForLocation(x, y) ?: return
@@ -341,7 +296,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         rebuild()
     }
 
-    /** F4 / Jump to Source: hand the platform a navigatable for the selection. */
+    /** Powers F4 / Jump to Source. */
     override fun uiDataSnapshot(sink: DataSink) {
         val thread = selectedThread() ?: return
         sink[CommonDataKeys.NAVIGATABLE] = object : Navigatable {
@@ -351,12 +306,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         }
     }
 
-    /**
-     * Put the cursor on one file's node — where the editor banner's "Open"
-     * lands. Files are identified by the threads beneath them, so a path
-     * that isn't in the tree (all resolved, or filtered out) simply leaves
-     * the selection alone.
-     */
     fun selectFile(file: String) {
         val root = tree.model.root as? DefaultMutableTreeNode ?: return
         val node = root.preorderEnumeration().asSequence()
@@ -374,9 +323,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         return (node.userObject as? NodeData.ThreadNode)?.thread
     }
 
-    // ------------------------------------------------- right-click triage
-
-    /** All threads at or beneath [node] — a thread itself, a file's list, a subtree's everything. */
     private fun threadsUnder(node: DefaultMutableTreeNode): List<CommentThread> =
         node.preorderEnumeration().asSequence()
             .filterIsInstance<DefaultMutableTreeNode>()
@@ -410,8 +356,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
             }
             is NodeData.FileNode, is NodeData.DirNode -> {
                 val threads = threadsUnder(node)
-                // The user's way into a file-level thread: the file node is
-                // the one place in this tree that means a whole file.
                 if (data is NodeData.FileNode) {
                     threads.firstOrNull()?.file?.let { path ->
                         menu.add(JMenuItem("Comment on File").apply {
@@ -434,7 +378,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         return menu
     }
 
-    /** Scoped Resolve All: same blocker manners as the title action. */
     private fun resolveThreads(threads: List<CommentThread>) {
         val blockers = threads.count { it.severity == Severity.BLOCKER }
         val blockerWarning =
@@ -453,7 +396,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         }
     }
 
-    /** Scoped delete: always confirms — deletion keeps no record. */
     private fun deleteThreads(threads: List<CommentThread>) {
         val blockers = threads.count { it.status !is ThreadStatus.Resolved && it.severity == Severity.BLOCKER }
         val blockerWarning = if (blockers > 0) " $blockers open blocker(s) are among them." else ""
@@ -469,15 +411,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         for (thread in threads) store.threads.remove(thread.id)
     }
 
-    // ------------------------------------------------- step-by-step walking
-    //
-    // The tree selection is the cursor. The walk is scoped to the section
-    // (Guided A, Guided B, Open, …) holding the selection — a walkthrough never
-    // bleeds into its neighbor — and runs in display order, which is walkthrough
-    // order in Guided sections and file-then-line order elsewhere. With no
-    // selection, the walk starts at the first section's first step.
-
-    /** Thread nodes of the active section in display order, plus the cursor index (-1 = before first). */
+    /** Cursor index is -1 when no thread node is selected. */
     private fun steps(): Pair<List<DefaultMutableTreeNode>, Int> {
         val none = emptyList<DefaultMutableTreeNode>() to -1
         val root = tree.model.root as? DefaultMutableTreeNode ?: return none
@@ -536,7 +470,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
 
     fun rebuild() {
         val store = MarginalisStore.getInstance(project)
-        store.syncLines() // refresh live lines + orphan status from markers
+        store.syncLines()
         val threads = store.threads.all().filter(filter.matches)
         tree.emptyText.text = filter.empty
 
@@ -547,23 +481,12 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         addTreeSection(root, "Resolved", threads.filter { it.status is ThreadStatus.Resolved })
 
         tree.model = DefaultTreeModel(root)
-        // Everything expanded by default except the Resolved log.
         for (i in 0 until root.childCount) {
             val section = root.getChildAt(i) as DefaultMutableTreeNode
             if ((section.userObject as NodeData.Section).title != "Resolved") expandRecursively(section)
         }
     }
 
-    /**
-     * The walkthroughs: agent-ordered open threads, across files, in "look here
-     * 1st, 2nd, …" sequence — the agent's answer to "where should I look?".
-     * Several walkthroughs coexist via labels; positions render compactly as
-     * (1/4), or (A1/4) once more than one walkthrough is present. The total is
-     * fixed for the life of the walkthrough — resolving step 2 of 5 must not turn
-     * (4/5) into (4/4); a position only means something against a stable
-     * denominator — so it comes from every thread in the walkthrough regardless
-     * of status.
-     */
     private fun addGuidedSection(root: DefaultMutableTreeNode, allThreads: List<CommentThread>) {
         val openStops = allThreads.filter { it.status is ThreadStatus.Open && it.order != null }
         if (openStops.isEmpty()) return
@@ -585,13 +508,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         }
     }
 
-    /**
-     * Every status section shares the directory tree — Resolved included:
-     * real usage consults it by file ("what did we decide here?"), not by
-     * time, and it's cleared session-to-session anyway (operator finding).
-     * The blocker count only ever counts unresolved threads, so Resolved
-     * never alarms in red about gates already passed.
-     */
     private fun addTreeSection(root: DefaultMutableTreeNode, title: String, threads: List<CommentThread>) {
         if (threads.isEmpty()) return
         val blockers = threads.count { it.status !is ThreadStatus.Resolved && it.severity == Severity.BLOCKER }
@@ -602,12 +518,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         root.add(section)
     }
 
-    /**
-     * The workspace's own threads, above every file — the widest subject
-     * read first, the same rule [ThreadOrder.byAnchor] applies everywhere
-     * else. Absent entirely when there are none: a section for nothing is
-     * noise.
-     */
     private fun addProjectNode(
         section: DefaultMutableTreeNode,
         threads: List<CommentThread>,
@@ -624,14 +534,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         section.add(node)
     }
 
-    /**
-     * Emit the trie, compressing single-child directory chains (a/b/c → one
-     * node). With [prefixFor] (guided mode), directories/files sort by their
-     * earliest walkthrough step and threads by walkthrough order, so the tree reads
-     * top-to-bottom in roughly walking order; otherwise alphabetical, and
-     * within a file in reading order (see [ThreadOrder.byAnchor]: what is
-     * about the whole file first, then down the lines).
-     */
     private fun emitTrie(
         trie: PathTrie,
         parent: DefaultMutableTreeNode,
@@ -682,8 +584,8 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
 
 private class MarginalisTreeRenderer : TreeCellRenderer {
     private val words = RowWords()
-    private val yourMove = turnLabel(Turn.USER)
-    private val agentsMove = turnLabel(Turn.AGENT)
+    private val yourMove = turnLabel(Turn.USER_OWES)
+    private val agentsMove = turnLabel(Turn.AGENT_OWES)
     private val cell = BorderLayoutPanel().addToCenter(words).addToRight(
         BorderLayoutPanel().addToCenter(yourMove).addToRight(agentsMove).andTransparent(),
     )
@@ -719,8 +621,8 @@ private class MarginalisTreeRenderer : TreeCellRenderer {
         }
         is NodeData.ThreadNode -> {
             val turn = data.thread.turn()
-            yourMove.showBare(turn == Turn.USER)
-            agentsMove.showBare(turn == Turn.AGENT)
+            yourMove.showBare(turn == Turn.USER_OWES)
+            agentsMove.showBare(turn == Turn.AGENT_OWES)
             turn?.let(TurnSignal::spoken)
         }
         else -> {
@@ -776,8 +678,6 @@ private class RowWords : ColoredTreeCellRenderer() {
                 append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             }
             is NodeData.FileNode -> {
-                // The IDE's own per-filetype icon, so the tree reads like the
-                // Project view does.
                 icon = FileTypeManager.getInstance().getFileTypeByFileName(data.name).icon
                     ?: AllIcons.FileTypes.Any_type
                 append(data.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
@@ -790,12 +690,7 @@ private class RowWords : ColoredTreeCellRenderer() {
                 }
                 val where = thread.line?.let { "L${it + 1}" } ?: if (thread.isProjectLevel) "project" else "file"
                 append("$where  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                // What it asks for, then how hard it asks: two independent
-                // marks, the intent kept quiet so severity keeps the loud
-                // channel to itself.
                 thread.intent?.let { append("${it.name.lowercase()}  ", INTENT_ATTRS) }
-                // One loud mark, one quiet mark, silence: word + color, never
-                // color alone. A nit de-emphasizes its whole row.
                 when (thread.severity) {
                     Severity.BLOCKER -> append("blocker  ", SimpleTextAttributes.ERROR_ATTRIBUTES)
                     Severity.NIT -> append("nit  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
@@ -813,7 +708,6 @@ private class RowWords : ColoredTreeCellRenderer() {
     }
 
     private companion object {
-        // Same families as the thread-panel author colors.
         val INTENT_ATTRS = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x37618E, 0x9CC0E8))
     }
 }

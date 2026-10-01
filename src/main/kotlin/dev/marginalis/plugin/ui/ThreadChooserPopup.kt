@@ -8,11 +8,6 @@ import com.intellij.ui.SimpleListCellRenderer
 import javax.swing.JList
 import dev.marginalis.core.CommentThread
 
-/**
- * The multiplicity chooser, shared by the gutter icon and ⌃⌥M: one row per
- * thread on the line — a segment thread shows its quoted span, a line
- * thread its first words — pick one to open.
- */
 object ThreadChooserPopup {
 
     fun show(project: Project, editor: Editor, threads: List<CommentThread>) {

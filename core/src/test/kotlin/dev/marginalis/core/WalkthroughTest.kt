@@ -65,15 +65,13 @@ class WalkthroughTest {
         val resolved = thread("b.py").also { it.resolve(user) }
         val (walk, position) = Walkthrough.walkFrom(listOf(open, resolved), resolved)
         assertEquals(listOf(open), walk)
-        assertEquals(-1, position)
+        assertNull(position)
     }
 
     @Test
     fun `stable total drops finished walkthroughs but keeps mid-walk resolutions counted`() {
-        // An earlier unlabeled walkthrough, fully concluded.
         val old1 = thread("a.py", order = 1).also { it.resolve(user) }
         val old2 = thread("a.py", order = 2).also { it.resolve(user) }
-        // The current walkthrough of three, created together, step 1 already resolved.
         val born = Instant.ofEpochSecond(100)
         val s1 = thread("a.py", order = 1, createdAt = born).also { it.resolve(user) }
         val s2 = thread("b.py", order = 2, createdAt = born)
@@ -102,7 +100,6 @@ class WalkthroughTest {
         )
     }
 
-    /** Files in the order the tool window renders the trie: dirs before files at each level. */
     private fun flatten(trie: PathTrie, prefix: String): List<String> =
         trie.dirs.flatMap { (name, child) -> flatten(child, "$prefix$name/") } +
             trie.files.keys.map { "$prefix$it" }

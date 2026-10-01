@@ -95,10 +95,7 @@ class ThreadLifecycleTest {
     fun `a file-level thread may carry a segment — provenance, not an anchor`() {
         val sparkedBy = Segment("curr", prefix = "prev, ", suffix = " =")
         val t = CommentThread("a.py", line = null, anchorText = null, segment = sparkedBy)
-        // The same words survive the widest widening too.
         assertEquals(sparkedBy, CommentThread(null, null, null, segment = sparkedBy).segment)
-        // The words that started the thought are kept; the thought is still
-        // about the whole file, with nothing to re-find.
         assertEquals(sparkedBy, t.segment)
         assertTrue(t.isFileLevel)
         assertNull(t.line)
@@ -110,7 +107,6 @@ class ThreadLifecycleTest {
         t.markOrphaned()
         assertFailsWith<IllegalStateException> { t.rescueTo(7, "def g():") }
         assertTrue(t.isFileLevel)
-        // Its rescue is the file coming back, which reopens it as it stands.
         t.reopen()
         assertIs<ThreadStatus.Open>(t.status)
     }
@@ -143,11 +139,9 @@ class ThreadLifecycleTest {
         val one = agent.receiptKey
         val two = "agent-two"
 
-        // Agent one reads everything; agent two hasn't looked yet.
         t.messages.forEach { it.markSeenBy(one) }
         assertEquals(0, t.unreadCountFor(one))
         assertEquals(2, t.unreadCountFor(two))
-        // The human-facing count: someone consumed it all.
         assertEquals(0, t.unreadCount())
 
         t.messages.forEach { it.markSeenBy(two) }
@@ -173,8 +167,6 @@ class ThreadLifecycleTest {
         val m = Message(user, "draft")
         m.body = "final"
         assertEquals("final", m.body)
-        // Core stores state; refusing edits after any-agent-read is the
-        // adapters' contract, verified here only as data.
         m.markSeenBy("someone")
         assertTrue(m.seenByAnyAgent)
     }
@@ -190,12 +182,9 @@ class ThreadLifecycleTest {
         val afterMessage = t.updatedAt
         assertTrue(afterMessage > born, "a new message is a change")
 
-        // Reading is not a change: a listing marks messages seen, and if that
-        // bumped the cursor every sweep would return everything forever.
         t.messages.forEach { it.markSeenBy("claude") }
         assertEquals(afterMessage, t.updatedAt)
 
-        // Neither is an anchor sliding as the file is edited.
         t.line = 99
         assertEquals(afterMessage, t.updatedAt)
 
@@ -211,9 +200,7 @@ class ThreadLifecycleTest {
 
     @Test
     fun `rescue and in-place message edits both count as changes`() {
-        // The clock is only microseconds fine, and these mutations are
-        // nanoseconds apart; the sleeps are about the test's ability to see
-        // the difference, not about the semantics.
+        // The sleeps only make the clock's microsecond resolution see the difference.
         val t = thread()
         t.addMessage(Message(user, "draft"))
         t.markOrphaned()
@@ -236,7 +223,6 @@ class ThreadLifecycleTest {
         t.addMessage(Message(user, "old news"))
         t.restoreUpdatedAt(long_ago)
         assertEquals(long_ago, t.updatedAt)
-        // Status restored the same way — neither is a lifecycle event.
         t.restoreStatus(ThreadStatus.Orphaned)
         assertEquals(long_ago, t.updatedAt)
     }
@@ -253,7 +239,6 @@ class ThreadLifecycleTest {
         moved.addMessage(Message(user, "new"))
 
         assertEquals(listOf(moved), store.query(updatedAfter = cursor))
-        // Handing back the newest value you saw is not a re-read of it.
         assertEquals(emptyList(), store.query(updatedAfter = moved.updatedAt))
     }
 
@@ -271,8 +256,6 @@ class ThreadLifecycleTest {
         assertEquals(listOf(a), store.query(file = "a.py"))
         assertEquals(listOf(a), store.query(status = ThreadStatus.Kind.OPEN))
         assertEquals(listOf(b), store.query(status = ThreadStatus.Kind.RESOLVED))
-        // From the authoring agent's view only its own words are seen; a
-        // DIFFERENT agent would also find b unread — receipts are per agent.
         assertEquals(listOf(a), store.query(unreadFor = agent.receiptKey))
     }
 
@@ -285,10 +268,8 @@ class ThreadLifecycleTest {
         val ordinary = CommentThread("d.py", 1, "x", severity = Severity.BLOCKER)
         listOf(guidance, guidanceBlocker, question, ordinary).forEach(store::add)
 
-        // The motivating query: everything that tells me how to write this.
         assertEquals(listOf(guidance, guidanceBlocker), store.query(intent = Intent.GUIDANCE))
         assertEquals(listOf(question), store.query(intent = Intent.QUESTION))
-        // Unfiltered still means unfiltered — an ordinary comment is not an intent.
         assertEquals(4, store.query().size)
     }
 
@@ -304,9 +285,9 @@ class ThreadLifecycleTest {
         val store = ThreadStore()
         listOf(userSpokeLast, agentSpokeLast, elsewhereUserSpokeLast, concluded).forEach(store::add)
 
-        assertEquals(listOf(userSpokeLast, elsewhereUserSpokeLast), store.query(awaiting = Turn.AGENT))
-        assertEquals(listOf(agentSpokeLast), store.query(awaiting = Turn.USER))
-        assertEquals(listOf(userSpokeLast), store.query(file = "a.py", awaiting = Turn.AGENT))
+        assertEquals(listOf(userSpokeLast, elsewhereUserSpokeLast), store.query(awaiting = Turn.AGENT_OWES))
+        assertEquals(listOf(agentSpokeLast), store.query(awaiting = Turn.USER_OWES))
+        assertEquals(listOf(userSpokeLast), store.query(file = "a.py", awaiting = Turn.AGENT_OWES))
     }
 
     @Test

@@ -9,16 +9,6 @@ import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.vfs.VfsUtilCore
 import dev.marginalis.plugin.ui.FileLevelThreads
 
-/**
- * The always-available way in: a thread about the file you are looking at,
- * whatever the caret happens to be on. It has to live here, in the editor
- * where the reading happens — the tool window's file node and the gutter
- * glyph both need a thread to exist before they can offer anything, which
- * left a file with no threads at all with no way to start one (#15).
- *
- * A selection comes along as provenance: the words that sparked the thought
- * are worth keeping even when the comment turns out to be about the file.
- */
 class CommentOnFileAction : AnAction() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

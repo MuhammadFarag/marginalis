@@ -18,17 +18,6 @@ import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.MarginalisMarkers
 
-/**
- * Project wiring:
- * 1. Rehydrate persisted threads, each by the rule its anchor implies (see
- *    [rehydrate]) — the files may have changed while the IDE was closed, so
- *    a persisted line is only a hint; no match within the search window
- *    means ORPHANED, never a guessed anchor.
- * 2. Keep collapsed state honest on every change: markers dropped on
- *    resolve/delete, re-attached on reopen, renderers refreshed, and the
- *    turn badge on file icons (tabs, Project view) redrawn when it changes.
- * 3. Persist on every change (small file, background thread).
- */
 class MarginalisStartup : ProjectActivity {
 
     override suspend fun execute(project: Project) {
@@ -61,22 +50,14 @@ class MarginalisStartup : ProjectActivity {
                 val files = persisted.mapNotNull { it.file }.distinct()
                 files.forEach { MarginalisMarkers.refreshIcons(project, it) }
                 files.forEach { FileTurn.track(project, it) }
-                // One notification refreshes every UI surface after bulk load.
+                // One notification after the silent bulk load refreshes every UI surface.
                 persisted.lastOrNull()?.let { store.threads.notifyChanged(it) }
             }
         }
     }
 
-    /**
-     * Put a persisted thread back where it belongs, by the rule its anchor
-     * implies. A project-level thread is tied to nothing that can vanish, so
-     * it simply comes back as it was. A file-level thread's only anchor is
-     * the path: it orphans when the file is gone and comes back by itself
-     * when the path exists again — nothing was lost, so nothing needs
-     * rescuing. A line thread re-anchors by content while it is open; an
-     * orphaned one stays orphaned, because moving a line anchor is the
-     * agent's call (comment_reanchor), not a guess made at startup. EDT.
-     */
+    // EDT. An orphaned line thread stays orphaned: moving a line anchor is the
+    // agent's call (comment_reanchor), not a guess made at startup.
     private fun rehydrate(project: Project, thread: CommentThread) {
         val path = thread.file ?: return
         val vFile = project.guessProjectDir()?.findFileByRelativePath(path)
@@ -91,12 +72,6 @@ class MarginalisStartup : ProjectActivity {
         reanchor(project, thread, vFile)
     }
 
-    /**
-     * Re-anchor a rehydrated OPEN line thread by content; orphan on no match.
-     * The ladder lives in AnchorPolicy: a segment that re-finds its quote
-     * spans it again, a reworded span degrades to its line, and only a
-     * vanished line orphans. EDT.
-     */
     private fun reanchor(project: Project, thread: CommentThread, vFile: VirtualFile?) {
         val document = vFile?.let { FileDocumentManager.getInstance().getDocument(it) }
         if (document == null) {
@@ -121,14 +96,9 @@ class MarginalisStartup : ProjectActivity {
     private fun lineText(document: Document, line: Int): String =
         document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)))
 
-    /**
-     * One rule set for the collapsed state: deleted and resolved threads
-     * carry no marker (a resolved thread's outcome is in the code — nothing
-     * left to mark, and after edits a stale checkmark drifts onto unrelated
-     * lines); open threads always have a live one. Every outcome ends in an
-     * icon refresh for the file — with several threads on one line the
-     * combined icon's owner may just have changed.
-     */
+    // Resolved threads carry no marker: after edits a stale checkmark drifts
+    // onto unrelated lines. Always refresh icons — with several threads on a
+    // line, the combined icon's owner may have changed.
     private fun syncMarker(project: Project, thread: CommentThread) {
         val store = MarginalisStore.getInstance(project)
         val marker = store.markerOf(thread)
@@ -144,7 +114,6 @@ class MarginalisStartup : ProjectActivity {
                 }
             }
 
-            // Above the line there is nothing in the text to mark.
             thread.line == null -> {}
 
             thread.status is ThreadStatus.Open && (marker == null || !marker.isValid) -> {

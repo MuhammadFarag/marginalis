@@ -25,23 +25,23 @@ class TurnTest {
 
     @Test
     fun `an open thread where the agent spoke last is the user's turn`() {
-        assertEquals(Turn.USER, Turn.of(listOf(thread(agent))))
+        assertEquals(Turn.USER_OWES, Turn.of(listOf(thread(agent))))
     }
 
     @Test
     fun `open threads where the user spoke last are the agent's turn`() {
-        assertEquals(Turn.AGENT, Turn.of(listOf(thread(user), thread(user))))
+        assertEquals(Turn.AGENT_OWES, Turn.of(listOf(thread(user), thread(user))))
     }
 
     @Test
     fun `what the user owes outranks what the agent owes`() {
-        assertEquals(Turn.USER, Turn.of(listOf(thread(user), thread(agent), thread(user))))
+        assertEquals(Turn.USER_OWES, Turn.of(listOf(thread(user), thread(agent), thread(user))))
     }
 
     @Test
     fun `a single thread's turn is the other party's once someone has spoken`() {
-        assertEquals(Turn.USER, thread(agent).turn())
-        assertEquals(Turn.AGENT, thread(user).turn())
+        assertEquals(Turn.USER_OWES, thread(agent).turn())
+        assertEquals(Turn.AGENT_OWES, thread(user).turn())
     }
 
     @Test
@@ -52,8 +52,8 @@ class TurnTest {
 
     @Test
     fun `the awaiting vocabulary names whose turn it is, case-insensitively`() {
-        assertEquals(Turn.AGENT, parsed("agent"))
-        assertEquals(Turn.USER, parsed("USER"))
+        assertEquals(Turn.AGENT_OWES, parsed("agent"))
+        assertEquals(Turn.USER_OWES, parsed("USER"))
         assertNull(parsed(null))
     }
 
@@ -76,16 +76,16 @@ class TurnTest {
     fun `an unaddressed word from the user is every agent's debt`() {
         val asked = thread(Message(user, "…"))
 
-        assertEquals(Turn.AGENT, asked.turnFor("claude-builder"))
-        assertEquals(Turn.AGENT, asked.turnFor("claude-review"))
+        assertEquals(Turn.AGENT_OWES, asked.turnFor("claude-builder"))
+        assertEquals(Turn.AGENT_OWES, asked.turnFor("claude-review"))
     }
 
     @Test
     fun `a word addressed to one agent is that agent's debt alone`() {
         val asked = thread(Message(user, "…", to = Addressee.Agent("claude-review")))
 
-        assertEquals(Turn.AGENT, asked.turn())
-        assertEquals(Turn.AGENT, asked.turnFor("claude-review"))
+        assertEquals(Turn.AGENT_OWES, asked.turn())
+        assertEquals(Turn.AGENT_OWES, asked.turnFor("claude-review"))
         assertNull(asked.turnFor("claude-builder"))
     }
 
@@ -93,8 +93,8 @@ class TurnTest {
     fun `an agent addressing another agent hands the turn to that agent, not the user`() {
         val handedOver = thread(Message(user, "…"), Message(builder, "…", to = Addressee.Agent("claude-review")))
 
-        assertEquals(Turn.AGENT, handedOver.turn())
-        assertEquals(Turn.AGENT, handedOver.turnFor("claude-review"))
+        assertEquals(Turn.AGENT_OWES, handedOver.turn())
+        assertEquals(Turn.AGENT_OWES, handedOver.turnFor("claude-review"))
         assertNull(handedOver.turnFor("claude-builder"))
     }
 
@@ -102,9 +102,9 @@ class TurnTest {
     fun `a word addressed to the user awaits the user, whoever wrote it and whoever asks`() {
         val toUser = thread(Message(user, "…", to = Addressee.User))
 
-        assertEquals(Turn.USER, toUser.turn())
-        assertEquals(Turn.USER, toUser.turnFor("claude-builder"))
-        assertEquals(Turn.USER, thread(Message(builder, "…")).turnFor("claude-review"))
+        assertEquals(Turn.USER_OWES, toUser.turn())
+        assertEquals(Turn.USER_OWES, toUser.turnFor("claude-builder"))
+        assertEquals(Turn.USER_OWES, thread(Message(builder, "…")).turnFor("claude-review"))
     }
 
     @Test
@@ -112,7 +112,7 @@ class TurnTest {
         val asked = thread(Message(user, "…", to = Addressee.Agent("claude-review")))
 
         assertEquals(asked.turn(), asked.turnFor(null))
-        assertEquals(Turn.AGENT, asked.turnFor(null))
+        assertEquals(Turn.AGENT_OWES, asked.turnFor(null))
     }
 
     @Test
@@ -130,10 +130,10 @@ class TurnTest {
         val users = thread(Message(reviewer, "…"))
         listOf(everyones, reviewers, users).forEach(store::add)
 
-        assertEquals(setOf(everyones), store.query(awaiting = Turn.AGENT, awaitingFor = "claude-builder").toSet())
-        assertEquals(setOf(everyones, reviewers), store.query(awaiting = Turn.AGENT, awaitingFor = "claude-review").toSet())
-        assertEquals(setOf(users), store.query(awaiting = Turn.USER, awaitingFor = "claude-builder").toSet())
-        assertEquals(setOf(everyones, reviewers), store.query(awaiting = Turn.AGENT).toSet())
+        assertEquals(setOf(everyones), store.query(awaiting = Turn.AGENT_OWES, awaitingFor = "claude-builder").toSet())
+        assertEquals(setOf(everyones, reviewers), store.query(awaiting = Turn.AGENT_OWES, awaitingFor = "claude-review").toSet())
+        assertEquals(setOf(users), store.query(awaiting = Turn.USER_OWES, awaitingFor = "claude-builder").toSet())
+        assertEquals(setOf(everyones, reviewers), store.query(awaiting = Turn.AGENT_OWES).toSet())
     }
 
     @Test

@@ -10,23 +10,10 @@ import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.ThreadInlayManager
 import dev.marginalis.plugin.ui.TurnSignalIconPatcher
 
-/**
- * Hot reload's other half (MarginalisStartup being the load half): before a
- * dynamic unload, remove every trace of this plugin's classes from platform
- * structures that outlive the classloader. Three of them exist:
- *
- *  - file icons in tabs and the Project view wear the turn badge — the
- *    patcher stands down and they are redrawn bare;
- *  - gutter highlighters live on the persistent document markup model, each
- *    holding a ThreadGutterIconRenderer — both the per-thread markers and
- *    the per-file glyphs beside line 1;
- *  - thread panels live as inlays and user data on open editors.
- *
- * Anything left behind pins the unloaded classloader and the IDE falls back
- * to demanding a restart. Threads themselves are persisted (belt and braces
- * — every change already saves), and the startup activity re-runs on the
- * next dynamic load, rehydrating threads and re-attaching markers.
- */
+// Strips our classes from platform structures that outlive the classloader
+// (file-icon badges, highlighters on the persistent document markup model,
+// editor inlays and user data). Anything left pins the classloader and the
+// IDE demands a restart instead of a dynamic unload.
 class MarginalisUnloadListener : DynamicPluginListener {
 
     override fun beforePluginUnload(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {

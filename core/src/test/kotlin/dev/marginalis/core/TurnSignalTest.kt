@@ -22,8 +22,8 @@ class TurnSignalTest {
 
     @Test
     fun `a turn is spoken in words for assistive technology`() {
-        assertEquals("your move", TurnSignal.spoken(Turn.USER))
-        assertEquals("agent's move", TurnSignal.spoken(Turn.AGENT))
+        assertEquals("your move", TurnSignal.spoken(Turn.USER_OWES))
+        assertEquals("agent's move", TurnSignal.spoken(Turn.AGENT_OWES))
     }
 
     @Test

@@ -2,7 +2,9 @@
 
 Each screenshot notes the release it was captured on. The product moves
 quickly; if your install looks different, trust your install and the
-[changelog](../CHANGELOG.md).
+[changelog](../CHANGELOG.md). Notably, 0.1.29 replaced every icon: gutter
+marks are now outline speech bubbles in the plugin's colors, and the
+● / ○ turn glyphs became ✉ / ✈ badges on file icons.
 
 ## A margin conversation
 

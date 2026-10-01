@@ -34,8 +34,8 @@ class ThreadSummaryTest {
         val handedToReviewer = thread(Message(user, "q", to = Addressee.Agent("claude-review")))
 
         assertNull(ThreadSummary.of(handedToReviewer, "claude-builder").awaiting)
-        assertEquals(Turn.AGENT, ThreadSummary.of(handedToReviewer, "claude-review").awaiting)
-        assertEquals(Turn.USER, ThreadSummary.of(thread(Message(user, "q"), Message(builder, "a")), "claude-review").awaiting)
+        assertEquals(Turn.AGENT_OWES, ThreadSummary.of(handedToReviewer, "claude-review").awaiting)
+        assertEquals(Turn.USER_OWES, ThreadSummary.of(thread(Message(user, "q"), Message(builder, "a")), "claude-review").awaiting)
     }
 
     @Test

@@ -22,8 +22,6 @@ class IntentParseTest {
 
     @Test
     fun `a near miss is taught, never silently unmarked`() {
-        // The words deliberately rejected in review: each would have been a
-        // synonym for one of the three, and synonyms rot a closed vocabulary.
         for (raw in listOf("issue", "note", "todo", "decision", "praise", "suggestion", "")) {
             val parsed = Intent.parse(raw)
             assertIs<Parsed.Invalid>(parsed, "'$raw' must be rejected")
@@ -34,8 +32,6 @@ class IntentParseTest {
 
     @Test
     fun `the lenient form swallows the unknown — persistence tolerance`() {
-        // A file written by a newer vocabulary loads as unmarked rather than
-        // failing every thread beside it.
         assertNull(Intent.parseLenient("epiphany"))
         assertEquals(Intent.FINDING, Intent.parseLenient("finding"))
     }

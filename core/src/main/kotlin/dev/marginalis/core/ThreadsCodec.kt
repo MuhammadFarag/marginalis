@@ -5,12 +5,6 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.time.Instant
 
-/**
- * Threads ↔ JSON, as strings. File I/O and storage location are caller
- * concerns; this codec only defines the format — including tolerance for
- * values written by earlier versions (author kind "HUMAN" predates the
- * User/Agent hierarchy).
- */
 object ThreadsCodec {
 
     fun encode(threads: List<CommentThread>, handedBackAt: Instant? = null): String {
@@ -42,8 +36,7 @@ object ThreadsCodec {
 
     private fun threadJson(thread: CommentThread): JsonObject = JsonObject().apply {
         addProperty("id", thread.id)
-        // Absence IS the shape, at every rung: no file means project-level,
-        // no line means the file itself (see [thread]).
+        // Absence is the shape: no file means project-level, no line means file-level.
         thread.file?.let { addProperty("file", it) }
         thread.line?.let { addProperty("line", it) }
         thread.anchorText?.let { addProperty("anchor_text", it) }
@@ -85,9 +78,8 @@ object ThreadsCodec {
     }
 
     private fun thread(json: JsonObject): CommentThread {
-        // No "line" means file-level. A line without "anchor_text" is not
-        // the same thing — it's a pre-anchor-text thread, and it keeps its
-        // line with an empty fingerprint rather than losing its place.
+        // A line without "anchor_text" is a legacy thread, not a file-level one:
+        // it keeps its line with an empty fingerprint.
         val line = json.get("line")?.takeIf { it.isJsonPrimitive }?.asInt
         val thread = CommentThread(
             file = json.get("file")?.takeIf { it.isJsonPrimitive }?.asString,
@@ -96,10 +88,9 @@ object ThreadsCodec {
             id = json.get("id").asString,
             createdAt = Instant.parse(json.get("created_at").asString),
             order = json.get("order")?.takeIf { it.isJsonPrimitive }?.asInt,
-            // "walkthrough"; pre-rename files wrote "tour" — both mean the label.
+            // Legacy files wrote "tour".
             walkthrough = (json.get("walkthrough") ?: json.get("tour"))
                 ?.takeIf { it.isJsonPrimitive }?.asString,
-            // Additive: pre-segment files simply have whole-line threads.
             segment = json.get("segment")?.takeIf { it.isJsonObject }?.asJsonObject?.let { seg ->
                 seg.get("exact")?.takeIf { it.isJsonPrimitive }?.asString?.let { exact ->
                     Segment(
@@ -109,13 +100,7 @@ object ThreadsCodec {
                     )
                 }
             },
-            // Additive: pre-severity files are ordinary comments; the one
-            // shared vocabulary (Severity.parse), leniently — unknown
-            // values load as unmarked rather than failing the whole file.
             severity = Severity.parseLenient(json.get("severity")?.takeIf { it.isJsonPrimitive }?.asString),
-            // Additive in the same way, and lenient for the same reason: a
-            // value from a newer vocabulary loads as unmarked, not as a
-            // corrupt file.
             intent = Intent.parseLenient(json.get("intent")?.takeIf { it.isJsonPrimitive }?.asString),
         )
         for (m in json.getAsJsonArray("messages")) {
@@ -131,10 +116,7 @@ object ThreadsCodec {
                 ),
             )
         }
-        // Pre-cursor files have no "updated_at": the best evidence left of
-        // when the conversation last moved is its most recent message, and
-        // failing that its birth. Restored AFTER the messages, which each
-        // count as a change while they are being added back.
+        // Must follow the messages, which each count as a change while being added back.
         thread.restoreUpdatedAt(
             json.get("updated_at")?.takeIf { it.isJsonPrimitive }?.asString?.let { Instant.parse(it) }
                 ?: thread.messages.maxOfOrNull { it.createdAt }
@@ -151,11 +133,7 @@ object ThreadsCodec {
         return thread
     }
 
-    /**
-     * "seen_by" is a set of agent receipt keys; pre-multi-agent files wrote
-     * a single "seen_by_agent" bit — true maps to the anonymous "Agent",
-     * preserving "was read in the single-agent era" for the edit window.
-     */
+    /** Legacy single-agent files wrote a "seen_by_agent" bit instead. */
     private fun seenBy(msg: JsonObject): Set<String> {
         msg.get("seen_by")?.takeIf { it.isJsonArray }?.let { keys ->
             return keys.asJsonArray.mapNotNull { el -> el.takeIf { it.isJsonPrimitive }?.asString }.toSet()
@@ -182,7 +160,7 @@ object ThreadsCodec {
         val name = json.get("name").asString
         return when (json.get("kind").asString.uppercase()) {
             "AGENT" -> Author.Agent(name, json.get("id")?.takeIf { it.isJsonPrimitive }?.asString)
-            // "USER" and pre-rename "HUMAN" files both mean the local person.
+            // Also legacy "HUMAN".
             else -> Author.User(name)
         }
     }

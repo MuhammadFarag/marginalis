@@ -1,19 +1,10 @@
 package dev.marginalis.core
 
-/**
- * The walking rules: which threads form a walk, in what order, and how a
- * step's (n/total) denominator stays stable. Pure ordering policy over
- * threads — navigation and rendering are adapter concerns, but every
- * surface that walks (thread panel buttons, tool window) must agree on the
- * sequence, so the rules live here, once. A walkthrough step walks its own
- * walkthrough in step order (never bleeding into a neighboring
- * walkthrough); an unordered thread walks every open thread in the canonical
- * reading order (see [ThreadOrder.byAnchor]).
- */
+data class WalkPosition(val steps: List<CommentThread>, val index: Int?)
+
 object Walkthrough {
 
-    /** The walk containing [thread] within [threads], and its position in it (-1 = not a member, e.g. resolved). */
-    fun walkFrom(threads: List<CommentThread>, thread: CommentThread): Pair<List<CommentThread>, Int> {
+    fun walkFrom(threads: List<CommentThread>, thread: CommentThread): WalkPosition {
         val open = threads.filter { it.status is ThreadStatus.Open }
         val walk = if (thread.order != null) {
             open.filter { it.order != null && (it.walkthrough ?: "") == (thread.walkthrough ?: "") }
@@ -21,17 +12,13 @@ object Walkthrough {
         } else {
             open.sortedWith(ThreadOrder.byAnchor)
         }
-        return walk to walk.indexOfFirst { it.id == thread.id }
+        return WalkPosition(walk, walk.indexOfFirst { it.id == thread.id }.takeIf { it >= 0 })
     }
 
     /**
-     * The fixed denominator for a step's (n/total). A label alone can't
-     * identify one walkthrough — every unlabeled walkthrough ever run
-     * shares "" — so the cohort is same-label ordered threads created
-     * at-or-after the earliest still-open step: finished walkthroughs
-     * predate that and drop out; steps resolved mid-walk (created
-     * together) stay counted. Null when [thread] isn't an ordered step or
-     * its walkthrough has no open steps.
+     * A label alone can't identify one walkthrough (every unlabeled run shares
+     * ""), so the cohort is same-label steps created at or after the earliest
+     * open one: finished walkthroughs drop out, steps resolved mid-walk stay counted.
      */
     fun stableTotal(threads: List<CommentThread>, thread: CommentThread): Int? {
         if (thread.order == null) return null

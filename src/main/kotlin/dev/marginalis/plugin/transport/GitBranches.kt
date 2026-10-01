@@ -3,18 +3,9 @@ package dev.marginalis.plugin.transport
 import java.nio.file.Files
 import java.nio.file.Path
 
-/**
- * Current git branch of a directory, read straight from `.git/HEAD` — no
- * git4idea dependency, so the plugin stays platform-only and the answer is
- * available even for VCS setups the IDE hasn't mapped.
- *
- * The branch is what disambiguates same-layout worktrees (the one case
- * where project name and file layout are identical by construction), so
- * ping and resolution errors carry it.
- */
+// Reads .git/HEAD directly rather than via git4idea: keeps the plugin
+// platform-only and works for roots the IDE hasn't mapped to a VCS.
 object GitBranches {
-
-    /** Branch name of the checkout containing [root]; short SHA when detached; null when not git. */
     fun of(root: Path): String? {
         var dir: Path? = root
         while (dir != null) {
@@ -39,7 +30,7 @@ object GitBranches {
         return if (text.startsWith("ref: refs/heads/")) {
             text.removePrefix("ref: refs/heads/")
         } else {
-            text.take(8) // detached HEAD: enough SHA to identify
+            text.take(8)
         }
     }
 }

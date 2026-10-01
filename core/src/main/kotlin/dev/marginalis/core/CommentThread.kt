@@ -3,61 +3,22 @@ package dev.marginalis.core
 import java.time.Instant
 import java.util.UUID
 
-/**
- * One margin conversation, held at the width of its subject.
- *
- * The anchor is a ladder, and a thread stands on one rung of it: a line of
- * a file, a whole file, or the project itself. Each rung up drops what the
- * narrower one needed — [line] and [anchorText] go together or not at all,
- * and without a [file] there is no line to have. What remains is always the
- * same conversation.
- *
- * The anchor here is data only: `line` is the last known good position and
- * `anchorText` is the content fingerprint used to re-find it when line
- * numbers go stale (they always do — the code moves underneath). Keeping a
- * *live* anchor attached to an editing surface is an adapter concern.
- *
- * Above the line there is nothing to re-find and nothing that can drift: a
- * file-level thread ("this module needs a README") outlives any rewrite of
- * its file, and a project-level one ("we never settled on error handling")
- * is tied to nothing at all. Either may still carry a [segment] — not as an
- * anchor then, but as provenance: the words the user had selected when the
- * thought started.
- */
 class CommentThread(
-    /** Project-relative path; null = project-level. */
+    /** Project-relative path. */
     val file: String?,
-    /** 0-based, last known good; null = no line (the file, or the project). */
+    /** 0-based, last known good. */
     var line: Int?,
-    /**
-     * Text of the anchor line; how the thread re-finds its place. Set at
-     * creation, rewritten only by orphan rescue (comment_reanchor) — a
-     * rescued thread that kept its old fingerprint would re-orphan on the
-     * next restart. Null exactly when [line] is: an anchor is the pair.
-     */
     var anchorText: String?,
     val id: String = UUID.randomUUID().toString(),
     val createdAt: Instant = Instant.now(),
-    /** Step position in a guided walkthrough ("look here Nth"); null = not part of one. */
     val order: Int? = null,
-    /** Walkthrough label (e.g. "A") so several guided sequences can coexist. */
     val walkthrough: String? = null,
     /**
-     * The user's selection: a span anchor within the line, or — once the
-     * thread widens past the line it started on — the provenance of the
-     * thought, the words that sparked a comment about the whole file or the
-     * whole project. Null = no selection was made. Human-created only (the
-     * selection gesture); agents read segments, never write them.
+     * Human-created only (the selection gesture); agents read segments, never
+     * write them. On a file- or project-level thread it is provenance, not an anchor.
      */
     val segment: Segment? = null,
-    /** What response this thread asks of its reader; null = ordinary comment. */
     val severity: Severity? = null,
-    /**
-     * What kind of response it asks for — a finding to fix, guidance to
-     * follow, a question to answer; null = ordinary comment. Independent of
-     * [severity] in both directions: either may be set without the other,
-     * and any pairing of them means what both words mean.
-     */
     val intent: Intent? = null,
 ) {
     init {
@@ -69,11 +30,9 @@ class CommentThread(
         }
     }
 
-    /** Nothing but the project: no path, no line, nothing that can go stale. */
     val isProjectLevel: Boolean
         get() = file == null
 
-    /** The file itself is the subject, not a place in it. */
     val isFileLevel: Boolean
         get() = file != null && line == null
 
@@ -85,21 +44,14 @@ class CommentThread(
         private set
 
     /**
-     * When this conversation last actually changed — something said, or its
-     * status moved. It is a cursor, not a heartbeat: reading a thread does
-     * not change it (a listing would then bump everything it returns), and
-     * neither does an anchor sliding as the file is edited. That restraint
-     * is the whole point — an agent that asks "what moved since I last
-     * looked?" must get an answer that shrinks to nothing when nothing did.
+     * A cursor, not a heartbeat: reads and anchor drift must not touch it, or
+     * "what moved since I last looked?" never shrinks to nothing.
      */
     @Volatile
     var updatedAt: Instant = createdAt
         private set
 
-    /**
-     * Mark a mutation this thread does not own — a message body revised in
-     * place, which is the one change that happens inside a [Message].
-     */
+    /** For the one change made inside a [Message]: a body revised in place. */
     fun touch() {
         updatedAt = Instant.now()
     }
@@ -130,16 +82,8 @@ class CommentThread(
         touch()
     }
 
-    /**
-     * Orphan rescue: move to a verified new anchor and reopen, atomically.
-     * Only an orphaned thread may move — a live anchor doesn't. The fresh
-     * [anchorText] fingerprint is mandatory: a rescue that kept its old one
-     * would re-orphan on the next restart.
-     */
+    /** The fresh [anchorText] is mandatory: a rescue that kept the old one would re-orphan on the next restart. */
     fun rescueTo(line: Int, anchorText: String) {
-        // Guarded on the anchor itself, not on the rung: everything above the
-        // line has nothing to move, and moving one would leave a line with no
-        // file to be in.
         check(this.line != null) {
             val subject = if (isProjectLevel) "the project" else "its file"
             "this thread is about $subject as a whole and has no anchor to move; it comes back with what it is about"
@@ -153,28 +97,21 @@ class CommentThread(
         touch()
     }
 
-    /** Rehydration only: restore persisted status without lifecycle semantics. */
+    /** Rehydration only. */
     fun restoreStatus(status: ThreadStatus) {
         this.status = status
     }
 
-    /**
-     * Rehydration only: put back the persisted [updatedAt]. Loading a thread
-     * is not a change to it — without this, every restart would rewrite the
-     * whole margin's history as "just now".
-     */
+    /** Rehydration only: loading a thread is not a change to it. */
     fun restoreUpdatedAt(updatedAt: Instant) {
         this.updatedAt = updatedAt
     }
 
-    /** Messages no agent has consumed yet — the user-facing "will be seen" count. */
     fun unreadCount(): Int = messages.count { !it.seenByAnyAgent }
 
-    /** Messages a specific agent hasn't seen — that agent's sweep is keyed by this. */
     fun unreadCountFor(agentKey: String): Int = messages.count { !it.seenBy(agentKey) }
 
-    /** Whose turn: the last word was the agent's, or was addressed to the user. */
-    fun awaitsUser(): Boolean = messages.lastOrNull()?.awaits == Turn.USER
+    fun awaitsUser(): Boolean = messages.lastOrNull()?.awaits == Turn.USER_OWES
 
     fun turn(): Turn? = turnFor(null)
 
@@ -182,10 +119,10 @@ class CommentThread(
         val last = messages.lastOrNull()
         val turn = when {
             status !is ThreadStatus.Open -> null
-            last?.awaits == Turn.USER -> Turn.USER
-            else -> Turn.AGENT
+            last?.awaits == Turn.USER_OWES -> Turn.USER_OWES
+            else -> Turn.AGENT_OWES
         }
         val addressee = last?.to
-        return turn?.takeIf { agentKey == null || it == Turn.USER || addressee == null || addressee == Addressee.Agent(agentKey) }
+        return turn?.takeIf { agentKey == null || it == Turn.USER_OWES || addressee == null || addressee == Addressee.Agent(agentKey) }
     }
 }

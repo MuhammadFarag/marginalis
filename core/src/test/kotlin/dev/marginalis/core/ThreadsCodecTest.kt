@@ -120,7 +120,6 @@ class ThreadsCodecTest {
         val plain = CommentThread("c.py", 3, "z")
         val decoded = ThreadsCodec.decode(ThreadsCodec.encode(listOf(guidanceBlocker, question, plain)))
 
-        // The two vocabularies are independent in both directions.
         assertEquals(Intent.GUIDANCE, decoded[0].intent)
         assertEquals(Severity.BLOCKER, decoded[0].severity)
         assertEquals(Intent.QUESTION, decoded[1].intent)
@@ -268,9 +267,7 @@ class ThreadsCodecTest {
             }]}
         """.trimIndent()
         val (withMessage, silent) = ThreadsCodec.decode(legacy)
-        // Newest message is the best evidence of when it last moved…
         assertEquals(Instant.parse("2026-07-18T12:00:05Z"), withMessage.updatedAt)
-        // …and with nothing said, its birth is all there is.
         assertEquals(Instant.parse("2026-07-18T12:00:00Z"), silent.updatedAt)
     }
 

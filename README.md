@@ -13,7 +13,7 @@ live code, built for you and your agent.
 question in distinct colors, the user decides, and the agent locks the
 decision in](docs/images/margin-conversation.png)
 
-<sub>Captured on v0.1.22. More in the
+<sub>Captured on v0.1.22, before the 0.1.29 icon family. More in the
 [screenshot tour](docs/screenshots.md).</sub>
 
 ## How it works
@@ -38,9 +38,14 @@ editable until an agent has read it.
   orphaned threads.
 - **Spans.** Select the words, not just the line. The span stays tinted
   in the editor, and the agent is told to address it specifically.
-- **Severity.** Agents mark review findings `blocker` ("act before this
-  proceeds") or `nit` ("dismiss guilt-free"). The tool window filters to
-  Blockers Only or Awaiting You. A gate, not a weight: importance lives
+- **Beyond the line.** A thread can be about a whole file or the whole
+  project. Start one from the editor menu (*Comment on File*), the tool
+  window, or by widening a draft with the Submit dropdown.
+- **Severity and intent.** Agents mark review findings `blocker` ("act
+  before this proceeds") or `nit` ("dismiss guilt-free"), and say what a
+  thread wants: a `finding` to fix, `guidance` to follow, a `question` to
+  answer. The tool window filters by either, or by whose move it is
+  (Awaiting You, Awaiting Agent). A gate, not a weight: importance lives
   in prose.
 - **Walkthroughs.** Ordered steps across files for reviewing a change.
   Resolving a step advances to the next.
@@ -57,12 +62,18 @@ editable until an agent has read it.
   rendered through the IDE's own color scheme, quote-the-selection in one
   click, and drafts that survive closing the panel.
 - **Multiple agents.** Agents introduce themselves, get stable
-  per-identity colors, and keep separate read receipts.
+  per-identity colors, and keep separate read receipts. Type **@** in a
+  reply to address one of them; a hand back wakes only the agents that
+  have something to answer.
+- **References.** *Copy Reference* puts `mg:3d4770ad` on the clipboard
+  for a thread or message. In a reply it renders as a link that opens
+  the thread; in your agent's chat, the agent can look it up.
 
 ## Install
 
-Download the latest `marginalis-*.zip` from
-[Releases](https://github.com/MuhammadFarag/marginalis/releases), then
+Settings → Plugins → Marketplace → search **Marginalis**. Or download a
+`marginalis-*.zip` from
+[Releases](https://github.com/MuhammadFarag/marginalis/releases) and use
 Settings → Plugins → ⚙ → *Install Plugin from Disk*. Settings live under
 *Tools → Marginalis*.
 
@@ -78,19 +89,24 @@ GET /api/marginalis/agent_guide and follow it.
 ```
 
 The guide covers turn etiquette, identity and read receipts, anchoring
-rules, severity and walkthrough vocabulary, orphan rescue, and the full
-API reference. CI checks that it mentions every endpoint. The API itself
-is plain JSON over the built-in server:
+rules, severity and intent vocabulary, walkthroughs, orphan rescue,
+handing back, and the full API reference with response shapes. CI checks
+that it mentions every endpoint. The API itself is plain JSON over the
+built-in server:
 
 ```
-GET  ping · agent_guide · comment_list?file=&status=&unread_only=&awaiting=&project=
+GET  ping · agent_guide · comment_identities?project=
+GET  comment_list?file=&status=&intent=&awaiting=&unread_only=&updated_after=&summary=&ref=&project=
 GET  comment_wait?project=&since=&timeout=               (held until you hand back)
-POST comment_add {file, line, body, anchor_text?, order?, walkthrough?, severity?, project?}
-POST comment_reply {thread_id, body} · comment_resolve · comment_reopen
-POST comment_reanchor {thread_id, line, anchor_text?}   (orphan rescue)
-POST comment_resolve_all {file?} · comment_clear_all {file?}
-POST navigate {file, line, anchor_text?, project?}      (consent-gated)
+POST comment_add {body, file?, line?, anchor_text?, severity?, intent?, to?, order?, walkthrough?, project?}
+POST comment_add_batch {items: [...]} · comment_reply {thread_id, body, to?}
+POST comment_resolve · comment_reopen · comment_resolve_all {file?} · comment_clear_all {file?}
+POST comment_reanchor {thread_id, line, anchor_text?} · comment_reanchor_all {file}   (orphan rescue)
+POST navigate {file, line?, anchor_text?, project?}      (consent-gated)
 ```
+
+Omit `line` to talk about the whole file; omit `file` too for the
+project.
 
 `line` is 1-based and treated as a hint. Pass `anchor_text` (the line's
 content) and the server verifies it or searches nearby, answering 409

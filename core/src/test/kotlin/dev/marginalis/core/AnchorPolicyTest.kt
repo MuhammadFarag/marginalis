@@ -44,13 +44,11 @@ class AnchorPolicyTest {
 
     @Test
     fun `stale hint finds the nearest matching line`() {
-        // The agent believed the loop was at line 1; it lives at line 4.
         assertEquals(4, find(near = 1, anchor = "for _ in range(n - 1):"))
     }
 
     @Test
     fun `nearest match wins when several lines match`() {
-        // "prev, curr" appears at lines 3 and 5; hint 5 must not jump to 3.
         assertEquals(5, find(near = 5, anchor = "prev, curr = curr, prev + curr"))
         assertEquals(3, find(near = 2, anchor = "prev, curr"))
     }
@@ -70,8 +68,6 @@ class AnchorPolicyTest {
     fun `hint outside the document still searches its window`() {
         assertEquals(6, find(near = 20, anchor = "return curr"))
     }
-
-    // ------------------------------------------------- the hint contract
 
     private fun resolve(hint: Int, anchor: String?) =
         AnchorPolicy.resolveHint(lines.size, { lines[it] }, hint, anchor)
@@ -102,8 +98,6 @@ class AnchorPolicyTest {
         assertEquals(AnchorPolicy.HintResolution.NoMatch, resolve(0, "this text is nowhere"))
     }
 
-    // ---------------------------------------------------------- segments
-
     private fun anchor(near: Int, anchorText: String, segment: Segment?) =
         AnchorPolicy.findAnchor(lines.size, { lines[it] }, near, anchorText, segment)
 
@@ -115,10 +109,8 @@ class AnchorPolicyTest {
 
     @Test
     fun `context disambiguates repeated exact text`() {
-        // "curr" occurs three times; the suffix pins the middle one.
         val text = "        prev, curr = curr, prev + curr"
         assertEquals(21, AnchorPolicy.findSegmentStart(text, Segment("curr", prefix = "= ", suffix = ",")))
-        // Bare quote falls back to the earliest occurrence.
         assertEquals(14, AnchorPolicy.findSegmentStart(text, Segment("curr")))
     }
 
@@ -148,7 +140,6 @@ class AnchorPolicyTest {
 
     @Test
     fun `ladder rung 2 - reworded span degrades to the line, not a cliff`() {
-        // The span text is gone but the anchor line still matches.
         val found = anchor(near = 3, anchorText = "prev, curr", segment = Segment("initial seed"))
         assertEquals(AnchorPolicy.Anchor.Line(3), found)
     }

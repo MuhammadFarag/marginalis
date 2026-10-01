@@ -12,17 +12,14 @@ import com.intellij.openapi.util.Key
 import dev.marginalis.core.CodeFences
 
 /**
- * Colors code fences in the composer while they're typed. The composer's own
- * highlighter is Markdown's, which leaves fence interiors flat; on each change
- * this runs every fence's code through its language's own lexer and paints
- * the tokens one layer above — the same colors the message will get once
- * rendered, without a bespoke lexer or the daemon on a text field.
+ * The composer's Markdown highlighter leaves fence interiors flat, and the
+ * daemon doesn't run on a text field — so fences are lexed here and painted
+ * one layer above.
  */
 object ComposerFenceHighlighter {
 
     private val PAINTED = Key.create<List<RangeHighlighter>>("marginalis.composerFenceHighlights")
 
-    /** Replace this editor's fence colors with ones for its current text. EDT. */
     fun repaint(editor: Editor, project: Project) {
         val markup = editor.markupModel
         editor.getUserData(PAINTED)?.forEach(markup::removeHighlighter)

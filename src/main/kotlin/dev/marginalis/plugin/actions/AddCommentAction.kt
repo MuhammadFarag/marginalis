@@ -17,15 +17,6 @@ import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.ThreadChooserPopup
 import dev.marginalis.plugin.ui.ThreadInlayManager
 
-/**
- * The user's pen: start a margin thread on the caret line — or, with a
- * selection, on that exact span (the human gesture gets precise; agents
- * stay line-based by design). Opens a draft panel; the thread only
- * materializes (gutter icon, store, agent visibility) when the first
- * message is sent. The message is born unseen, so the agent discovers it
- * via comment_list(unread_only=true) at its next turn — outside a live
- * discussion you are leaving a note, not sending a message.
- */
 class AddCommentAction : AnAction() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -51,17 +42,15 @@ class AddCommentAction : AnAction() {
             else -> editor.caretModel.logicalPosition.line.coerceIn(0, document.lineCount - 1)
         }
 
-        // Bare ⌃⌥M on a line that already has live threads means "open the
-        // conversation here", not "start a duplicate". A selection always
-        // drafts — a new span thread next to an old one is the normal way
-        // to raise a second point on the same line.
+        // A selection always drafts: a span thread beside an existing one is
+        // how a second point on the same line gets raised.
         if (segment == null) {
             val store = MarginalisStore.getInstance(project)
             val existing = store.threads.all().filter { thread ->
                 thread.file == relPath &&
                     thread.status !is ThreadStatus.Resolved &&
                     store.markerOf(thread)?.isValid == true &&
-                    store.currentLine(thread) == line
+                    store.syncLine(thread) == line
             }
             existing.singleOrNull()?.let {
                 ThreadInlayManager.open(project, editor, it)
@@ -80,17 +69,9 @@ class AddCommentAction : AnAction() {
     }
 
     companion object {
-        /**
-         * The selection as a quote selector — captured live, never guessed.
-         * Segments stay line-scoped (the context that re-finds them is the
-         * line), so a multi-line selection clamps to its first line: the
-         * gesture still earns a quoted span instead of silently degrading to
-         * a whole-line thread (operator finding). Empty selections — or ones
-         * whose first-line portion is blank — stay whole-line threads.
-         *
-         * Shared with "Comment on File", where the same capture is kept as
-         * provenance rather than as an anchor.
-         */
+        // Segments are line-scoped (re-found via their line), so a multi-line
+        // selection clamps to its first line rather than degrading to a
+        // whole-line thread.
         fun captureSegment(editor: Editor): Segment? {
             val selection = editor.selectionModel
             if (!selection.hasSelection()) return null

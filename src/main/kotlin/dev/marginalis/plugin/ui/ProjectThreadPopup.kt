@@ -23,29 +23,14 @@ import javax.swing.Scrollable
 import javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
 import javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
 
-/**
- * Where a thread about the project unfolds. Every other thread has a place
- * in the code to open beside — a line, or the top of its file; this one has
- * none, so it gets a window of its own rather than borrowing some innocent
- * file's margin and pretending to be about it.
- *
- * The panel inside is the same one the editor hosts, so the conversation,
- * the composer and the step buttons all behave identically.
- */
 object ProjectThreadPopup {
 
     private const val MAX_HEIGHT = 520
     private const val BOTTOM_SLACK = 8
     private const val SCROLL_STEP = 16
 
-    /** Read and reply: an existing thread, opened from the tool window or a walk. */
     fun open(project: Project, thread: CommentThread, revealing: Message? = null) = show(project, thread, revealing) {}
 
-    /**
-     * A thread being started: nothing is stored until the first message is
-     * sent, so an abandoned draft leaves no trace — the same bargain the
-     * line and file gestures make.
-     */
     fun openDraft(project: Project, thread: CommentThread) = show(project, thread, revealing = null) {
         val store = MarginalisStore.getInstance(project)
         if (store.threads.byId(thread.id) == null) store.threads.add(thread)

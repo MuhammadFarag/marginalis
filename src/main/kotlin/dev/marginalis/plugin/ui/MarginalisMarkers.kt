@@ -17,32 +17,17 @@ import dev.marginalis.plugin.store.MarginalisStore
 import java.awt.Color
 
 /**
- * The one place markers are made — creation (agent add, human draft),
- * rehydration, and reopen all attach through here, so the segment ladder
- * and the gutter-icon rules cannot drift apart between call sites.
- *
- * A thread with a resolvable segment gets a tinted EXACT_RANGE highlighter
- * on its span; a segment that no longer matches degrades to a plain line
- * highlighter (the ladder's middle rung — visible in the gutter, no tint).
- * All methods run on the EDT.
+ * The one place markers are made — creation, rehydration and reopen all
+ * attach through here so the segment and gutter-icon rules can't drift
+ * apart between call sites. EDT only.
  */
 object MarginalisMarkers {
 
-    /**
-     * Soft span tint, sitting just above the caret-row layer so search
-     * results and diagnostics still paint over it.
-     */
+    /** Painted just above the caret-row layer so search results and diagnostics still paint over it. */
     private val SPAN_TINT = TextAttributes().apply {
         backgroundColor = JBColor(Color(0xF3, 0xE4, 0xF6), Color(0x43, 0x32, 0x49))
     }
 
-    /**
-     * Attach the right highlighter for [thread] to [document], replacing any
-     * existing marker. Whole-line threads attach at `thread.line` exactly as
-     * ever; segment threads run the quote ladder near the hint and update
-     * `thread.line` to where the span actually landed. File-level threads
-     * mark nothing: no line is the subject, so no line wears a badge.
-     */
     fun attach(project: Project, thread: CommentThread, document: Document) {
         val hinted = thread.line ?: return
         val store = MarginalisStore.getInstance(project)
@@ -83,12 +68,6 @@ object MarginalisMarkers {
         store.setMarker(thread, highlighter)
     }
 
-    /**
-     * Re-assign gutter icons for one file: threads sharing a line get a
-     * single combined icon on the earliest thread's marker (click opens a
-     * chooser), the rest carry only their span tint. Solo threads keep
-     * their own icon. Runs after every thread change — cheap, N is small.
-     */
     fun refreshIcons(project: Project, file: String) {
         refreshFileGlyph(project, file)
         val store = MarginalisStore.getInstance(project)
@@ -105,14 +84,8 @@ object MarginalisMarkers {
     }
 
     /**
-     * The one glyph a file's open file-level threads get: the folded-corner mark in
-     * the gutter beside line 1, where the panel unfolds. It is display only —
-     * kept out of the thread→marker registry precisely so nothing reads a
-     * line off it and nothing orphans when line 1 changes. A file-level
-     * thread's fate is its file's, and only its file's.
-     *
-     * Rebuilt from scratch on every change to this file's threads; the
-     * document is loaded only when there is actually a glyph to show.
+     * Display only — deliberately kept out of the thread→marker registry so
+     * nothing reads a line off it and nothing orphans when line 1 changes.
      */
     private fun refreshFileGlyph(project: Project, file: String) {
         val store = MarginalisStore.getInstance(project)

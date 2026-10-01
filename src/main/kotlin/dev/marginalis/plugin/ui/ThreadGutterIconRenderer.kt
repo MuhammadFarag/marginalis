@@ -9,19 +9,9 @@ import com.intellij.openapi.util.text.StringUtil
 import dev.marginalis.core.CommentThread
 import javax.swing.Icon
 
-/**
- * Collapsed state of a gutter position's threads: a single icon whether it
- * stands for one thread or several (segments made same-line threads
- * ordinary). Solo thread: click toggles its panel. Several: click opens a
- * chooser. Status merges pessimistically — any unread shows unread, any
- * orphan shows the dashed frame.
- *
- * Two positions use it: a line's own threads, and — beside line 1 — a
- * file's file-level threads, which are collapsed conversations too.
- */
 class ThreadGutterIconRenderer(
     private val project: Project,
-    /** The threads collapsed into this icon, in creation order; never empty. */
+    /** Never empty. */
     private val threads: List<CommentThread>,
 ) : GutterIconRenderer() {
 

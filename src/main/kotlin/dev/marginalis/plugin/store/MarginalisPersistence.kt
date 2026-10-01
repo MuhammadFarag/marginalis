@@ -7,12 +7,6 @@ import dev.marginalis.core.ThreadsCodec
 import java.nio.file.Files
 import java.nio.file.Path
 
-/**
- * File I/O for thread durability: `.idea/marginalis.json`, per project —
- * private notes, kept out of version control by the usual `.idea` rules.
- * The format itself lives in the core codec; only markers are never
- * persisted (they die with the Document and are rebuilt by re-anchoring).
- */
 object MarginalisPersistence {
     private val log = logger<MarginalisPersistence>()
 

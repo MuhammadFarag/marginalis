@@ -25,13 +25,13 @@ object MarginalisIcons {
     val LineMark = marks.getValue(Mark(MarkSubject.LINE, null))
     val ProjectMark = marks.getValue(Mark(MarkSubject.PROJECT, null))
 
-    private val turnSignals = mapOf(Turn.USER to load("turnYou"), Turn.AGENT to load("turnAgent"))
-    private val turnBadges = mapOf(Turn.USER to load("turnYouBadge"), Turn.AGENT to load("turnAgentBadge"))
+    private val turnSignals = mapOf(Turn.USER_OWES to load("turnYou"), Turn.AGENT_OWES to load("turnAgent"))
+    private val turnBadges = mapOf(Turn.USER_OWES to load("turnYouBadge"), Turn.AGENT_OWES to load("turnAgentBadge"))
 
     private val toolWindow = load("marginalisToolWindow")
     private val toolWindowBadged = mapOf(
         StripeBadge.BLOCKER to BadgeIconSupplier(toolWindow).getErrorIcon(true),
-        StripeBadge.AWAITING_YOU to badged(toolWindow, turnBadges.getValue(Turn.USER)),
+        StripeBadge.AWAITING_YOU to badged(toolWindow, turnBadges.getValue(Turn.USER_OWES)),
     )
 
     fun turnSignal(turn: Turn): Icon = turnSignals.getValue(turn)

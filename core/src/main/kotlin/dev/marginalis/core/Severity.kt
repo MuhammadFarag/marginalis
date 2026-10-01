@@ -1,26 +1,16 @@
 package dev.marginalis.core
 
 /**
- * What response a thread asks of its reader — a gate, not a weight.
- * BLOCKER: act before this work proceeds. NIT: taste, dismiss guilt-free.
- * The middle of the scale is deliberately absent: an unmarked thread is an
- * ordinary comment, and only the ends of the scale change the reader's
- * behavior. Importance is not encoded anywhere — it lives in prose, where
- * it can be argued (see the decision log).
- *
- * Agent-side vocabulary only: spans are the human's precision, severity is
- * the agent's.
+ * A gate, not a weight: the middle of the scale is deliberately absent (an
+ * unmarked thread is an ordinary comment). Set by agents only.
  */
 enum class Severity {
     BLOCKER, NIT;
 
     companion object {
         /**
-         * The severity vocabulary — deliberately just the two ends, no
-         * aliases. An unknown value is [Parsed.Invalid], never a silently
-         * unmarked thread: the rejection is what tells a misinformed agent
-         * to correct course (the skill teaches the vocabulary; the API
-         * enforces it).
+         * No aliases. Unknown values are rejected, never silently unmarked:
+         * the rejection is what corrects a misinformed agent.
          */
         fun parse(raw: String?): Parsed<Severity?> {
             if (raw == null) return Parsed.Ok(null)
@@ -34,7 +24,7 @@ enum class Severity {
             }
         }
 
-        /** Persistence tolerance: unknown values load as unmarked rather than failing the whole file. */
+        /** For persistence: an unknown value loads as unmarked rather than failing the whole file. */
         fun parseLenient(raw: String?): Severity? = parse(raw).getOrElse { null }
     }
 }

@@ -207,6 +207,29 @@ declined, captured from real use.
   (`PluginInstaller.installFromDisk` hard-codes it); the two-step flow is
   the reload loop — documented in CLAUDE.md.
 
+## Shipped (2026-07-27 → 2026-09-28, v0.1.25–v0.1.29)
+
+- ✅ v0.1.25 (first stable-channel release, listing public, #7) — the
+  anchor ladder: file-level (#12) and project-level (#16) threads with
+  "Comment on File" (#15) and the composer's split-button widenings;
+  thread intents `finding|guidance|question` (#14); `comment_add_batch`
+  (#10), `comment_reanchor_all` (#11), the `updated_after` cursor and
+  teaching 400s (#13); response shapes in the served guide (#9); the
+  skill slimmed to a pure bootstrap.
+- ✅ v0.1.26 — metadata only: the listing leads with agent onboarding.
+- ✅ v0.1.27 — hand back (#24): Hand Back / "Submit & hand back" and the
+  `comment_wait` long-poll; `awaiting=agent|user` (#18); turn glyphs in
+  the Project view (#4); code fences colored while typing (#3); a Claude
+  Code hook recipe in the README.
+- ✅ v0.1.28 — first contact and addressing: `comment_identities` (#19),
+  `comment_list?summary=true` (#20), `to` + @-picker + targeted hand back
+  (#17), `mg:` references (#23); thread panels keep themselves current
+  and the project-thread window scrolls.
+- ✅ v0.1.29 — the icon family (#25, spec in
+  `docs/iconography-handover.md`): brand-bubble gutter marks with intent
+  hues, ✉ / ✈ turn badges on file icons via `FileIconPatcher`, the mini
+  plugin icon on the tool window.
+
 ## Decision log
 
 - **Importance dimension declined** (2026-07-24): severity stays
@@ -237,3 +260,31 @@ declined, captured from real use.
   `65db25b`): comment-hygiene sweep; AuthorKind.HUMAN → USER with tolerant
   loader; Author + ThreadStatus as sealed ADTs; vendor email → m@far.ag;
   description → "between you and your coding agent".
+- **Hand back is a long-poll, not a polling loop** (2026-09-27): measured
+  ~6 ms per local request; both options are negligible, but the held
+  request is idle-cheap and instant. On timeout the agent does not re-arm
+  — the user stepped away and will type when back. Claude Code "channels"
+  (true push) considered and dropped.
+- **No body-returning "peek"** (2026-09-28, #20): receipts are the
+  promise that "listed" means "read", so a survey returns metadata only
+  (`summary=true`) and marks nothing. "Start from now" identity
+  registration and pagination declined — reusing an identity (#19) and
+  the awaiting set (#18) cover the incident.
+- **Pinned / never-resolve threads deferred** (2026-09-28, #5): lasting
+  decisions belong in code, commits and docs; an eternally open thread
+  would block every future edit of its file. Resolution authority stays
+  unenforced (etiquette + `resolved_by` + reopen).
+- **Intent, not kind** (2026-07-27, #14): the field is `intent` because
+  `author.kind` already exists on the wire.
+- **Icons: dark-first, theme-neutral** (2026-09-28, #25): one SVG per
+  brand icon, no `_dark` twin; the user works in the dark theme. ● / ○
+  replaced by ✉ / ✈ ("the glyphs never stuck"); the ✈ is the Hand Back
+  button's plane, so gesture and result share one symbol.
+- **Tool window title count removed** (2026-09-28, #26): it counted
+  every open thread owed (10 in a demo) while the user saw two badged
+  files. What to count is open in #26.
+- **Housekeeping closed** (2026-09-28): #2 (plugin marketplace — the
+  skill is a stable bootstrap now), #8 (skill-trigger evals — no
+  evidence of under-triggering), #6 folded into #22. #1 (markdown API)
+  waits for the floor to reach 262: 2025.2–2026.1 bundle markdown 0.7.2,
+  where the modern signatures are missing or experimental.

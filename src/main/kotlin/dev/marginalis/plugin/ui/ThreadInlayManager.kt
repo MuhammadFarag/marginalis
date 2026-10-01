@@ -14,22 +14,16 @@ import dev.marginalis.core.Message
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisStore
 
-/**
- * Opens/closes the expanded thread view: a block inlay below the anchor line
- * hosting a real Swing panel (EditorEmbeddedComponentManager). Bookkeeping
- * lives in editor user data, so it dies with the editor.
- */
 object ThreadInlayManager {
 
     private val OPEN_INLAYS = Key.create<MutableMap<String, Pair<Inlay<*>, ThreadPanel>>>("marginalis.open.inlays")
     private val LISTENER_INSTALLED = Key.create<Boolean>("marginalis.store.listener")
 
-    /** Toggle the inlay for [thread] in [editor]. EDT only (gutter clicks arrive there). */
     fun toggle(project: Project, editor: Editor, thread: CommentThread) {
         val open = openInlays(editor)
         open.remove(thread.id)?.let { (inlay, _) ->
-            // A stale entry (inlay disposed by a document reload, not by us)
-            // is not an open panel — fall through and open for real.
+            // A document reload disposes inlays behind our back; a stale
+            // entry is not an open panel.
             val wasOpen = inlay.isValid
             Disposer.dispose(inlay)
             if (wasOpen) return
@@ -37,17 +31,11 @@ object ThreadInlayManager {
         openPanel(project, editor, thread, ensureStored = {})
     }
 
-    /** Open (never close) the panel — used by tool-window navigation. */
     fun open(project: Project, editor: Editor, thread: CommentThread, revealing: Message? = null) {
         val panel = openPanel(project, editor, thread, ensureStored = {}) ?: return
         revealing?.let { ApplicationManager.getApplication().invokeLater { panel.reveal(it) } }
     }
 
-    /**
-     * Open a panel for a thread that doesn't exist yet (human-initiated,
-     * AddCommentAction). Nothing is stored or marked until the first message
-     * is sent; closing an unsent draft leaves no trace.
-     */
     fun openDraft(project: Project, editor: Editor, thread: CommentThread) {
         openPanel(project, editor, thread) {
             val store = MarginalisStore.getInstance(project)
@@ -65,19 +53,15 @@ object ThreadInlayManager {
     private fun openPanel(project: Project, editor: Editor, thread: CommentThread, ensureStored: () -> Unit): ThreadPanel? {
         val open = openInlays(editor)
         open[thread.id]?.let { (inlay, panel) ->
-            // Document reloads (external file changes) dispose inlays behind
-            // our back; a stale map entry must not veto reopening forever.
+            // Document reloads dispose inlays behind our back; a stale entry
+            // must not veto reopening.
             if (inlay.isValid) return panel
             open.remove(thread.id)
         }
 
         val panel = ThreadPanel(project, editor, thread, ensureStored) { close(editor, thread.id) }
-        // A line thread unfolds below its anchor line. A file-level thread
-        // has no line to sit under, so it unfolds ABOVE the first one —
-        // above all the code it is about, matching the glyph in the gutter
-        // beside line 1.
         val aboveFirstLine = thread.isFileLevel
-        val line = (MarginalisStore.getInstance(project).currentLine(thread) ?: 0)
+        val line = (MarginalisStore.getInstance(project).syncLine(thread) ?: 0)
             .coerceAtMost(editor.document.lineCount - 1)
         val offset =
             if (aboveFirstLine) editor.document.getLineStartOffset(0)
@@ -94,9 +78,8 @@ object ThreadInlayManager {
                 offset,
             ),
         ) ?: return null
-        // The panel computes its width from the live viewport; re-render on
-        // width changes so an editor resize reflows open panels (scrolling
-        // also fires visible-area events — same width, filtered out).
+        // The panel sizes from the live viewport width; scrolling fires this
+        // too, with the width unchanged.
         editor.scrollingModel.addVisibleAreaListener(
             { event ->
                 if (event.newRectangle.width != event.oldRectangle?.width) panel.refresh()
@@ -115,10 +98,8 @@ object ThreadInlayManager {
     }
 
     /**
-     * Dynamic-unload cleanup: dispose every open panel and clear our user
-     * data from every editor. Editor user data outlives the plugin's
-     * classloader — anything of ours left behind (panels, inlays, even the
-     * stale Key values) pins the old classloader after a hot reload.
+     * Editor user data outlives the plugin's classloader — anything of ours
+     * left behind (panels, inlays, even Key values) pins it after a dynamic unload.
      */
     fun disposeAll() {
         for (editor in EditorFactory.getInstance().allEditors) {
@@ -128,14 +109,6 @@ object ThreadInlayManager {
         }
     }
 
-    /**
-     * One store listener per editor: closes the panel when its thread is
-     * deleted OR resolved — one rule: only open threads hold editor real
-     * estate. A deleted thread's panel is a ghost; a resolved one's is a
-     * conversation that already folded (its marker drops at the same
-     * moment, and Resolve All used to leave a wall of concluded panels
-     * behind — operator finding). Panels keep their own content current.
-     */
     private fun installStoreListener(project: Project, editor: Editor) {
         if (editor.getUserData(LISTENER_INSTALLED) == true) return
         editor.putUserData(LISTENER_INSTALLED, true)

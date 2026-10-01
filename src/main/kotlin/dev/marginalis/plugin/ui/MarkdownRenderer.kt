@@ -36,13 +36,8 @@ import javax.swing.event.PopupMenuEvent
 import javax.swing.event.PopupMenuListener
 
 /**
- * Markdown-lite rendering for message bodies: bold, italic, inline code,
- * links, lists — and fenced code blocks as read-only editor fragments with
- * the IDE's real lexer and color scheme.
- *
- * Deliberately scoped (CommonMark flavour, no tables/images/raw HTML): each
- * extra construct carries its own Swing sizing tax, and conversation rarely
- * needs more. Grow on demand.
+ * Deliberately CommonMark only (no tables/images/raw HTML): each extra
+ * construct carries its own Swing sizing tax.
  */
 object MarkdownRenderer {
 
@@ -51,14 +46,11 @@ object MarkdownRenderer {
     fun render(project: Project, body: String, wrapWidth: Int): JComponent {
         val box = Box.createVerticalBox()
         var consumedUpTo = 0
-        // Closed fences split out first so they can render natively; an
-        // unclosed one is still prose to CommonMark.
+        // An unclosed fence is still prose to CommonMark.
         for (fence in closedFences(body)) {
             val textBefore = body.substring(consumedUpTo, fence.start)
             if (textBefore.isNotBlank()) box.add(htmlPane(project, textBefore, wrapWidth))
             box.add(Box.createVerticalStrut(JBUI.scale(4)))
-            // A code block ends at its last line of code: trailing blank
-            // lines are layout noise in a rendered message.
             box.add(codeBlock(project, fence.language, body.substring(fence.codeStart, fence.codeEnd).trimEnd('\n')))
             box.add(Box.createVerticalStrut(JBUI.scale(4)))
             consumedUpTo = fence.end
@@ -68,11 +60,6 @@ object MarkdownRenderer {
         return box
     }
 
-    /**
-     * One-line preview (tooltips, tool window rows): markdown syntax stripped,
-     * each fenced block sampled inline by its first [FENCE_PREVIEW_CHARS]
-     * characters of code.
-     */
     fun previewText(body: String): String {
         val flattened = StringBuilder()
         var consumedUpTo = 0
@@ -95,16 +82,13 @@ object MarkdownRenderer {
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
         val html = HtmlGenerator(markdown, tree, flavour).generateHtml()
             .removePrefix("<body>").removeSuffix("</body>")
-            // Lite scope: no image loading from message bodies.
             .replace(Regex("<img[^>]*>"), "[image]")
             .let(Reference::linkify)
 
         val pane = JEditorPane()
         val kit = HTMLEditorKitBuilder().withWordWrapViewFactory().build()
-        // Margin-scale headings: the default HTML sizes are document scale,
-        // and a 2x h1 inside a margin panel towers over the code it
-        // annotates. Headings here mean structure, not volume — a notch
-        // above body text, bold carrying the rest.
+        // Default HTML heading sizes are document scale; a 2x h1 in a margin
+        // panel towers over the code it annotates.
         val base = JBUI.Fonts.label().size
         kit.styleSheet.addRule("h1 { font-size: ${(base * 1.2f).toInt()}pt; margin: 6px 0 2px 0; }")
         kit.styleSheet.addRule("h2 { font-size: ${(base * 1.1f).toInt()}pt; margin: 5px 0 2px 0; }")
@@ -123,8 +107,7 @@ object MarkdownRenderer {
                 }
             }
         }
-        // Selectable text deserves a right-click: Swing installs no context
-        // menu on its own, so "copy" was undiscoverable (operator finding).
+        // Swing installs no context menu on a JEditorPane.
         pane.componentPopupMenu = JPopupMenu().also { menu ->
             val copy = JMenuItem("Copy").apply { addActionListener { pane.copy() } }
             val selectAll = JMenuItem("Select All").apply { addActionListener { pane.selectAll() } }
@@ -138,8 +121,7 @@ object MarkdownRenderer {
                 override fun popupMenuCanceled(e: PopupMenuEvent) {}
             })
         }
-        // Measure at the target width so preferred height reflects wrapping
-        // (the recurring inlay-sizing dragon; see ThreadPanel).
+        // Sized to the target width first so preferred height reflects wrapping.
         pane.setSize(wrapWidth, Int.MAX_VALUE)
         pane.alignmentX = Component.LEFT_ALIGNMENT
         return pane
@@ -158,7 +140,6 @@ object MarkdownRenderer {
             .show((click.inputEvent as? MouseEvent)?.let(::RelativePoint) ?: RelativePoint.getCenterOf(source), Balloon.Position.above)
     }
 
-    /** Fenced block → read-only editor fragment: real lexer, user's color scheme. */
     private fun codeBlock(project: Project, language: String?, code: String): JComponent {
         val document = EditorFactory.getInstance().createDocument(code)
         val field = EditorTextField(document, project, CodeFenceFileTypes.of(language), true, false)

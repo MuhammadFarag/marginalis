@@ -42,6 +42,7 @@ import dev.marginalis.core.SendOption
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.settings.MarginalisSettings
+import dev.marginalis.plugin.settings.TimeFormat
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import java.awt.BorderLayout
@@ -70,15 +71,9 @@ import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 
-/**
- * Expanded state of a thread: messages with author attribution, an inline
- * reply field — the user's entire outbound channel, one click and one
- * keystroke away — and a resolve button on the header. Esc closes and
- * returns focus to the editor it lives in.
- */
 class ThreadPanel(
     private val project: Project,
-    /** The editor hosting this panel; null when it floats in a popup of its own. */
+    /** Null when the panel floats in a popup of its own. */
     private val editor: Editor?,
     private val thread: CommentThread,
     private val ensureStored: () -> Unit,
@@ -89,11 +84,6 @@ class ThreadPanel(
     private val messageComponents = mutableMapOf<String, JComponent>()
     private val statusLabel = JBLabel()
 
-    /**
-     * Submit, with the alternatives hanging off it — the Commit/Commit-and-Push
-     * shape. The default action always does what the composer says it will;
-     * [refresh] decides what the dropdown offers.
-     */
     private val submitAction = object : AbstractAction("Submit") {
         override fun actionPerformed(e: ActionEvent?) {
             sendReply()
@@ -135,13 +125,8 @@ class ThreadPanel(
         refresh()
     }
 
-    // Markdown-aware composer: the IDE's own Markdown lexer highlights as you
-    // type (plain text when the Markdown plugin is absent). Same input, same
-    // colors you'll see rendered after submitting.
     private val replyArea = EditorTextField("", project, CodeFenceFileTypes.of("markdown")).apply {
         setOneLineMode(false)
-        // Fence interiors get their language's colors as they're typed —
-        // Markdown's own highlighter leaves them flat.
         addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
                 editor?.let { ComposerFenceHighlighter.repaint(it, project) }
@@ -156,8 +141,6 @@ class ThreadPanel(
         addSettingsProvider { composerEditor ->
             composerEditor.settings.isUseSoftWraps = true
             ComposerFenceHighlighter.repaint(composerEditor, project)
-            // Same right-click the rendered messages got: undiscoverable
-            // clipboard actions barely exist.
             composerEditor.installPopupHandler(
                 ContextMenuPopupHandler.Simple(
                     DefaultActionGroup(
@@ -185,9 +168,6 @@ class ThreadPanel(
     private var editingMessageId: String? = null
 
     init {
-        // The accent rail: the panel's left edge names its kind at a glance —
-        // blocker red, nit gray, brand purple otherwise — and visually ties
-        // the unfolded conversation to the margin it came from.
         val accent = when (thread.severity) {
             Severity.BLOCKER -> JBColor(Color(0xDB, 0x58, 0x60), Color(0xC7, 0x54, 0x50))
             Severity.NIT -> JBColor(Color(0xB8, 0xB8, 0xB8), Color(0x5E, 0x61, 0x64))
@@ -207,8 +187,7 @@ class ThreadPanel(
         add(buildReplyRow(), BorderLayout.SOUTH)
         // Submit must be a REGISTERED shortcut, not a KeyListener: the IDE's
         // key dispatcher routes ⌘⏎ to editor actions (Split Line on several
-        // keymaps) before the component ever sees the event. A component-
-        // local shortcut outranks the keymap while the composer has focus.
+        // keymaps) before the component sees the event.
         object : DumbAwareAction() {
             override fun actionPerformed(e: AnActionEvent) {
                 sendReply()
@@ -222,10 +201,6 @@ class ThreadPanel(
         )
         // Reading mode needs a focus home for Esc and the walk shortcuts.
         isFocusable = true
-        // Draft preservation: whatever is typed survives the panel — saved
-        // on every keystroke, restored on reopen, cleared on send. Esc is
-        // one key; three paragraphs shouldn't be. A restored draft reopens
-        // the composer it was typed in.
         MarginalisStore.getInstance(project).drafts[thread.id]?.let {
             replyArea.text = it.text
             addressee = it.to
@@ -234,8 +209,7 @@ class ThreadPanel(
         replyArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
             override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) = saveDraft()
         })
-        // Esc anywhere in the panel (buttons, links) closes it; the composer
-        // handles its own Esc above because the editor consumes key events.
+        // The composer handles its own Esc: its editor consumes key events.
         registerKeyboardAction(
             { closeAndRefocus() },
             KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
@@ -244,18 +218,14 @@ class ThreadPanel(
         refresh()
     }
 
-    /** Close is a round trip: the margin folds away, the code gets focus back. */
     private fun closeAndRefocus() {
         onClose()
         editor?.contentComponent?.requestFocusInWindow()
     }
 
     /**
-     * Width follows the editor viewport (clamped to stay readable), height
-     * computed. Never set preferredSize directly — an explicit value freezes
-     * the height at construction time and the inlay squashes to a single
-     * line. Live rather than captured: resizing the window used to leave
-     * panels frozen at their open-time width.
+     * Never set preferredSize directly — an explicit value freezes the height
+     * at construction time and the inlay squashes to a single line.
      */
     override fun getPreferredSize(): Dimension {
         val computed = super.getPreferredSize()
@@ -263,29 +233,18 @@ class ThreadPanel(
     }
 
     private fun panelWidth(): Int {
-        // Floating in its own window there is no viewport to follow, so the
-        // panel picks a readable width and the popup takes its size from it.
         val viewport = editor?.scrollingModel?.visibleArea?.width ?: return JBUI.scale(560)
         return (viewport - JBUI.scale(120)).coerceIn(JBUI.scale(360), JBUI.scale(800))
     }
 
     private fun buildHeader(): JComponent {
         val header = JPanel(BorderLayout()).apply { isOpaque = false }
-        // No title at all anymore: the panel IS Marginalis — branding every
-        // panel was the file-name-in-the-title mistake again (same operator
-        // instinct, second application). The severity pill and status line
-        // carry the header.
         statusLabel.font = JBUI.Fonts.smallFont()
         statusLabel.foreground = UIUtil.getContextHelpForeground()
 
         val left = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
-            // The panel-side echo of the gutter glyphs (operator feedback:
-            // a word in the status line was too easy to miss): what the
-            // thread asks for, then how hard it asks — a pill in the same
-            // red as the gutter for blockers, quiet gray for nits, and a
-            // quieter one still for the intent, which is not a gate.
             thread.intent?.let { intent ->
                 add(Chip(intent.name.lowercase(), QUIET_PILL, INTENT_TEXT))
                 add(Box.createHorizontalStrut(JBUI.scale(6)))
@@ -309,12 +268,9 @@ class ThreadPanel(
         return header
     }
 
-    /** Resolve/reopen from the header link — extracted so the link is declarative. */
     private fun toggleResolved() {
         if (thread.status is ThreadStatus.Open) {
-            // Auto-advance: capture the next step BEFORE resolving — the
-            // walk only contains open threads, so afterwards this thread
-            // has no position in it.
+            // Capture the next step BEFORE resolving: the walk holds only open threads.
             val next = nextStepIfAutoAdvancing()
             thread.resolve(Authors.user)
             MarginalisStore.getInstance(project).threads.notifyChanged(thread)
@@ -328,30 +284,21 @@ class ThreadPanel(
         }
     }
 
-    /**
-     * The header's one idiom: step navigation, then the thread's lifecycle
-     * verbs, all as toolbar icons (links next to an icon toolbar were a
-     * mixed metaphor — operator finding). Resolve previews its outcome:
-     * the same green checkmark the gutter will show, flipping to the
-     * balloon when the click would reopen.
-     */
     private fun buildHeaderToolbar(): JComponent {
         val firstStep = navAction("First Step", AllIcons.Actions.Play_first) { walk, i ->
             walk.firstOrNull().takeIf { i != 0 }
         }
         val previousStep = navAction("Previous Step", AllIcons.Actions.PreviousOccurence) { walk, i ->
-            if (i > 0) walk[i - 1] else null
+            if (i != null && i > 0) walk[i - 1] else null
         }
         val nextStep = navAction("Next Step", AllIcons.Actions.NextOccurence) { walk, i ->
-            walk.getOrNull(i + 1)
+            if (i == null) walk.firstOrNull() else walk.getOrNull(i + 1)
         }
         val lastStep = navAction("Last Step", AllIcons.Actions.Play_last) { walk, i ->
             walk.lastOrNull().takeIf { i != walk.size - 1 }
         }
-        // The walk must not require the tool window: the platform's
-        // occurrence shortcuts (⌘⌥↑/⌘⌥↓ on the default keymap — user
-        // remaps follow along) drive prev/next while focus is anywhere in
-        // this panel, matching what the skill has promised all along.
+        // The served skill promises the occurrence shortcuts walk steps
+        // without the tool window.
         val actionManager = ActionManager.getInstance()
         previousStep.registerCustomShortcutSet(
             actionManager.getAction(IdeActions.ACTION_PREVIOUS_OCCURENCE).shortcutSet, this,
@@ -382,7 +329,7 @@ class ThreadPanel(
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabledAndVisible = !isDraft() // nothing to resolve before the first send
+            e.presentation.isEnabledAndVisible = !isDraft()
             if (thread.status is ThreadStatus.Open) {
                 e.presentation.text = "Resolve"
                 e.presentation.icon = AllIcons.General.GreenCheckmark
@@ -395,16 +342,11 @@ class ThreadPanel(
         override fun actionPerformed(e: AnActionEvent) = toggleResolved()
     }
 
-    /**
-     * The single-thread eraser — until now Clear All was the only one.
-     * Deletion is not resolution: no outcome, no log entry, the thread
-     * never happened. Irreversible, so it always confirms.
-     */
     private fun deleteAction(): AnAction = object : AnAction("Delete Thread", null, AllIcons.Actions.GC) {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabledAndVisible = !isDraft() // an unsent draft just closes
+            e.presentation.isEnabledAndVisible = !isDraft()
         }
 
         override fun actionPerformed(e: AnActionEvent) {
@@ -446,11 +388,10 @@ class ThreadPanel(
         override fun actionPerformed(e: AnActionEvent) = closeAndRefocus()
     }
 
-    /** A nav button is enabled exactly when [target] yields a step to go to. */
     private fun navAction(
         name: String,
         icon: Icon,
-        target: (walk: List<CommentThread>, index: Int) -> CommentThread?,
+        target: (walk: List<CommentThread>, index: Int?) -> CommentThread?,
     ): AnAction = object : AnAction(name, null, icon) {
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
@@ -467,16 +408,6 @@ class ThreadPanel(
         }
     }
 
-    /**
-     * The composer gets the full panel width — writing is the panel's main
-     * verb, and the old right-hand button stack was stealing measure from
-     * it. Actions live in a slim row underneath, right-aligned, the layout
-     * every commenting UI has taught hands already. Two-line minimum
-     * height while writing: a one-line box invites one-line thoughts. But
-     * idle, the composer folds to a single prompt row — an empty two-line
-     * box plus an action row was reserving real estate the reader never
-     * asked for (operator finding) — and the first click unfolds it.
-     */
     private fun buildReplyRow(): JComponent {
         sendButton.font = JBUI.Fonts.smallFont()
         cancelEditLink.font = JBUI.Fonts.smallFont()
@@ -523,10 +454,7 @@ class ThreadPanel(
         return replyRow
     }
 
-    /**
-     * Idle ↔ writing. The inlay tracks the panel's preferred size, so the
-     * toggle just swaps rows and revalidates.
-     */
+    /** The inlay tracks the panel's preferred size, so revalidating is enough. */
     private fun setComposerExpanded(expanded: Boolean) {
         composerExpanded = expanded
         replyRow.removeAll()
@@ -540,12 +468,6 @@ class ThreadPanel(
         replyRow.repaint()
     }
 
-    /**
-     * Drop code into the conversation: the current editor selection when one
-     * exists, else what this thread anchors to (its span, or its line) — as
-     * a fenced block tagged with the file's extension, so it renders
-     * natively highlighted like every other fence.
-     */
     private fun quoteIntoReply() {
         val quoted = editor?.selectionModel?.selectedText
             ?: thread.segment?.exact
@@ -568,12 +490,10 @@ class ThreadPanel(
         val editing = editingMessageId?.let { id -> thread.messages.find { it.id == id } }
         if (editing != null) {
             editingMessageId = null
-            // The window may have closed mid-edit: if an agent read the
-            // original in the meantime, it is record now — don't rewrite it.
+            // An agent may have read the original mid-edit; once read, it is record.
             if (!editing.seenByAnyAgent) {
                 editing.body = body
-                // The one change a Message owns; the thread has to be told,
-                // or a sweep by cursor would miss the revision.
+                // A Message can't bump its thread; without touch() a cursor sweep misses the revision.
                 thread.touch()
             }
             replyArea.text = ""
@@ -582,7 +502,7 @@ class ThreadPanel(
             return true
         }
 
-        ensureStored() // draft threads materialize on first send
+        ensureStored()
         thread.addMessage(Message(Authors.user, body, to = addressee))
         addressTo(null)
         replyArea.text = ""
@@ -592,13 +512,6 @@ class ThreadPanel(
         return true
     }
 
-    /**
-     * The dropdown's destinations: land this unsent draft a rung wider than
-     * it began — on [file] as a whole, or on the project when that is null.
-     * The selection that sparked it rides along as provenance either way —
-     * the user pointed at those words even if what they had to say outgrew
-     * them — and the draft, which was never stored, simply ends.
-     */
     private fun submitWiderThan(file: String?) {
         val body = replyArea.text.trim()
         if (body.isEmpty()) return
@@ -682,43 +595,24 @@ class ThreadPanel(
         replyArea.requestFocusInWindow()
     }
 
-    /**
-     * Focus on open: drafts and restored compositions land in the composer;
-     * reading mode keeps the composer folded and focuses the panel itself,
-     * so Esc and the walk shortcuts work without a click.
-     */
     fun focusDefault() {
         if (isDraft() || replyArea.text.isNotBlank()) focusReply() else requestFocusInWindow()
     }
 
-    /**
-     * The step to open after resolving this one, or null when the setting
-     * forbids it or the walk has nothing further. Every thread advances
-     * along its own walk — a walkthrough step through its walkthrough,
-     * an ordinary thread through the open threads in tree order — the
-     * same walk the header arrows drive (operator finding: resolve used
-     * to advance only in guided walkthroughs, stranding review-by-panel).
-     */
     private fun nextStepIfAutoAdvancing(): CommentThread? {
         if (!MarginalisSettings.getInstance().state.walkthroughAutoAdvance) return null
         val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
-        return if (i >= 0) walk.getOrNull(i + 1) else null
+        return i?.let { walk.getOrNull(it + 1) }
     }
 
-    /** Timestamp style is the user's call; "auto" lets the locale decide 12h vs 24h. */
     private fun messageTimeFormatter(): DateTimeFormatter =
-        when (MarginalisSettings.getInstance().state.timeFormat) {
-            "12" -> DateTimeFormatter.ofPattern("h:mm a")
-            "24" -> DateTimeFormatter.ofPattern("HH:mm")
-            else -> DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+        when (MarginalisSettings.getInstance().timeFormat) {
+            TimeFormat.TWELVE_HOUR -> DateTimeFormatter.ofPattern("h:mm a")
+            TimeFormat.TWENTY_FOUR_HOUR -> DateTimeFormatter.ofPattern("HH:mm")
+            TimeFormat.AUTO -> DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
         }.withZone(ZoneId.systemDefault())
 
-    /**
-     * " · step 2/5" — where this thread sits in its walk. Ordered steps use
-     * their fixed position over the walkthrough's stable total (agreeing
-     * with the tool window's (2/5) prefixes even as steps resolve);
-     * unordered threads show their live position in the open-section walk.
-     */
+    /** Ordered steps use the stable total so they agree with the tool window's (n/total) as steps resolve. */
     private fun walkPosition(): String {
         val order = thread.order
         if (order != null) {
@@ -726,7 +620,7 @@ class ThreadPanel(
             return " · step $order/$total"
         }
         val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
-        return if (i >= 0 && walk.size > 1) " · step ${i + 1}/${walk.size}" else ""
+        return if (i != null && walk.size > 1) " · step ${i + 1}/${walk.size}" else ""
     }
 
     private fun refreshSendOptions() {
@@ -776,7 +670,6 @@ class ThreadPanel(
         super.removeNotify()
     }
 
-    /** Rebuild the message list from the store. Must run on the EDT. */
     fun refresh() {
         statusLabel.text = when {
             isDraft() -> "new comment — unsent"
@@ -784,10 +677,8 @@ class ThreadPanel(
             thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
             else -> "orphaned (anchor deleted)"
         }
-        // The affordance follows state — and "Submit" over "Send": nothing is
-        // transmitted anywhere, the message lands in the local store awaiting
-        // the agent's next read. While editing, the composer becomes the
-        // editor: Save + Cancel.
+        // "Submit", not "Send": nothing is transmitted — the message waits in
+        // the local store for the agent's next read.
         submitAction.putValue(
             Action.NAME,
             when {
@@ -803,9 +694,6 @@ class ThreadPanel(
         replyArea.setPlaceholder(
             when {
                 thread.messages.isNotEmpty() -> "Reply… (⌘⏎ to submit)"
-                // The composer names its own subject: a file-level panel
-                // opens at the top of the file, where "this line" would lie,
-                // and a project-level one is nowhere in particular.
                 thread.isProjectLevel -> "Comment on this project… (⌘⏎ to submit)"
                 thread.isFileLevel -> "Comment on this file… (⌘⏎ to submit)"
                 else -> "Comment on this line… (⌘⏎ to submit)"
@@ -815,9 +703,6 @@ class ThreadPanel(
         messagesBox.removeAll()
         messageComponents.clear()
         val timeFormat = messageTimeFormatter()
-        // Consecutive agent messages group under one meta line — the second
-        // "Claude · 14:02" in a row is noise. User messages always keep
-        // theirs: the meta row is where Edit and the seen-check live.
         var previous: Message? = null
         for (message in thread.messages) {
             val grouped = message.continues(previous)
@@ -833,12 +718,7 @@ class ThreadPanel(
         repaint()
     }
 
-    /**
-     * A stable color per agent identity, so concurrent agents are tellable
-     * apart at a glance. The anonymous "Agent" keeps the classic purple;
-     * introduced agents hash their receipt identity into a small palette
-     * (user blue is deliberately absent from it).
-     */
+    /** User blue is deliberately absent from [AGENT_PALETTE]. */
     private fun agentColor(agentKey: String): JBColor {
         if (agentKey == Authors.agent.receiptKey) return AGENT_PALETTE[0]
         return AGENT_PALETTE[Math.floorMod(agentKey.hashCode(), AGENT_PALETTE.size)]
@@ -854,9 +734,6 @@ class ThreadPanel(
             is Author.Agent -> agentColor(author.receiptKey)
             else -> USER_COLOR
         }
-        // Each message wears a thin rail in its author's color — enough for
-        // the eye to separate turns without reading names, without becoming
-        // a chat bubble.
         val panel = JPanel(BorderLayout()).apply {
             isOpaque = false
             border = JBUI.Borders.compound(
@@ -881,15 +758,9 @@ class ThreadPanel(
             }
             metaRow.add(who, BorderLayout.WEST)
         } else {
-            // A grouped message's own time is suppressed with its meta line;
-            // hover recovers it (operator ask — invisible until wanted).
             panel.toolTipText = "${message.author.displayName} · ${timeFormat.format(message.createdAt)}"
         }
 
-        // The read receipt is the edit window: your message is revisable
-        // until the agent reads it, immutable record after — and once read,
-        // the receipt itself becomes visible: the promise "the agent will
-        // see this" is only trustworthy if you can see it kept.
         val trailing = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply { isOpaque = false }
         if (message.author is Author.User && !message.seenByAnyAgent && editingMessageId == null) {
             val editLink = ActionLink("Edit") {
@@ -908,16 +779,12 @@ class ThreadPanel(
                 },
                 BorderLayout.EAST,
             )
-            // The text has MOVED to the composer — don't show it twice.
             panel.add(metaRow, BorderLayout.NORTH)
             return panel
         } else if (message.author is Author.User && message.seenByAnyAgent) {
             trailing.add(
                 JBLabel("✓ seen").apply {
                     font = JBUI.Fonts.smallFont()
-                    // Green, matching the resolve checkmark family — the
-                    // receipt is good news and may as well feel like it
-                    // (operator request, verbatim: "for the dopamine hit").
                     foreground = JBColor(Color(0x2E, 0x7D, 0x32), Color(0xA5, 0xD6, 0xA7))
                     toolTipText = seenByNames(message)
                 },
@@ -930,25 +797,17 @@ class ThreadPanel(
             },
         )
         metaRow.add(trailing, BorderLayout.EAST)
-        // Markdown-lite body: paragraphs as wrapped HTML panes, fenced code
-        // as native highlighted editor fragments. Measured at a conservative
-        // width so heights only overestimate, never clip.
+        // A conservative width, so heights only overestimate, never clip.
         val body = MarkdownRenderer.render(project, message.body, panelWidth() - JBUI.scale(64))
         panel.add(metaRow, BorderLayout.NORTH)
         panel.add(body, BorderLayout.CENTER)
         return panel
     }
 
-    /** "Seen by Claude" — receipt keys mapped back to display names where the margin knows them. */
     private fun seenByNames(message: Message): String {
         return "Seen by ${message.seenBy.sorted().joinToString(", ") { agentNames[it] ?: it }}"
     }
 
-    /**
-     * A pill naming one of the thread's marks — its intent, its severity —
-     * colored like its gutter counterpart. Word + color, never color alone,
-     * so the two vocabularies stay readable side by side and in every theme.
-     */
     private class Chip(text: String, private val pill: JBColor, textColor: JBColor) : JBLabel(text) {
 
         init {
@@ -970,8 +829,6 @@ class ThreadPanel(
     }
 
     private companion object {
-        // Quieter than either severity: an intent or an addressee says what
-        // kind of answer is wanted and from whom, never how urgently.
         val QUIET_PILL = JBColor(Color(0xE1, 0xE9, 0xF4), Color(0x36, 0x3E, 0x4B))
         val INTENT_TEXT = JBColor(Color(0x2A, 0x4A, 0x7A), Color(0xB6, 0xC7, 0xE0))
 
@@ -988,12 +845,12 @@ class ThreadPanel(
         val USER_COLOR = JBColor(0x1565C0, 0x90CAF9)
 
         val AGENT_PALETTE = arrayOf(
-            JBColor(0x9C27B0, 0xCE93D8), // purple — the anonymous "Agent"
-            JBColor(0x00796B, 0x80CBC4), // teal
-            JBColor(0xE65100, 0xFFB74D), // orange
-            JBColor(0xC2185B, 0xF48FB1), // pink
-            JBColor(0x2E7D32, 0xA5D6A7), // green
-            JBColor(0x5D4037, 0xBCAAA4), // brown
+            JBColor(0x9C27B0, 0xCE93D8),
+            JBColor(0x00796B, 0x80CBC4),
+            JBColor(0xE65100, 0xFFB74D),
+            JBColor(0xC2185B, 0xF48FB1),
+            JBColor(0x2E7D32, 0xA5D6A7),
+            JBColor(0x5D4037, 0xBCAAA4),
         )
     }
 

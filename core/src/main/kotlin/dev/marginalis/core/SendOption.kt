@@ -6,9 +6,6 @@ enum class SendOption {
     COMMENT_ON_PROJECT;
 
     companion object {
-        // Retargeting is offered only where it is still a choice — a thread
-        // being started — and only upward: a reply belongs to the thread it is
-        // in, and nothing widens past the project.
         fun offered(thread: CommentThread, isDraft: Boolean, isEditing: Boolean, anyoneWaiting: Boolean): List<SendOption> {
             val handBack = listOfNotNull(HAND_BACK.takeIf { anyoneWaiting })
             return when {

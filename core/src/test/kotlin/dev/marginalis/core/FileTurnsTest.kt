@@ -27,7 +27,7 @@ class FileTurnsTest {
         val turns = FileTurns()
         val threads = listOf(thread("a.py", user), thread("b.py", agent))
         assertTrue(turns.track("a.py", threads))
-        assertEquals(Turn.AGENT, turns.of("a.py"))
+        assertEquals(Turn.AGENT_OWES, turns.of("a.py"))
         assertNull(turns.of("b.py"))
         assertEquals(setOf("a.py"), turns.paths())
     }

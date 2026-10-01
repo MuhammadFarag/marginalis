@@ -1,8 +1,10 @@
 # Marginalis — agent notes
 
-JetBrains plugin: in-editor agent↔human comment threads. Design history
-lives in `docs/marginalis-handover.md` (the original brief) and
-`docs/navigate-handover.md`; the living roadmap is `docs/BACKLOG.md`.
+JetBrains plugin: in-editor agent↔human comment threads. Open work lives
+in GitHub issues; design history lives in `docs/marginalis-handover.md`
+(the original brief), `docs/navigate-handover.md` and
+`docs/iconography-handover.md` (the 0.1.29 icon family); `docs/BACKLOG.md`
+is the shipped record and decision log.
 
 ## Building
 
@@ -15,9 +17,15 @@ lives in `docs/marginalis-handover.md` (the original brief) and
   (`recommended()` IDE set). Local builds may compile against a newer
   local IDE via the `marginalis.localIde` property, so floor violations
   surface in CI, not locally.
-- Releases: tag `v*` → CI builds the zip and publishes the GitHub
-  Release; Marketplace publishing activates when the publishing secrets
-  exist.
+- Releases: stamp `[Unreleased]` in `CHANGELOG.md` as the new version,
+  bump `version` in `build.gradle.kts`, commit, push, tag `v*` → CI
+  builds, signs, publishes to the Marketplace stable channel and creates
+  the GitHub Release. The changelog section becomes the Marketplace
+  "What's New". Pushing to `main` without a tag releases nothing.
+- Dev builds for hands-on review: temporarily set `version` to
+  `<next>-devN`, `./gradlew buildPlugin`, then `git checkout
+  build.gradle.kts` — the zip's version makes it obvious which build the
+  IDE runs (`ping` reports it).
 
 ## Dogfooding — the margin protocol
 
@@ -31,9 +39,14 @@ is running the plugin:
 - The resolver is the completer: RESOLVED means the outcome is in the
   code (or explicitly moot). Approval is a reply; land the change, then
   resolve.
-- Substantial batches get a review walkthrough (`add … <order>` steps,
-  one walkthrough per project) before commit. A step resolved silently is
-  approved; a reply is a change request.
+- Substantial batches get a review walkthrough before commit: one
+  `comment_add_batch` call with `order` 1..N and a `walkthrough` label,
+  each step anchored with exact `anchor_text`, ordered by code
+  structure. A step resolved silently is approved; a reply is a change
+  request. Once the batch ships, resolve any steps still open.
+- End a turn that expects the user's reply by starting `comment_wait` in
+  the background (the served guide has the pattern); the user's Hand
+  Back wakes you.
 
 ## Project conventions
 
@@ -59,3 +72,16 @@ is running the plugin:
   without that conversation, and drop the label once it happens.
 - Guided vocabulary is "walkthrough"/"steps" (wire param `walkthrough`,
   UI actions First/Previous/Next/Last Step).
+- Comments: write self-documenting code. Treat the urge to comment as a
+  sign a rename or refactor is missing; comment only what the code can't
+  say (typically a non-obvious platform quirk). Update comments a change
+  makes false.
+- Icons: SVGs in `src/main/resources/icons/`, loaded through
+  `MarginalisIcons`. Brand icons are single theme-neutral SVGs (no
+  `_dark` twin), designed dark-first; monochrome toolbar icons (e.g.
+  Hand Back) keep the `_dark` pair. Turn signals are ✉ (your move) and ✈
+  (the agent's). Some platform surfaces are plain strings (tab titles,
+  tool window titles) and can only carry text.
+- Platform floor: `since-build` 252 (2025.2). Prefer long-stable public
+  API; CI's Plugin Verifier fails on internal / scheduled-for-removal
+  usage, which a local build against a newer IDE won't catch.
