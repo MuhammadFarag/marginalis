@@ -30,6 +30,7 @@ import dev.marginalis.core.Cursor
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
+import dev.marginalis.core.LiveThread
 import dev.marginalis.core.Message
 import dev.marginalis.core.Reference
 import dev.marginalis.core.Referent
@@ -39,6 +40,7 @@ import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.ThreadSummary
 import dev.marginalis.core.Turn
 import dev.marginalis.core.WaitTimeout
+import dev.marginalis.core.Wake
 import dev.marginalis.core.getOrElse
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
@@ -852,10 +854,10 @@ class MarginalisRestService : RestService() {
         closeFuture.addListener(cancelOnHangUp)
         waited.whenComplete { _, _ -> closeFuture.removeListener(cancelOnHangUp) }
         waited.whenCompleteAsync(
-            { handedBackAt, _ ->
+            { wake, _ ->
                 if (waited.isCancelled) return@whenCompleteAsync
                 try {
-                    sendJson(waitAnswer(project, handedBackAt, caller.receiptKey), requestHead, context)
+                    sendJson(waitAnswer(project, wake, caller.receiptKey), requestHead, context)
                 } catch (e: Exception) {
                     send(
                         JsonObject().apply { addProperty("error", "comment_wait failed: ${e.message}") },
@@ -867,20 +869,27 @@ class MarginalisRestService : RestService() {
         )
     }
 
-    private fun waitAnswer(project: Project, handedBackAt: Instant?, callerKey: String): JsonObject =
-        if (handedBackAt == null || project.isDisposed) {
+    private fun waitAnswer(project: Project, wake: Wake?, callerKey: String): JsonObject =
+        if (wake == null || project.isDisposed) {
             JsonObject().apply { addProperty("handed_back", false) }
         } else {
             val store = MarginalisStore.getInstance(project)
             val awaiting = ApplicationManager.getApplication().runReadAction(
                 Computable {
-                    val owed = store.threads.query(awaiting = Turn.AGENT_OWES, awaitingFor = callerKey)
-                    renderThreads(project, store, owed.sortedWith(ThreadOrder.byAnchor), callerKey)
+                    val owed = when (wake) {
+                        is Wake.HandedBack -> store.threads.query(awaiting = Turn.AGENT_OWES, awaitingFor = callerKey) +
+                            wake.liveThreadIds.mapNotNull(store.threads::byId).filter { LiveThread.hasUnseen(it, callerKey) }
+                        is Wake.Live -> wake.threadIds.mapNotNull(store.threads::byId).filter {
+                            it.turnFor(callerKey) == Turn.AGENT_OWES || LiveThread.hasUnseen(it, callerKey)
+                        }
+                    }
+                    renderThreads(project, store, owed.distinct().sortedWith(ThreadOrder.byAnchor), callerKey)
                 },
             )
             JsonObject().apply {
                 addProperty("handed_back", true)
-                addProperty("handed_back_at", handedBackAt.iso())
+                addProperty("reason", wake.reason)
+                addProperty("handed_back_at", wake.at.iso())
                 add("awaiting", JsonArray().apply { awaiting.forEach { add(it.json) } })
             }
         }

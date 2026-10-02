@@ -10,6 +10,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
@@ -41,6 +42,7 @@ import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
+import dev.marginalis.core.LiveThread
 import dev.marginalis.core.Mark
 import dev.marginalis.core.Message
 import dev.marginalis.core.Reference
@@ -78,6 +80,7 @@ import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.SwingConstants
+import javax.swing.Timer
 
 class ThreadPanel(
     private val project: Project,
@@ -91,11 +94,18 @@ class ThreadPanel(
     private val messagesBox = Box.createVerticalBox()
     private val messageComponents = mutableMapOf<String, JComponent>()
     private val statusLabel = JBLabel()
+    private val liveLabel = JBLabel().apply {
+        font = JBUI.Fonts.smallFont()
+        border = JBUI.Borders.emptyRight(6)
+    }
+    private var livePulseDim = false
+    private val livePulse = Timer(LIVE_PULSE_MILLIS) {
+        livePulseDim = !livePulseDim
+        liveLabel.foreground = if (livePulseDim) UIUtil.getContextHelpForeground() else LIVE_COLOR
+    }
 
     private val submitAction = object : AbstractAction("Submit") {
-        override fun actionPerformed(e: ActionEvent?) {
-            sendReply()
-        }
+        override fun actionPerformed(e: ActionEvent?) = submit()
     }
     private val commentOnFileAction = object : AbstractAction("Comment on file instead") {
         override fun actionPerformed(e: ActionEvent?) = submitWiderThan(file = thread.file)
@@ -106,7 +116,9 @@ class ThreadPanel(
     private val handBack = MarginalisStore.getInstance(project).handBack
     private val submitAndHandBackAction = object : AbstractAction("Submit & hand back") {
         override fun actionPerformed(e: ActionEvent?) {
-            if (sendReply()) MarginalisStore.getInstance(project).recordHandBack()
+            if (replyArea.text.isBlank()) return
+            sendReply()
+            MarginalisStore.getInstance(project).recordHandBack()
         }
     }
     private val sendButton = JBOptionButton(submitAction, arrayOf(submitAndHandBackAction))
@@ -171,7 +183,7 @@ class ThreadPanel(
                 override fun keyPressed(e: KeyEvent) {
                     if (e.keyCode == KeyEvent.VK_ENTER && (e.isMetaDown || e.isControlDown)) {
                         e.consume()
-                        sendReply()
+                        submit()
                     }
                     if (e.keyCode == KeyEvent.VK_ESCAPE) {
                         e.consume()
@@ -205,9 +217,7 @@ class ThreadPanel(
         // key dispatcher routes ⌘⏎ to editor actions (Split Line on several
         // keymaps) before the component sees the event.
         object : DumbAwareAction() {
-            override fun actionPerformed(e: AnActionEvent) {
-                sendReply()
-            }
+            override fun actionPerformed(e: AnActionEvent) = submit()
         }.registerCustomShortcutSet(
             CustomShortcutSet(
                 KeyboardShortcut(KeyStroke.getKeyStroke("meta ENTER"), null),
@@ -284,6 +294,7 @@ class ThreadPanel(
         val right = JPanel().apply {
             isOpaque = false
             layout = BoxLayout(this, BoxLayout.X_AXIS)
+            add(liveLabel)
             add(buildHeaderToolbar())
         }
 
@@ -337,6 +348,7 @@ class ThreadPanel(
             nextStep,
             lastStep,
             Separator.getInstance(),
+            liveAction(),
             copyReferenceAction(),
             resolveAction(),
             deleteAction(),
@@ -365,6 +377,61 @@ class ThreadPanel(
         }
 
         override fun actionPerformed(e: AnActionEvent) = toggleResolved()
+    }
+
+    private fun liveAction(): AnAction = object : ToggleAction() {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+        override fun isSelected(e: AnActionEvent): Boolean = MarginalisStore.getInstance(project).isLive(thread)
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) =
+            MarginalisStore.getInstance(project).setLive(thread, state, addressee)
+
+        override fun update(e: AnActionEvent) {
+            super.update(e)
+            refreshLive()
+            e.presentation.icon = AllIcons.Actions.Lightning
+            e.presentation.isVisible = !isDraft() && thread.status is ThreadStatus.Open
+            e.presentation.isEnabled = isSelected(e) || liveAgentWaiting()
+            val agent = liveAgentKey()?.let(::agentName) ?: "an agent"
+            e.presentation.text = when {
+                isSelected(e) -> "Live: each Submit wakes $agent with this thread"
+                e.presentation.isEnabled -> "Go Live: each Submit wakes $agent with this thread"
+                liveAgentKey() == null && handBack.waitingAgents.size > 1 -> "Several agents are listening — @ one to go live"
+                else -> "No agent is listening — live needs $agent waiting"
+            }
+        }
+    }
+
+    private fun liveAgentKey(): String? = MarginalisStore.getInstance(project).liveAgentKey(thread, addressee)
+
+    private fun liveAgentWaiting(): Boolean {
+        val key = liveAgentKey() ?: return false
+        return handBack.waitingAgents.any { it.receiptKey == key }
+    }
+
+    private fun agentName(key: String): String = agentNames[key] ?: key
+
+    private fun refreshLive() {
+        val key = liveAgentKey()
+        val listening = liveAgentWaiting()
+        val working = key != null && !listening &&
+            LiveThread.isWorking(thread.messages, key, handBack.liveDeliveredAt(key, thread.id))
+        liveLabel.text = when {
+            !MarginalisStore.getInstance(project).isLive(thread) || key == null -> ""
+            listening -> "${agentName(key)} is listening"
+            working -> "${agentName(key)} is working…"
+            else -> ""
+        }
+        liveLabel.isVisible = liveLabel.text.isNotEmpty()
+        val pulsing = liveLabel.isVisible && working && watchingThread != null
+        if (pulsing) {
+            livePulse.start()
+        } else {
+            livePulse.stop()
+            livePulseDim = false
+            liveLabel.foreground = LIVE_COLOR
+        }
     }
 
     private fun deleteAction(): AnAction = object : AnAction("Delete Thread", null, AllIcons.Actions.GC) {
@@ -510,15 +577,20 @@ class ThreadPanel(
         focusReply()
     }
 
-    private fun sendReply(): Boolean {
+    private fun submit() {
+        sendReply()?.let { MarginalisStore.getInstance(project).wakeLive(thread, it.to) }
+    }
+
+    private fun sendReply(): Message? {
         val body = replyArea.text.trim()
-        if (body.isEmpty()) return false
+        if (body.isEmpty()) return null
 
         val editing = editingMessageId?.let { id -> thread.messages.find { it.id == id } }
         if (editing != null) {
             editingMessageId = null
             // An agent may have read the original mid-edit; once read, it is record.
-            if (!editing.seenByAnyAgent) {
+            val applied = !editing.seenByAnyAgent
+            if (applied) {
                 editing.body = body
                 // A Message can't bump its thread; without touch() a cursor sweep misses the revision.
                 thread.touch()
@@ -526,17 +598,18 @@ class ThreadPanel(
             replyArea.text = ""
             setComposerExpanded(false)
             MarginalisStore.getInstance(project).threads.notifyChanged(thread)
-            return true
+            return editing.takeIf { applied }
         }
 
         ensureStored()
-        thread.addMessage(Message(Authors.user, body, to = addressee))
+        val sent = Message(Authors.user, body, to = addressee)
+        thread.addMessage(sent)
         addressTo(null)
         replyArea.text = ""
         setComposerExpanded(false)
         MarginalisStore.getInstance(project).drafts.remove(thread.id)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
-        return true
+        return sent
     }
 
     private fun agree() {
@@ -546,8 +619,10 @@ class ThreadPanel(
             refresh()
             return
         }
-        thread.addMessage(Message.agreement(by = Authors.user, with = agent))
+        val agreement = Message.agreement(by = Authors.user, with = agent)
+        thread.addMessage(agreement)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+        MarginalisStore.getInstance(project).wakeLive(thread, agreement.to)
     }
 
     private fun markReadIfSeen() {
@@ -619,6 +694,7 @@ class ThreadPanel(
         addressee = to
         addresseeLink.isVisible = to != null && editingMessageId == null
         addresseeLink.text = to?.let { "@${addresseeName(it)} ✕" } ?: ""
+        refreshLive()
     }
 
     private fun saveDraft() {
@@ -688,7 +764,10 @@ class ThreadPanel(
 
     private val onWaitersChanged: () -> Unit = {
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) refreshSendOptions()
+            if (!project.isDisposed) {
+                refreshSendOptions()
+                refreshLive()
+            }
         }
     }
 
@@ -714,6 +793,7 @@ class ThreadPanel(
         handBack.addListener(onWaitersChanged)
         watchingThread = MarginalisStore.getInstance(project).threads.watch(thread.id) { onThreadChanged() }
         refreshSendOptions()
+        refreshLive()
         val attached = Disposer.newDisposable(MarginalisStore.getInstance(project), "Marginalis thread panel")
         whileAttached = attached
         ApplicationManager.getApplication().messageBus.connect(attached).subscribe(
@@ -729,6 +809,7 @@ class ThreadPanel(
     override fun removeNotify() {
         whileAttached?.let(Disposer::dispose)
         whileAttached = null
+        livePulse.stop()
         handBack.removeListener(onWaitersChanged)
         watchingThread?.close()
         watchingThread = null
@@ -932,6 +1013,9 @@ class ThreadPanel(
         }
 
         val USER_COLOR = JBColor(0x1565C0, 0x90CAF9)
+
+        val LIVE_COLOR = JBColor(0x2E7D32, 0xA5D6A7)
+        const val LIVE_PULSE_MILLIS = 600
 
         val AGENT_PALETTE = arrayOf(
             JBColor(0x9C27B0, 0xCE93D8),

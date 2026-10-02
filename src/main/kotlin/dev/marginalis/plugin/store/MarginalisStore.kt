@@ -10,6 +10,8 @@ import dev.marginalis.core.Addressee
 import dev.marginalis.core.FileTurns
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.HandBack
+import dev.marginalis.core.LiveAgent
+import dev.marginalis.core.LiveThread
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.ThreadStore
 import dev.marginalis.core.ThreadsCodec
@@ -22,13 +24,52 @@ class MarginalisStore(private val project: Project) : Disposable {
 
     val fileTurns = FileTurns()
 
-    val handBack = HandBack(hasAwaiting = threads::hasAwaiting)
+    val handBack = HandBack.over(threads)
 
     fun recordHandBack() {
         handBack.record()
         AppExecutorUtil.getAppExecutorService().execute {
             if (!project.isDisposed) MarginalisPersistence.save(project, snapshot())
         }
+    }
+
+    private val liveThreads = ConcurrentHashMap.newKeySet<String>()
+
+    private val liveTargets = ConcurrentHashMap<String, String>()
+
+    init {
+        threads.addListener { changed ->
+            if (LiveThread.isOver(threads.byId(changed.id))) endLive(changed)
+        }
+    }
+
+    fun isLive(thread: CommentThread): Boolean = thread.id in liveThreads
+
+    fun liveAgentKey(thread: CommentThread, to: Addressee?): String? =
+        LiveAgent.keyOf(thread.messages, to, handBack.waitingAgents) ?: liveTargets[thread.id]
+
+    private fun liveTarget(thread: CommentThread, to: Addressee?): String? =
+        liveAgentKey(thread, to)?.also { liveTargets[thread.id] = it }
+
+    fun setLive(thread: CommentThread, live: Boolean, to: Addressee?) {
+        if (live) {
+            liveThreads.add(thread.id)
+            LiveThread.goLive(handBack, thread, liveTarget(thread, to))
+        } else {
+            endLive(thread)
+        }
+        threads.notifyChanged(thread)
+    }
+
+    private fun endLive(thread: CommentThread) {
+        liveThreads.remove(thread.id)
+        liveTargets.remove(thread.id)
+        handBack.forgetLive(thread.id)
+    }
+
+    fun wakeLive(thread: CommentThread, to: Addressee?) {
+        if (!isLive(thread)) return
+        LiveThread.submit(handBack, thread, liveTarget(thread, to))
     }
 
     fun snapshot() = ThreadsCodec.Document(threads.all(), handBack.lastAt)
@@ -77,6 +118,7 @@ class MarginalisStore(private val project: Project) : Disposable {
                 thread.line = marker.document.getLineNumber(marker.startOffset)
             } else if (thread.status is ThreadStatus.Open) {
                 thread.markOrphaned()
+                endLive(thread)
             }
         }
         return thread.line

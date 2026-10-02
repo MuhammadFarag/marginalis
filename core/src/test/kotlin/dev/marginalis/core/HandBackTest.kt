@@ -21,7 +21,7 @@ class HandBackTest {
     private var changes = 0
     private val countChange: () -> Unit = { changes++ }
     private val owed = mutableSetOf<Author.Agent>()
-    private val targeted = HandBack(hasAwaiting = { it in owed }, clock = { now })
+    private val targeted = HandBack(snapshotAwaiting = { owed.toSet()::contains }, clock = { now })
 
     @Test
     fun `a hand back after the cursor answers at once`() {
@@ -30,7 +30,7 @@ class HandBackTest {
 
         val waited = handBack.await(since = t0, timeout = hour)
 
-        assertEquals(t0.plusSeconds(10), waited.getNow(null))
+        assertEquals(Wake.HandedBack(t0.plusSeconds(10)), waited.getNow(null))
         assertEquals(0, handBack.waiting)
     }
 
@@ -54,7 +54,7 @@ class HandBackTest {
 
         assertFalse(again.isDone)
         now = t0.plusSeconds(1)
-        assertEquals(handBack.record(), again.getNow(null))
+        assertEquals(Wake.HandedBack(handBack.record()), again.getNow(null))
     }
 
     @Test
@@ -73,8 +73,8 @@ class HandBackTest {
         val at = handBack.record()
 
         assertEquals(t0.plusSeconds(60), at)
-        assertEquals(at, first.getNow(null))
-        assertEquals(at, second.getNow(null))
+        assertEquals(Wake.HandedBack(at), first.getNow(null))
+        assertEquals(Wake.HandedBack(at), second.getNow(null))
         assertEquals(0, handBack.waiting)
         assertEquals(at, handBack.lastAt)
     }
@@ -108,8 +108,8 @@ class HandBackTest {
         handBack.releaseAll()
 
         assertTrue(first.isDone && second.isDone)
-        assertNull(first.getNow(t0))
-        assertNull(second.getNow(t0))
+        assertNull(first.getNow(Wake.HandedBack(t0)))
+        assertNull(second.getNow(Wake.HandedBack(t0)))
         assertEquals(0, handBack.waiting)
     }
 
@@ -121,7 +121,7 @@ class HandBackTest {
 
         assertEquals(t0.minusSeconds(5), handBack.lastAt)
         assertFalse(waited.isDone)
-        assertEquals(t0.minusSeconds(5), handBack.await(since = t0.minusSeconds(6), timeout = hour).getNow(null))
+        assertEquals(Wake.HandedBack(t0.minusSeconds(5)), handBack.await(since = t0.minusSeconds(6), timeout = hour).getNow(null))
     }
 
     @Test
@@ -258,7 +258,7 @@ class HandBackTest {
 
         val at = targeted.record()
 
-        assertEquals(at, codexWait.getNow(null))
+        assertEquals(Wake.HandedBack(at), codexWait.getNow(null))
         assertFalse(claudeWait.isDone)
         assertEquals(listOf(claude), targeted.waitingAgents)
     }
@@ -270,8 +270,8 @@ class HandBackTest {
 
         val at = targeted.record()
 
-        assertEquals(at, claudeWait.getNow(null))
-        assertEquals(at, codexWait.getNow(null))
+        assertEquals(Wake.HandedBack(at), claudeWait.getNow(null))
+        assertEquals(Wake.HandedBack(at), codexWait.getNow(null))
     }
 
     @Test
@@ -282,8 +282,8 @@ class HandBackTest {
 
         val at = targeted.record()
 
-        assertEquals(at, claudeWait.getNow(null))
-        assertEquals(at, targeted.await(since = t0, timeout = hour, agent = codex).getNow(null))
+        assertEquals(Wake.HandedBack(at), claudeWait.getNow(null))
+        assertEquals(Wake.HandedBack(at), targeted.await(since = t0, timeout = hour, agent = codex).getNow(null))
     }
 
     @Test
@@ -303,7 +303,7 @@ class HandBackTest {
         now = t0.plusSeconds(1)
         val at = targeted.record()
 
-        assertEquals(at, targeted.await(since = t0, timeout = hour, agent = claude).getNow(null))
+        assertEquals(Wake.HandedBack(at), targeted.await(since = t0, timeout = hour, agent = claude).getNow(null))
     }
 
     @Test
@@ -312,6 +312,6 @@ class HandBackTest {
         now = t0.plusSeconds(1)
         val at = targeted.record()
 
-        assertEquals(at, targeted.await(since = t0, timeout = hour, agent = claude).getNow(null))
+        assertEquals(Wake.HandedBack(at), targeted.await(since = t0, timeout = hour, agent = claude).getNow(null))
     }
 }

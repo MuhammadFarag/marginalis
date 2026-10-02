@@ -176,6 +176,37 @@ Code users can close that gap with two hooks that put the awaiting
 threads into every prompt — offer them the recipe at
 https://github.com/MuhammadFarag/marginalis#if-you-use-claude-code.
 
+### Live threads
+
+The user can switch a thread **live** — several can be live at once —
+but only while you are waiting; going live is their call, never yours.
+While a thread is live, each Submit in it (and an Agree) wakes you at
+once with that thread alone — no Hand Back. Switching Live on wakes you
+the same way when the thread already holds messages you haven't seen.
+Every wake names its `reason`: `"hand_back"` for the batch, `"live"`
+for a live submit. A live wake's `awaiting` holds only the live
+thread(s) with something new for you — owed to you, or holding messages
+you haven't seen (a follow-up the user sent while you were answering) —
+in the same shape, marked seen; other threads the user drafted wait for
+the next Hand Back. It wakes one agent: the one the reply `@`-addresses,
+else the `to` of the thread's last message when the user wrote it,
+else the agent who spoke most recently in the thread, else — on a
+thread the user started — the one agent waiting on the project.
+Its `handed_back_at` is the live submit's time — advance your cursor to
+it as usual — but it does not move the project's hand back in
+`comment_list`'s envelope. A live submit made while you were still
+working answers your next wait at once when you pass `since`; if a Hand
+Back is pending too, the hand back wins and carries the whole
+`awaiting` set, live threads included — even a live follow-up you have
+not seen in a thread where you spoke last — and its `handed_back_at` then
+covers the live submit too, so it can be later than the one in
+`comment_list`'s envelope.
+
+After a live wake, answer the thread and **always wait again** — even
+when `awaiting` comes back empty (the thread was resolved, or you had
+already answered it, between the wake and its reply). The user sees
+you "listening" while your wait is armed and "working" until you reply.
+
 ## Anchoring
 
 - The ladder, narrowest first: **selection → line → file → project**. You
@@ -390,7 +421,7 @@ Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
 | `POST comment_reanchor_all {file, project?}` | rescue every orphan on one file, searching the whole file by content → `{file, results: [{thread_id, line?, status}], rescued}` |
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed → `{resolved: <count>}` |
 | `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first → `{cleared: <count>}` |
-| `GET comment_wait?project=&since=&timeout=&author_name=&author_id=` | hold until the user hands back — at once if they already did after `since` (ISO-8601, exclusive; omit to wait for the next one) — or until `timeout` seconds pass (default 3600, capped at 14400) → `{handed_back: true, handed_back_at, awaiting: [threads]}` or `{handed_back: false}`; `awaiting` marks seen like `comment_list`; `project` is required when several are open; your `since` is the later of the newest `updated_at` and `handed_back_at` you have seen |
+| `GET comment_wait?project=&since=&timeout=&author_name=&author_id=` | hold until the user hands back — at once if they already did after `since` (ISO-8601, exclusive; omit to wait for the next one) — or until `timeout` seconds pass (default 3600, capped at 14400) → `{handed_back: true, reason, handed_back_at, awaiting: [threads]}` or `{handed_back: false}`; `reason` is `hand_back` (the batch: every thread awaiting you) or `live` (a live thread's Submit: only that thread — see Live threads); `awaiting` marks seen like `comment_list`; `project` is required when several are open; your `since` is the later of the newest `updated_at` and `handed_back_at` you have seen |
 | `GET comment_identities?project=` | who is in this margin; marks nothing seen → `{project, identities: [{kind: "user", name, messages_written} \| {kind: "agent", name, id, messages_written, unread, waiting}]}` — the user first, then agents by messages written; `name` is null for an identity known only from read receipts; `id` is the receipt key to pass as `author_id`; `project` is required when several are open |
 | `POST navigate {file, line?, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}`; without `line`, opens the file at the top → `{navigated, file}` |
 

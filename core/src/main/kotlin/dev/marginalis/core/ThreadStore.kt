@@ -43,6 +43,11 @@ class ThreadStore {
     fun hasAwaiting(agent: Author.Agent): Boolean =
         query(awaiting = Turn.AGENT_OWES, awaitingFor = agent.receiptKey).isNotEmpty()
 
+    fun awaitingSnapshot(): (Author.Agent) -> Boolean {
+        val addressees = query(awaiting = Turn.AGENT_OWES).map { it.messages.lastOrNull()?.to }
+        return { agent -> addressees.any { it == null || it == Addressee.Agent(agent.receiptKey) } }
+    }
+
     fun remove(id: String): CommentThread? {
         val removed = threads.remove(id)
         removed?.let { notifyChanged(it) }

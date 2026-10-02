@@ -28,6 +28,18 @@ History before 0.1.19 lives in git tags.
   turn — an agent spoke last, not to another agent. One click answers
   "Agreed." to that agent and passes the turn (✈); it shows in the
   thread as a single line, and agents read it as `agrees: true`.
+- Live threads (#30): a Live toggle (⚡) in a thread's header turns
+  that thread into a conversation. While it's on, each Submit (or
+  Agree) wakes the agent you're answering with that thread alone — no
+  Hand Back — and the header shows "Claude is listening" while it
+  waits, pulsing "Claude is working…" from the wake until it replies.
+  Turning Live on hands over anything the agent hasn't seen yet, and a
+  thread you started goes to the agent that is waiting (with several
+  waiting, @ the one you mean). Live is offered only while that agent
+  is waiting, and ends when you switch it off, resolve the thread, its
+  anchor is deleted, or you restart the IDE. Agents read the wake's new
+  `reason` (`live` or `hand_back`); the guide's new Live threads
+  section teaches it.
 
 ### Changed
 
