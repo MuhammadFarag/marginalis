@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "dev.marginalis"
-version = "0.1.30"
+version = "0.2.0"
 
 // Stamp the build version into a resource ping can serve: the platform's
 // plugin-manager lookups (PluginManagerCore.getPlugin AND

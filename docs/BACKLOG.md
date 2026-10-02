@@ -242,6 +242,17 @@ declined, captured from real use.
   delivered on unseen messages. Delivered with playgrounds in
   `.features/` and live dev-zip demos instead of review walkthroughs.
 
+## Shipped (2026-10-02, v0.2.0)
+
+- ✅ v0.2.0 — pull request reviews in the margin (#33): `relayed`
+  messages attributed to their GitHub author, idempotent re-relay keyed
+  on comment kind + id, reopen on a new reply, deleted relays
+  remembered; GitHub-login nicknames in Settings; every message body
+  sanitised; damaged codec entries skipped instead of emptying the
+  margin; coalesced saves; `reason` on every 409; the code-link
+  read-action fix for 2026.2; an end-to-end audit of the served guide
+  and a CI check that matches exact API table rows.
+
 ## Decision log
 
 - **Importance dimension declined** (2026-07-24): severity stays
@@ -324,3 +335,20 @@ declined, captured from real use.
   skill's trigger text; reverted the same day — the guide already
   carries the exemption, and touching the skill forces every user to
   re-run the skills CLI for nothing.
+- **Relays are context, one-way** (2026-10-01, #33): a relayed GitHub
+  comment never takes the turn from whoever spoke last (a relay-only
+  thread awaits the user), never notifies, and nothing is written back
+  to GitHub. New replies reopen a resolved thread; a relayed thread the
+  user deleted from the margin is never recreated (Clear All resets).
+- **Untrusted text is sanitised everywhere** (2026-10-01, #33): relaying
+  lets any PR commenter reach the margin, so every message body is
+  reduced to the markup the markdown generator emits — a review found
+  an unclosed-tag bypass that made Swing fetch a remote image.
+- **Nicknames are display-only** (2026-10-02): a Settings table maps
+  GitHub logins to nicknames; agents and stored data keep the original
+  names. Avatars (#32) remain open.
+- **Plugin module stays test-free for now** (2026-10-02): logic lives in
+  `core/` under TDD; the shell is exercised by live demos. This release's
+  escaped bugs (a read-action assertion, a settings edit lost on OK)
+  were all in the shell — CI-only platform tests for REST and threading
+  are the candidate if that keeps happening.
