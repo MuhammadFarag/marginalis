@@ -34,6 +34,8 @@ import dev.marginalis.core.LiveThread
 import dev.marginalis.core.Message
 import dev.marginalis.core.Reference
 import dev.marginalis.core.Referent
+import dev.marginalis.core.RelayOutcome
+import dev.marginalis.core.Relayed
 import dev.marginalis.core.Resolution
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
@@ -204,7 +206,7 @@ class MarginalisRestService : RestService() {
                 continue
             }
             val outcome = addComment(withBatchDefaults(element.asJsonObject, json))
-            if (outcome.status == HttpResponseStatus.OK) created++
+            if (outcome.created) created++
             results.add(outcome.json)
         }
         sendJson(
@@ -224,11 +226,12 @@ class MarginalisRestService : RestService() {
         return merged
     }
 
-    private class AddOutcome(val status: HttpResponseStatus, val json: JsonObject) {
+    private class AddOutcome(val status: HttpResponseStatus, val json: JsonObject, val created: Boolean = false) {
         companion object {
-            fun created(json: JsonObject) = AddOutcome(HttpResponseStatus.OK, json)
-            fun refused(status: HttpResponseStatus, message: String) =
-                AddOutcome(status, JsonObject().apply { addProperty("error", message) })
+            fun created(json: JsonObject) = AddOutcome(HttpResponseStatus.OK, json, created = true)
+            fun existing(json: JsonObject) = AddOutcome(HttpResponseStatus.OK, json.apply { addProperty("existing", true) })
+            fun refused(status: HttpResponseStatus, message: String, reason: String? = null) =
+                AddOutcome(status, errorJson(message, reason))
         }
     }
 
@@ -257,6 +260,16 @@ class MarginalisRestService : RestService() {
         ).getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
         val to = Addressee.parse(json.stringOrNull("to"))
             .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
+        val relayed = Relayed.parse(json.get("relayed"), to)
+            .getOrElse { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
+        relayed?.let { existingRelayJson(it, projectFilter) }?.let { return AddOutcome.existing(it) }
+        if (relayed != null && deletedRelay(relayed, projectFilter)) {
+            return AddOutcome.refused(
+                HttpResponseStatus.CONFLICT,
+                deletedRelayMessage(relayed),
+                DELETED_RELAY,
+            )
+        }
 
         val resolved = ApplicationManager.getApplication().runReadAction(
             Computable { if (file == null) resolveProject(projectFilter)?.to(null) else resolveFile(file, projectFilter) },
@@ -271,10 +284,15 @@ class MarginalisRestService : RestService() {
 
         var error: String? = null
         var errorStatus = HttpResponseStatus.BAD_REQUEST
+        var errorReason: String? = null
         var thread: CommentThread? = null
+        var relaying: JsonObject? = null
         var adjusted = false
 
         ApplicationManager.getApplication().invokeAndWait {
+            val store = MarginalisStore.getInstance(project)
+            relaying = relayed?.let { store.threads.relaying(it.key) }?.let { addedJson(it, store.syncLine(it)) }
+            if (relaying != null) return@invokeAndWait
             // Agents never create segments — the selection gesture is human.
             val created = if (wireLine == null || file == null || vFile == null) {
                 CommentThread(
@@ -292,6 +310,7 @@ class MarginalisRestService : RestService() {
                     is AnchorOutcome.Stale -> {
                         error = outcome.message
                         errorStatus = HttpResponseStatus.CONFLICT
+                        errorReason = STALE_ANCHOR
                         return@invokeAndWait
                     }
                     is AnchorOutcome.Placed -> outcome
@@ -303,25 +322,41 @@ class MarginalisRestService : RestService() {
                     intent = classification.intent, label = classification.label,
                 ).also { MarginalisMarkers.attach(project, it, document) }
             }
-            val author = agentAuthor(json)
-            created.addMessage(Message(author, body, to = to))
+            val message = Message(agentAuthor(json), body, to = to, relayed = relayed)
+            created.addMessage(message)
             MarginalisStore.getInstance(project).threads.add(created)
-            maybeNotify(project, created, author, body)
+            maybeNotify(project, created, message)
             thread = created
         }
 
-        val added = thread ?: return AddOutcome.refused(errorStatus, error ?: "internal error")
-        return AddOutcome.created(
-            JsonObject().apply {
-                addProperty("thread_id", added.id)
-                added.file?.let { addProperty("file", it) }
-                added.line?.let {
-                    addProperty("line", it + 1)
-                    addProperty("line_adjusted", adjusted)
+        relaying?.let { return AddOutcome.existing(it) }
+        val added = thread ?: return AddOutcome.refused(errorStatus, error ?: "internal error", errorReason)
+        return AddOutcome.created(addedJson(added).apply { added.line?.let { addProperty("line_adjusted", adjusted) } })
+    }
+
+    private fun existingRelayJson(relayed: Relayed, projectFilter: String?): JsonObject? =
+        ApplicationManager.getApplication().runReadAction(
+            Computable {
+                admittedStores(projectFilter).values.firstNotNullOfOrNull { store ->
+                    store.threads.relaying(relayed.key)?.let { addedJson(it, store.syncLine(it)) }
                 }
-                addProperty("status", added.status.kind.name.lowercase())
             },
         )
+
+    private fun deletedRelayMessage(relayed: Relayed): String =
+        "comment ${relayed.commentId} started a relayed thread the user deleted; it won't be recreated. " +
+            "Skip it, and its replies with it."
+
+    private fun deletedRelay(relayed: Relayed, projectFilter: String?): Boolean =
+        ApplicationManager.getApplication().runReadAction(
+            Computable { admittedStores(projectFilter).values.any { it.threads.isDeletedRelay(relayed.key) } },
+        )
+
+    private fun addedJson(thread: CommentThread, line: Int? = thread.line): JsonObject = JsonObject().apply {
+        addProperty("thread_id", thread.id)
+        thread.file?.let { addProperty("file", it) }
+        line?.let { addProperty("line", it + 1) }
+        addProperty("status", thread.status.kind.name.lowercase())
     }
 
     private fun payloadError(json: JsonObject): String? {
@@ -355,8 +390,8 @@ class MarginalisRestService : RestService() {
     private fun lineText(document: Document, line: Int): String =
         document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)))
 
-    private fun maybeNotify(project: Project, thread: CommentThread, author: Author, body: String) {
-        if (!MarginalisSettings.getInstance().state.notifyOnAgentReply) return
+    private fun maybeNotify(project: Project, thread: CommentThread, message: Message) {
+        if (!message.notifiesUser || !MarginalisSettings.getInstance().state.notifyOnAgentReply) return
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             val selectedFile = FileEditorManager.getInstance(project).selectedTextEditor
@@ -368,8 +403,10 @@ class MarginalisRestService : RestService() {
             val where = thread.file?.plus(thread.line?.let { ":${it + 1}" } ?: "") ?: project.name
             NotificationGroupManager.getInstance().getNotificationGroup("Marginalis")
                 .createNotification(
-                    "${author.displayName} · $where",
-                    StringUtil.shortenTextWithEllipsis(MarkdownRenderer.previewText(body), 120, 0),
+                    StringUtil.escapeXmlEntities("${message.author.displayName} · $where"),
+                    StringUtil.escapeXmlEntities(
+                        StringUtil.shortenTextWithEllipsis(MarkdownRenderer.previewText(message.body), 120, 0),
+                    ),
                     NotificationType.INFORMATION,
                 )
                 .addAction(
@@ -411,19 +448,43 @@ class MarginalisRestService : RestService() {
             ?.let { return sendBadRequest(it, request, context) }
         val body = json.stringOrNull("body")
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "missing 'body'", request, context)
+        if (body.isBlank()) {
+            return sendBadRequest("'body' is empty: a reply with nothing said in it answers nothing. Pass the reply text.", request, context)
+        }
         val to = Addressee.parse(json.stringOrNull("to")).getOrElse { return sendBadRequest(it, request, context) }
-        val message = Message(agentAuthor(json), body, to = to)
-        thread.addMessage(message)
-        MarginalisStore.getInstance(project).threads.notifyChanged(thread)
-        maybeNotify(project, thread, message.author, body)
-        sendJson(
-            JsonObject().apply {
-                addProperty("message_id", message.id)
-                addProperty("thread_id", thread.id)
-                addProperty("status", thread.status.kind.name.lowercase())
-            },
-            request, context,
-        )
+        val relayed = Relayed.parse(json.get("relayed"), to).getOrElse { return sendBadRequest(it, request, context) }
+        val threads = MarginalisStore.getInstance(project).threads
+        val message = Message(agentAuthor(json), body, to = to, relayed = relayed)
+        if (relayed == null) {
+            thread.addMessage(message)
+        } else {
+            var outcome: RelayOutcome? = null
+            ApplicationManager.getApplication().invokeAndWait { outcome = threads.relayInto(thread, message) }
+            when (val relay = outcome) {
+                is RelayOutcome.Existing ->
+                    return sendJson(replyJson(relay.message, thread).apply { addProperty("existing", true) }, request, context)
+                is RelayOutcome.Elsewhere -> return send(
+                    errorJson(
+                        "comment ${relayed.commentId} is already relayed in thread '${relay.thread.id}'" +
+                            "${relay.thread.file?.let { " ($it)" } ?: ""} — a GitHub comment lives in one thread. Reply there, or skip it.",
+                        RELAYED_ELSEWHERE,
+                    ).apply { addProperty("thread_id", relay.thread.id) },
+                    HttpResponseStatus.CONFLICT, request, context,
+                )
+                RelayOutcome.Deleted ->
+                    return sendError(HttpResponseStatus.CONFLICT, deletedRelayMessage(relayed), request, context, DELETED_RELAY)
+                is RelayOutcome.Added, null -> Unit
+            }
+        }
+        threads.notifyChanged(thread)
+        maybeNotify(project, thread, message)
+        sendJson(replyJson(message, thread), request, context)
+    }
+
+    private fun replyJson(message: Message, thread: CommentThread): JsonObject = JsonObject().apply {
+        addProperty("message_id", message.id)
+        addProperty("thread_id", thread.id)
+        addProperty("status", thread.status.kind.name.lowercase())
     }
 
     private fun handleStatusChange(
@@ -462,7 +523,7 @@ class MarginalisRestService : RestService() {
             return sendError(
                 HttpResponseStatus.CONFLICT,
                 "thread '${thread.id}' is ${thread.status.kind.name.lowercase()}, not orphaned — live anchors don't move.",
-                request, context,
+                request, context, NOT_ORPHANED,
             )
         }
         json.stringOrNull("file")?.takeIf { it != thread.file }?.let {
@@ -477,11 +538,17 @@ class MarginalisRestService : RestService() {
         val path = thread.file
             ?: return sendError(HttpResponseStatus.BAD_REQUEST, "thread '${thread.id}' has no file", request, context)
         val vFile = ApplicationManager.getApplication()
-            .runReadAction(Computable { resolveFile(path, json.stringOrNull("project"))?.second })
-            ?: return sendResolutionError(resolutionFailure(path, json.stringOrNull("project")), request, context)
+            .runReadAction(Computable { project.guessProjectDir()?.findFileByRelativePath(path) })
+            ?: return sendError(
+                HttpResponseStatus.NOT_FOUND,
+                "'$path' no longer exists in project '${project.name}' — if its content moved to another file, reply " +
+                    "saying where and resolve; cross-file re-anchor isn't supported.",
+                request, context,
+            )
 
         var error: String? = null
         var errorStatus = HttpResponseStatus.BAD_REQUEST
+        var errorReason: String? = null
         var landed = -1
         ApplicationManager.getApplication().invokeAndWait {
             val document = FileDocumentManager.getInstance().getDocument(vFile)
@@ -493,6 +560,7 @@ class MarginalisRestService : RestService() {
                 is AnchorOutcome.Stale -> {
                     error = outcome.message
                     errorStatus = HttpResponseStatus.CONFLICT
+                    errorReason = STALE_ANCHOR
                     return@invokeAndWait
                 }
                 is AnchorOutcome.Placed -> outcome
@@ -503,7 +571,7 @@ class MarginalisRestService : RestService() {
             landed = placed.line
         }
         if (error != null || landed < 0) {
-            return sendError(errorStatus, error ?: "internal error", request, context)
+            return sendError(errorStatus, error ?: "internal error", request, context, errorReason)
         }
         sendJson(
             JsonObject().apply {
@@ -610,7 +678,7 @@ class MarginalisRestService : RestService() {
             if (project.isDisposed) continue
             val store = MarginalisStore.getInstance(project)
             if (fileFilter == null) {
-                cleared += store.threads.clear().size
+                cleared += store.clearAll().size
             } else {
                 for (thread in store.threads.all().filter { it.file == fileFilter }) {
                     store.threads.remove(thread.id)
@@ -773,6 +841,7 @@ class MarginalisRestService : RestService() {
                     add("seen_by", JsonArray().apply { message.seenBy.sorted().forEach(::add) })
                     message.to?.let { addProperty("to", it.wire) }
                     if (message.agrees) addProperty("agrees", true)
+                    message.relayed?.let { add("relayed", it.toJson()) }
                     if (newlySeen) addProperty("newly_seen", true)
                     if (message === referenced) addProperty("referenced", true)
                 },
@@ -960,6 +1029,7 @@ class MarginalisRestService : RestService() {
 
         var error: String? = null
         var errorStatus = HttpResponseStatus.BAD_REQUEST
+        var errorReason: String? = null
         var landedLine = -1
         var adjusted = false
 
@@ -978,6 +1048,7 @@ class MarginalisRestService : RestService() {
                 is AnchorOutcome.Stale -> {
                     error = outcome.message
                     errorStatus = HttpResponseStatus.CONFLICT
+                    errorReason = STALE_ANCHOR
                     return@invokeAndWait
                 }
                 is AnchorOutcome.Placed -> outcome
@@ -988,7 +1059,7 @@ class MarginalisRestService : RestService() {
         }
 
         if (error != null || landedLine < 0) {
-            return sendError(errorStatus, error ?: "internal error", request, context)
+            return sendError(errorStatus, error ?: "internal error", request, context, errorReason)
         }
         sendJson(
             JsonObject().apply {
@@ -1070,6 +1141,16 @@ class MarginalisRestService : RestService() {
     }
 
     private companion object {
+        const val STALE_ANCHOR = "stale_anchor"
+        const val NOT_ORPHANED = "not_orphaned"
+        const val DELETED_RELAY = "deleted_relay"
+        const val RELAYED_ELSEWHERE = "relayed_elsewhere"
+
+        fun errorJson(message: String, reason: String?): JsonObject = JsonObject().apply {
+            addProperty("error", message)
+            reason?.let { addProperty("reason", it) }
+        }
+
         val BATCH_DEFAULTS = listOf("author_name", "author_id", "project")
 
         val TEXT_FIELDS = listOf(
@@ -1105,8 +1186,9 @@ class MarginalisRestService : RestService() {
         message: String,
         request: FullHttpRequest,
         context: ChannelHandlerContext,
+        reason: String? = null,
     ) {
-        send(JsonObject().apply { addProperty("error", message) }, status, request, context)
+        send(errorJson(message, reason), status, request, context)
     }
 
     private fun sendBadRequest(reason: String, request: FullHttpRequest, context: ChannelHandlerContext) {

@@ -21,5 +21,7 @@ object LiveThread {
 
     fun isWorking(messages: List<Message>, agentKey: String, deliveredAt: Instant?): Boolean =
         deliveredAt != null &&
-            messages.none { (it.author as? Author.Agent)?.receiptKey == agentKey && it.createdAt > deliveredAt }
+            messages.none {
+                it.relayed == null && (it.author as? Author.Agent)?.receiptKey == agentKey && it.createdAt > deliveredAt
+            }
 }

@@ -5,6 +5,7 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import dev.marginalis.core.People
 
 // App-level, not per project: navigation consent and display name follow the person.
 @Service
@@ -15,6 +16,10 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
         var navigationEnabled: Boolean = true
 
         var displayName: String = ""
+
+        var githubLogin: String = ""
+
+        var githubNicknames: MutableMap<String, String> = LinkedHashMap()
 
         var timeFormat: String = TimeFormat.AUTO.stored
 
@@ -30,6 +35,9 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
     override fun loadState(state: State) {
         this.state = state
     }
+
+    val people: People
+        get() = People(state.githubNicknames)
 
     var timeFormat: TimeFormat
         get() = TimeFormat.fromStored(state.timeFormat)

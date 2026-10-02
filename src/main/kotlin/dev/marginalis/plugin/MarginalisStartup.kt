@@ -9,7 +9,6 @@ import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.util.concurrency.AppExecutorUtil
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.ThreadStatus
@@ -29,15 +28,12 @@ class MarginalisStartup : ProjectActivity {
                 syncMarker(project, thread)
                 thread.file?.let { FileTurn.track(project, it) }
             }
-            AppExecutorUtil.getAppExecutorService().execute {
-                if (!project.isDisposed) {
-                    MarginalisPersistence.save(project, store.snapshot())
-                }
-            }
+            store.scheduleSave()
         }
 
         val loaded = MarginalisPersistence.load(project)
         store.handBack.restore(loaded.handedBackAt)
+        store.threads.restoreDeletedRelays(loaded.deletedRelays)
         val persisted = loaded.threads
         if (persisted.isNotEmpty()) {
             ApplicationManager.getApplication().invokeLater {

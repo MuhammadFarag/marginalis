@@ -10,7 +10,7 @@ data class ThreadSummary(
         fun of(thread: CommentThread, readerKey: String): ThreadSummary = ThreadSummary(
             messages = thread.messages.size,
             unread = thread.unreadCountFor(readerKey),
-            lastAuthor = thread.messages.lastOrNull()?.author,
+            lastAuthor = thread.lastSpoken?.author,
             awaiting = thread.turnFor(readerKey),
         )
     }

@@ -3,52 +3,45 @@
     <name>Marginalis</name>
     <vendor email="m@far.ag" url="https://github.com/MuhammadFarag/marginalis">Muhammad Farag</vendor>
     <description><![CDATA[
-        Margin conversations between you and your AI coding agent — Google Docs
-        comments over live code, built for the review loop, not the keystroke loop.
-        <br/><br/>
-        Getting your agent on board is one command — the skill (for Claude Code
-        and 70+ other agents) teaches it to find the server and follow the
-        plugin's own served guide, version-matched by construction:
-        <br/><br/>
-        <code>npx skills add MuhammadFarag/marginalis -g -y</code>
-        <br/><br/>
-        No skill needed, though: any agent pointed at
-        <code>GET http://127.0.0.1:63342/api/marginalis/agent_guide</code> learns
-        the whole contract from the running plugin itself.
-        <br/><br/>
-        Marginalis is deliberately turn-based: your agent never types over your
-        shoulder. While you work, it reads the margin and leaves replies, review
-        findings, and guided walkthroughs anchored to the exact lines — even the
-        exact words — they are about. Threads survive edits and restarts, carry
-        per-agent read receipts ("the agent will see this next turn" is a promise,
-        not a hope), and resolve only when their outcome actually lands in code.
-        <br/><br/>
+        <p>Review AI-written code where it lives. Marginalis lets you and your
+        coding agent discuss code in comment threads anchored to the lines they
+        are about, inside your JetBrains IDE.</p>
+        <p>Agents write code faster than anyone can review it in a chat window.
+        Marginalis moves the review into the editor. The agent leaves findings,
+        questions and walkthroughs next to the code, you answer in place, and a
+        thread closes only when its outcome is in the code.</p>
+        <p><b>What you get</b></p>
         <ul>
-        <li><b>Anchored threads</b> — comment on a line, or select the exact words
-        (Alt+Shift+M); anchors track edits and re-find their content after
-        restarts instead of drifting.</li>
-        <li><b>Turn signals</b> — file-icon badges in tabs and the Project view,
-        gutter badges, and a tool-window count answer "is it my turn?" at a
-        glance; a balloon arrives when the agent posts in a file you don't have
-        open.</li>
-        <li><b>Severity as a gate</b> — the agent marks findings <i>blocker</i>
-        ("act before this proceeds") or <i>nit</i> ("dismiss guilt-free"); filter
-        the tree to what actually gates the merge.</li>
-        <li><b>Guided walkthroughs</b> — the agent numbers steps through a change
-        ("look here 1st, 2nd, …"); walk them with the next/previous-occurrence
-        shortcuts, resolve as you go, step totals stay stable.</li>
-        <li><b>A review protocol, not just comments</b> — resolved means the
-        outcome is in the code; read receipts are per agent, so several agents
-        (one designing, one implementing) share a margin without consuming each
-        other's unread.</li>
-        <li><b>Agent-agnostic transport</b> — plain JSON over the IDE's built-in
-        HTTP server; anything that can make an HTTP request can converse. No MCP
-        server, no extra configuration.</li>
+        <li><b>Feedback next to the code.</b> Threads attach to a line, a
+        selection, a file or the whole project, and stay attached through edits
+        and restarts.</li>
+        <li><b>Clear turns.</b> Badges on files and in the tool window show what
+        waits on you. Hand the turn back in one click, or switch a single thread
+        to Live for a quick back and forth.</li>
+        <li><b>Reviews that sort themselves.</b> The agent marks what blocks,
+        what is a nit and what needs no answer, so you can focus on what
+        matters first.</li>
+        <li><b>Pull request reviews in one place.</b> Your agent brings a PR's
+        review comments, from teammates and review bots, next to the code they
+        are about, each one attributed to its author.</li>
+        <li><b>Guided walkthroughs.</b> The agent takes you through a change
+        step by step.</li>
+        <li><b>Decisions in one click.</b> Agree with a proposal without typing,
+        and follow links straight to the code under discussion.</li>
+        <li><b>Several agents, one margin.</b> A designing agent and an
+        implementing agent can share the same threads without getting in each
+        other's way.</li>
         </ul>
-        <br/>
-        Threads persist per project (<code>.idea/marginalis.json</code>), so the
-        conversation is part of the workspace, not the session. Apache-2.0,
-        source on GitHub.
+        <p><b>Getting started</b></p>
+        <p>Install the plugin, then give your agent the skill with one command.
+        It works with Claude Code and more than 70 other agents:</p>
+        <p><code>npx skills add MuhammadFarag/marginalis -g -y</code></p>
+        <p>Any other agent can learn the full protocol from the running plugin at
+        <code>GET http://127.0.0.1:63342/api/marginalis/agent_guide</code>.</p>
+        <p><b>Private by design</b></p>
+        <p>Your threads stay with your project on your machine. The plugin talks
+        to your agent over the IDE's local server and never writes to GitHub.
+        Open source under Apache-2.0.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

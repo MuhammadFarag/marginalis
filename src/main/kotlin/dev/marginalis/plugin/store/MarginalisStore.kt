@@ -16,6 +16,8 @@ import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.ThreadStore
 import dev.marginalis.core.ThreadsCodec
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Service(Service.Level.PROJECT)
 class MarginalisStore(private val project: Project) : Disposable {
@@ -28,10 +30,20 @@ class MarginalisStore(private val project: Project) : Disposable {
 
     fun recordHandBack() {
         handBack.record()
-        AppExecutorUtil.getAppExecutorService().execute {
-            if (!project.isDisposed) MarginalisPersistence.save(project, snapshot())
-        }
+        scheduleSave()
     }
+
+    private val savePending = AtomicBoolean()
+
+    fun scheduleSave() {
+        if (!savePending.compareAndSet(false, true)) return
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+            { if (savePending.getAndSet(false) && !project.isDisposed) MarginalisPersistence.save(project, snapshot()) },
+            SAVE_COALESCING_MILLIS, TimeUnit.MILLISECONDS,
+        )
+    }
+
+    fun clearAll(): List<CommentThread> = threads.clear().also { scheduleSave() }
 
     private val liveThreads = ConcurrentHashMap.newKeySet<String>()
 
@@ -72,10 +84,11 @@ class MarginalisStore(private val project: Project) : Disposable {
         LiveThread.submit(handBack, thread, liveTarget(thread, to))
     }
 
-    fun snapshot() = ThreadsCodec.Document(threads.all(), handBack.lastAt)
+    fun snapshot() = ThreadsCodec.Document(threads.all(), handBack.lastAt, threads.deletedRelays)
 
     override fun dispose() {
         handBack.releaseAll()
+        if (savePending.getAndSet(false)) MarginalisPersistence.save(project, snapshot())
     }
 
     // Deliberately not persisted: a draft is a thought in progress, not a record.
@@ -129,6 +142,8 @@ class MarginalisStore(private val project: Project) : Disposable {
     }
 
     companion object {
+        private const val SAVE_COALESCING_MILLIS = 100L
+
         fun getInstance(project: Project): MarginalisStore = project.service()
     }
 }

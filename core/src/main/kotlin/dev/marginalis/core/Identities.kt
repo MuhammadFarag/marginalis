@@ -27,7 +27,7 @@ object Identities {
             Identity.Agent(
                 id = key,
                 name = names[key] ?: waitingByKey[key]?.displayName,
-                messagesWritten = written[key].orEmpty().size,
+                messagesWritten = written[key].orEmpty().count { it.relayed == null },
                 unread = threads.sumOf { it.unreadCountFor(key) },
                 waiting = key in waitingByKey,
             )

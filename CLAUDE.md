@@ -34,20 +34,21 @@ is running the plugin:
 
 - Sweep unread margin comments at the start of a turn; replies land there,
   born unread.
-- Never edit a file with open threads (fyi excepted) — drive each to
-  resolution first (its conclusion becomes part of the edit, or reply why
-  it needs none).
+- Never edit a file with open threads — drive each to resolution first
+  (its conclusion becomes part of the edit, or reply why it needs none).
+  An fyi blocks only while a user reply on it awaits your answer, and
+  is never yours to resolve.
 - The resolver is the completer: RESOLVED means the outcome is in the
-  code (or explicitly moot). Approval is a reply; land the change, then
-  resolve.
-- Substantial batches get a review walkthrough before commit: one
-  `comment_add_batch` call with `order` 1..N and a `walkthrough` label,
-  each step anchored with exact `anchor_text`, ordered by code
-  structure. A step resolved silently is approved; a reply is a change
-  request. Once the batch ships, resolve any steps still open.
+  code (or explicitly moot). Approval is a reply — often a one-click
+  Agree; land the change, then resolve.
+- Features are reviewed by live demo, not by walkthrough: build a dev
+  zip, seed demo threads once `ping` reports that version, and wait in
+  the margin. Use a review walkthrough only when the user asks for one;
+  resolve demo threads once the change ships.
 - End a turn that expects the user's reply by starting `comment_wait` in
   the background (the served guide has the pattern); the user's Hand
-  Back wakes you.
+  Back — or a Submit in a Live thread — wakes you. After a live wake,
+  answer and wait again.
 
 ## Project conventions
 
@@ -73,6 +74,15 @@ is running the plugin:
   without that conversation, and drop the label once it happens.
 - Guided vocabulary is "walkthrough"/"steps" (wire param `walkthrough`,
   UI actions First/Previous/Next/Last Step).
+- The served guide (`src/main/resources/marginalis/agent-guide.md`) is
+  the agent contract: every behaviour or wire change lands there.
+  `skills/marginalis/SKILL.md` is only a bootstrap that points at the
+  guide; change it only when the bootstrap itself changes, since every
+  user must re-run the skills CLI to pick it up.
+- `CHANGELOG.md` is the Marketplace "What's New": entries are business
+  oriented, outcome first, in the owner's voice
+  (`personal-style:writing-style`), with no internal mechanics. The
+  `<description>` in `plugin.xml` follows the same voice.
 - Comments: write self-documenting code. Treat the urge to comment as a
   sign a rename or refactor is missing; comment only what the code can't
   say (typically a non-obvious platform quirk). Update comments a change

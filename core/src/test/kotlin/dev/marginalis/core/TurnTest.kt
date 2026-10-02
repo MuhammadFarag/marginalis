@@ -64,6 +64,8 @@ class TurnTest {
             assertIs<Parsed.Invalid>(parsed, "'$raw' must be rejected")
             assertTrue(parsed.reason.contains("'agent'") && parsed.reason.contains("'user'"))
             assertTrue(parsed.reason.contains("fyi"), "the user's debt excludes a read fyi")
+            assertTrue(parsed.reason.contains("not relayed"), "relays never take the turn")
+            assertTrue(parsed.reason.contains("another agent"), "a message addressed elsewhere is not your debt")
         }
     }
 

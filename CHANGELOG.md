@@ -5,6 +5,41 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Added
+
+- Work through pull request reviews without leaving the editor (#33).
+  Your agent brings a PR's review discussion into the margin, next to
+  the code it is about, so you can decide what to do with each comment
+  together.
+  - Every comment keeps its author. Teammates, review bots and your own
+    GitHub comments are each labelled as such, and one click opens the
+    original comment on GitHub.
+  - The PR conversation stays in order, grouped under its PR number.
+  - Nothing goes back to GitHub. The margin is your working space;
+    replying on the PR stays your decision.
+  - Bringing the same PR in again adds only what is new. A new reply
+    reopens a thread you had resolved, and a thread you removed from
+    the margin stays removed.
+  - Comments from GitHub wait quietly. They raise no notifications and
+    never change whose move it is; a thread brought in from GitHub is
+    yours to answer.
+  - To see your own GitHub comments as yours, set your GitHub login in
+    Settings → Tools → Marginalis.
+  - Give teammates the names you know them by: map GitHub logins to
+    nicknames in Settings → Tools → Marginalis.
+
+### Fixed
+
+- Margin messages are safer to open. Comments from GitHub, or from any
+  other source, can no longer load remote images or open links other
+  than web pages.
+- A damaged entry in the margin's saved file no longer hides all your
+  threads. Only that entry is skipped.
+- Clicking a link to a line of code no longer reports an internal error
+  in recent IDE versions.
+
 ## [0.1.30] - 2026-10-01
 
 ### Added

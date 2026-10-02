@@ -7,6 +7,7 @@ import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 import dev.marginalis.core.CommentThread
+import dev.marginalis.plugin.settings.MarginalisSettings
 import javax.swing.Icon
 
 class ThreadGutterIconRenderer(
@@ -22,11 +23,11 @@ class ThreadGutterIconRenderer(
             val thread = threads.single()
             val first = thread.messages.firstOrNull() ?: return "Marginalis thread"
             val status = thread.status.kind.name.lowercase()
-            return "<html><b>${first.author.displayName}</b> · $status · ${thread.messages.size} message(s)<br/>" +
+            return "<html><b>${StringUtil.escapeXmlEntities(first.speaker(MarginalisSettings.getInstance().people))}</b> · $status · ${thread.messages.size} message(s)<br/>" +
                 "${preview(thread)}<br/><i>Click to open thread</i></html>"
         }
         val lines = threads.joinToString("<br/>") { thread ->
-            "<b>${thread.messages.firstOrNull()?.author?.displayName ?: "?"}</b> · ${preview(thread)}"
+            "<b>${StringUtil.escapeXmlEntities(thread.messages.firstOrNull()?.speaker(MarginalisSettings.getInstance().people) ?: "?")}</b> · ${preview(thread)}"
         }
         return "<html><b>${threads.size} Marginalis threads</b><br/>$lines<br/><i>Click to choose</i></html>"
     }

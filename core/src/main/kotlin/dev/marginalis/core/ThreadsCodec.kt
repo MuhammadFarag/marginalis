@@ -7,16 +7,25 @@ import java.time.Instant
 
 object ThreadsCodec {
 
-    fun encode(threads: List<CommentThread>, handedBackAt: Instant? = null): String {
+    fun encode(
+        threads: List<CommentThread>,
+        handedBackAt: Instant? = null,
+        deletedRelays: Set<Relayed.Key> = emptySet(),
+    ): String {
         val root = JsonObject().apply {
             addProperty("version", 1)
             handedBackAt?.let { addProperty("handed_back_at", it.toString()) }
             add("threads", JsonArray().apply { threads.forEach { add(threadJson(it)) } })
+            if (deletedRelays.isNotEmpty()) add("deleted_relays", JsonArray().apply { deletedRelays.forEach { add(relayKeyJson(it)) } })
         }
         return root.toString()
     }
 
-    data class Document(val threads: List<CommentThread>, val handedBackAt: Instant?) {
+    data class Document(
+        val threads: List<CommentThread>,
+        val handedBackAt: Instant?,
+        val deletedRelays: Set<Relayed.Key> = emptySet(),
+    ) {
         companion object {
             val EMPTY = Document(emptyList(), null)
         }
@@ -25,9 +34,24 @@ object ThreadsCodec {
     fun decodeDocument(text: String): Document {
         val root = JsonParser.parseString(text).asJsonObject
         return Document(
-            threads = root.getAsJsonArray("threads").map { thread(it.asJsonObject) },
+            threads = root.getAsJsonArray("threads").mapNotNull { runCatching { thread(it.asJsonObject) }.getOrNull() },
             handedBackAt = root.get("handed_back_at")?.takeIf { it.isJsonPrimitive }?.asString?.let(::instantOrNull),
+            deletedRelays = root.get("deleted_relays")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?.mapNotNull { it.takeIf { key -> key.isJsonObject }?.asJsonObject?.let(::relayKey) }?.toSet()
+                .orEmpty(),
         )
+    }
+
+    private fun relayKeyJson(key: Relayed.Key): JsonObject = JsonObject().apply {
+        key.kind?.let { addProperty("kind", it.wire) }
+        addProperty("comment_id", key.commentId)
+    }
+
+    private fun relayKey(json: JsonObject): Relayed.Key? {
+        val commentId = json.get("comment_id")?.takeIf { it.isJsonPrimitive }?.asString ?: return null
+        val kind = json.get("kind")?.takeIf { it.isJsonPrimitive }?.asString
+            ?.let { wire -> Relayed.Kind.entries.firstOrNull { it.wire == wire } }
+        return Relayed.Key(kind, commentId)
     }
 
     fun decode(text: String): List<CommentThread> = decodeDocument(text).threads
@@ -73,6 +97,7 @@ object ThreadsCodec {
                             m.to?.let { addProperty("to", it.wire) }
                             if (m.agrees) addProperty("agrees", true)
                             if (m.author is Author.Agent && m.readByUser) addProperty("read_by_user", true)
+                            m.relayed?.let { add("relayed", it.toJson()) }
                         },
                     )
                 }
@@ -110,19 +135,7 @@ object ThreadsCodec {
             label = FyiLabel.parseLenient(json.get("label")?.takeIf { it.isJsonPrimitive }?.asString, intent),
         )
         for (m in json.getAsJsonArray("messages")) {
-            val msg = m.asJsonObject
-            thread.addMessage(
-                Message(
-                    author = author(msg.getAsJsonObject("author")),
-                    body = msg.get("body").asString,
-                    id = msg.get("id").asString,
-                    createdAt = Instant.parse(msg.get("created_at").asString),
-                    seenBy = seenBy(msg),
-                    to = Addressee.parseLenient(msg.get("to")?.takeIf { it.isJsonPrimitive }?.asString),
-                    agrees = msg.flag("agrees"),
-                    readByUser = msg.flag("read_by_user"),
-                ),
-            )
+            runCatching { message(m.asJsonObject) }.getOrNull()?.let(thread::addMessage)
         }
         // Must follow the messages, which each count as a change while being added back.
         thread.restoreUpdatedAt(
@@ -139,6 +152,21 @@ object ThreadsCodec {
             },
         )
         return thread
+    }
+
+    private fun message(msg: JsonObject): Message {
+        val relayed = Relayed.fromStored(msg.get("relayed"))
+        return Message(
+            author = author(msg.getAsJsonObject("author")),
+            body = msg.get("body").asString,
+            id = msg.get("id").asString,
+            createdAt = Instant.parse(msg.get("created_at").asString),
+            seenBy = seenBy(msg),
+            to = Addressee.parseLenient(msg.get("to")?.takeIf { it.isJsonPrimitive }?.asString).takeIf { relayed == null },
+            agrees = msg.flag("agrees"),
+            readByUser = msg.flag("read_by_user"),
+            relayed = relayed,
+        )
     }
 
     /** Legacy single-agent files wrote a "seen_by_agent" bit instead. */

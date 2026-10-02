@@ -18,7 +18,7 @@ object MarginalisPersistence {
         val path = storageFile(project) ?: return
         try {
             Files.createDirectories(path.parent)
-            Files.writeString(path, ThreadsCodec.encode(document.threads, document.handedBackAt))
+            Files.writeString(path, ThreadsCodec.encode(document.threads, document.handedBackAt, document.deletedRelays))
         } catch (e: Exception) {
             log.warn("Failed to save margin threads to $path", e)
         }

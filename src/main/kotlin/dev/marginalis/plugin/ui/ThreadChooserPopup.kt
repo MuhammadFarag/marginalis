@@ -7,6 +7,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.SimpleListCellRenderer
 import javax.swing.JList
 import dev.marginalis.core.CommentThread
+import dev.marginalis.plugin.settings.MarginalisSettings
 
 object ThreadChooserPopup {
 
@@ -23,7 +24,7 @@ object ThreadChooserPopup {
                         selected: Boolean,
                         hasFocus: Boolean,
                     ) {
-                        val who = thread.messages.firstOrNull()?.author?.displayName ?: "?"
+                        val who = thread.messages.firstOrNull()?.speaker(MarginalisSettings.getInstance().people) ?: "?"
                         val what = thread.segment?.exact?.let { "“$it”" }
                             ?: MarkdownRenderer.previewText(thread.messages.firstOrNull()?.body ?: "")
                         text = "$who · " + StringUtil.shortenTextWithEllipsis(what, 60, 0)

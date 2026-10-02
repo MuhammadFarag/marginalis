@@ -50,6 +50,7 @@ import dev.marginalis.plugin.ui.FileLevelThreads
 import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ProjectThreadPopup
+import dev.marginalis.plugin.ui.RELAYED_STAYS_DELETED
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
 import java.awt.Component
@@ -239,12 +240,17 @@ private class ClearAllAction : AnAction("Delete All", "Delete all threads, inclu
         val blockerWarning = if (blockers > 0) " $blockers open blocker(s) are among them." else ""
         val answer = Messages.showYesNoDialog(
             project,
-            "Delete all $count margin thread(s), including the resolved log?$blockerWarning This cannot be undone.",
+            "Delete all $count margin thread(s), including the resolved log?$blockerWarning This cannot be undone." +
+                if (store.threads.deletedRelays.isNotEmpty()) {
+                    " Relayed threads you deleted from the margin can then come back the next time an agent relays their PR."
+                } else {
+                    ""
+                },
             "Delete All Margin Threads",
             Messages.getWarningIcon(),
         )
         if (answer != Messages.YES) return
-        store.threads.clear() // marker cleanup happens in the store listener (deleted-thread branch)
+        store.clearAll() // marker cleanup happens in the store listener (deleted-thread branch)
     }
 }
 
@@ -402,13 +408,14 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         val answer = Messages.showYesNoDialog(
             project,
             "Delete ${threads.size} thread(s)?$blockerWarning Unlike resolving, deletion keeps no record. " +
-                "This cannot be undone.",
+                "This cannot be undone." +
+                if (threads.any { it.isRelayedRoot }) " $RELAYED_STAYS_DELETED" else "",
             "Delete Threads",
             Messages.getWarningIcon(),
         )
         if (answer != Messages.YES) return
         val store = MarginalisStore.getInstance(project)
-        for (thread in threads) store.threads.remove(thread.id)
+        for (thread in threads) store.threads.delete(thread.id)
     }
 
     /** Cursor index is -1 when no thread node is selected. */

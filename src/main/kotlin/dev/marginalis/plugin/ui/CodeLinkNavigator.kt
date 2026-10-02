@@ -1,11 +1,13 @@
 package dev.marginalis.plugin.ui
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
+import com.intellij.openapi.util.Computable
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import dev.marginalis.core.CodeLink
@@ -18,19 +20,28 @@ object CodeLinkNavigator {
             ?: return onUnresolved("$link names no file in this project — code link paths are relative to the project root.")
         if (file.isDirectory) return onUnresolved("$link names a directory — a code link opens a file.")
         val lines = link.lines ?: return OpenFileDescriptor(project, file).navigate(true)
+        val span = when (val lookup = ApplicationManager.getApplication().runReadAction(Computable { lookUp(file, link, lines) })) {
+            is LineLookup.Missing -> return onUnresolved(lookup.problem)
+            is LineLookup.Found -> lookup
+        }
+        val editor = FileEditorManager.getInstance(project)
+            .openTextEditor(OpenFileDescriptor(project, file, lines.first - 1, 0), true) ?: return
+        if (lines.last > lines.first) editor.selectionModel.setSelection(span.start, span.end)
+    }
+
+    private sealed interface LineLookup {
+        class Found(val start: Int, val end: Int) : LineLookup
+        class Missing(val problem: String) : LineLookup
+    }
+
+    private fun lookUp(file: VirtualFile, link: CodeLink, lines: IntRange): LineLookup {
         val document = FileDocumentManager.getInstance().getDocument(file)
-            ?: return onUnresolved("${link.path} has no text the editor can open at a line.")
+            ?: return LineLookup.Missing("${link.path} has no text the editor can open at a line.")
         val lineCount = textLineCount(document)
         if (lines.last > lineCount) {
-            return onUnresolved("$link reaches past the end of ${link.path}, which has $lineCount lines.")
+            return LineLookup.Missing("$link reaches past the end of ${link.path}, which has $lineCount lines.")
         }
-        val firstLine = lines.first - 1
-        val lastLine = lines.last - 1
-        val editor = FileEditorManager.getInstance(project)
-            .openTextEditor(OpenFileDescriptor(project, file, firstLine, 0), true) ?: return
-        if (lastLine > firstLine) {
-            editor.selectionModel.setSelection(document.getLineStartOffset(firstLine), document.getLineEndOffset(lastLine))
-        }
+        return LineLookup.Found(document.getLineStartOffset(lines.first - 1), document.getLineEndOffset(lines.last - 1))
     }
 
     private fun findOrRefresh(base: VirtualFile, path: String): VirtualFile? {

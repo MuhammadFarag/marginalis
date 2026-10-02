@@ -432,4 +432,84 @@ class ThreadsCodecTest {
         assertEquals(Intent.FYI, thread.intent)
         assertEquals(null, thread.severity)
     }
+
+    @Test
+    fun `a relayed message keeps its GitHub source through the trip, and an ordinary one writes none`() {
+        val agent = Author.Agent("Claude", "claude-main")
+        val relayed = Relayed(
+            Relayed.Source.GITHUB, "99", "https://github.com/o/r/pull/7#discussion_r99", "Mona", "octocat",
+            bot = true, avatarUrl = "https://a/x.png",
+        )
+        val t = CommentThread("a.py", 1, "x").also {
+            it.addMessage(Message(agent, "from GitHub", relayed = relayed))
+            it.addMessage(Message(agent, "mine"))
+        }
+
+        val encoded = ThreadsCodec.encode(listOf(t))
+        val decoded = ThreadsCodec.decode(encoded).single()
+
+        assertEquals(listOf(relayed, null), decoded.messages.map { it.relayed })
+        assertEquals(1, Regex("\"relayed\"").findAll(encoded).count())
+    }
+
+    @Test
+    fun `a stored relay that no longer parses still loads as relayed, and survives the next save`() {
+        val stored = """
+            {"version":1,"threads":[{
+              "id":"t1","file":"a.py","status":"OPEN","created_at":"2026-07-18T12:00:00Z",
+              "messages":[
+                {"id":"m1","author":{"kind":"AGENT","name":"Claude","id":"claude-main"},"body":"hi",
+                 "created_at":"2026-07-18T12:00:01Z","seen_by":["claude-main"],"relayed":{"source":"gitlab"}}
+              ]
+            }]}
+        """.trimIndent()
+
+        val loaded = ThreadsCodec.decode(stored).single()
+        val resaved = ThreadsCodec.decode(ThreadsCodec.encode(listOf(loaded))).single()
+
+        assertEquals(Turn.USER_OWES, loaded.turn())
+        assertEquals(loaded.messages.single().relayed, resaved.messages.single().relayed)
+        assertEquals(true, resaved.messages.single().relayed != null)
+    }
+
+    @Test
+    fun `a stored message that both addresses someone and is relayed loads as relayed, addressing no one`() {
+        val stored = """
+            {"version":1,"threads":[{
+              "id":"t1","file":"a.py","status":"OPEN","created_at":"2026-07-18T12:00:00Z",
+              "messages":[
+                {"id":"m1","author":{"kind":"AGENT","name":"Claude","id":"claude-main"},"body":"hi",
+                 "created_at":"2026-07-18T12:00:01Z","seen_by":["claude-main"],"to":"user",
+                 "relayed":{"source":"github","comment_id":"7","url":"https://github.com/o/r/pull/1#discussion_r7","name":"Mona","login":"octocat"}}
+              ]
+            }]}
+        """.trimIndent()
+
+        val message = ThreadsCodec.decode(stored).single().messages.single()
+
+        assertEquals("7", message.relayed?.commentId)
+        assertEquals(null, message.to)
+    }
+
+    @Test
+    fun `one broken thread or message never costs the rest of the file`() {
+        val stored = """
+            {"version":1,"threads":[
+              {"id":"broken","file":"a.py","status":"OPEN","created_at":"not a time","messages":[]},
+              {"file":"a.py","status":"OPEN","created_at":"2026-07-18T12:00:00Z","messages":[]},
+              {"id":"t2","file":"a.py","status":"OPEN","created_at":"2026-07-18T12:00:00Z",
+               "messages":[
+                 {"id":"m1","author":{"kind":"USER","name":"Muhammad"},"created_at":"2026-07-18T12:00:01Z"},
+                 {"id":"m2","author":{"kind":"USER","name":"Muhammad"},"body":"kept","created_at":"2026-07-18T12:00:02Z"},
+                 "not a message"
+               ]},
+              "not a thread"
+            ]}
+        """.trimIndent()
+
+        val threads = ThreadsCodec.decode(stored)
+
+        assertEquals(listOf("t2"), threads.map { it.id })
+        assertEquals(listOf("kept"), threads.single().messages.map { it.body })
+    }
 }

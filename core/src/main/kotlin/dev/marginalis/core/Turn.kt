@@ -19,9 +19,11 @@ enum class Turn(val wireName: String) {
             if (raw == null) return Parsed.Ok(null)
             val turn = entries.firstOrNull { it.wireName == raw.lowercase() }
                 ?: return Parsed.Invalid(
-                    "invalid awaiting '$raw' — use 'agent' (the user spoke last: the agent owes a reply) or " +
-                        "'user' (an agent spoke last: the user owes one, except on an fyi already read); omit to list " +
-                        "regardless of whose turn it is.",
+                    "invalid awaiting '$raw' — use 'agent' (the last message that was not relayed is the user's, " +
+                        "or addressed to you: you owe a reply; one addressed to another agent is theirs) or 'user' " +
+                        "(an agent spoke last unaddressed, someone addressed 'user', or only relays were said: the " +
+                        "user owes one — on an fyi only a read, so a read fyi owes nothing until a new message " +
+                        "arrives); omit to list regardless of whose turn it is.",
                 )
             return Parsed.Ok(turn)
         }

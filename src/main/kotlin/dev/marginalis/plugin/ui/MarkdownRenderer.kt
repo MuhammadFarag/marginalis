@@ -19,6 +19,7 @@ import com.intellij.util.ui.JBUI
 import dev.marginalis.core.CodeFence
 import dev.marginalis.core.CodeLink
 import dev.marginalis.core.CodeFences
+import dev.marginalis.core.HtmlSanitizer
 import dev.marginalis.core.Parsed
 import dev.marginalis.core.Reference
 import dev.marginalis.core.Resolution
@@ -44,6 +45,7 @@ import javax.swing.event.PopupMenuListener
 object MarkdownRenderer {
 
     private const val FENCE_PREVIEW_CHARS = 40
+    private val WEB_PROTOCOLS = setOf("http", "https")
 
     fun render(project: Project, body: String, wrapWidth: Int): JComponent {
         val box = Box.createVerticalBox()
@@ -84,7 +86,7 @@ object MarkdownRenderer {
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
         val html = HtmlGenerator(markdown, tree, flavour).generateHtml()
             .removePrefix("<body>").removeSuffix("</body>")
-            .replace(Regex("<img[^>]*>"), "[image]")
+            .let(HtmlSanitizer::sanitize)
             .let(Reference::linkify)
 
         val pane = JEditorPane()
@@ -131,7 +133,8 @@ object MarkdownRenderer {
         when {
             reference is Parsed.Ok -> reference.value?.let { follow(project, it, click) }
             reference is Parsed.Invalid && Reference.looksLike(target) -> warn(reference.reason, click)
-            url != null -> BrowserUtil.browse(url)
+            url != null && url.protocol.lowercase() in WEB_PROTOCOLS -> BrowserUtil.browse(url)
+            url != null -> warn("Only http and https links open from the margin.", click)
             target.startsWith('#') -> Unit
             else -> when (val link = CodeLink.parse(target)) {
                 is Parsed.Ok -> CodeLinkNavigator.navigateTo(project, link.value, onUnresolved = { warn(it, click) })

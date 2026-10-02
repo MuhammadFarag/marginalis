@@ -116,8 +116,27 @@ class CommentThread(
 
     fun markReadByUser(shown: List<Message> = messages): Boolean = shown.map { it.markReadByUser() }.any { it }
 
+    val isRelayedRoot: Boolean
+        get() = messages.firstOrNull()?.relayed != null
+
+    val lastSpoken: Message?
+        get() = messages.lastOrNull { it.relayed == null }
+
+    fun relayedMessage(key: Relayed.Key): Message? = messages.firstOrNull { it.relayed?.key == key }
+
+    fun addRelayedOnce(message: Message): Message {
+        val key = requireNotNull(message.relayed) { "only a relayed message can be relayed once" }.key
+        synchronized(messagesLock) {
+            _messages.firstOrNull { it.relayed?.key == key }?.let { return it }
+            _messages.add(message)
+        }
+        if (status is ThreadStatus.Resolved) status = ThreadStatus.Open
+        touch()
+        return message
+    }
+
     fun agreeable(): Message? =
-        messages.lastOrNull()?.takeIf { it.author is Author.Agent && turn() == Turn.USER_OWES }
+        lastSpoken?.takeIf { it.author is Author.Agent && turn() == Turn.USER_OWES }
 
     private val isReadFyi: Boolean
         get() = intent == Intent.FYI && messages.all { it.author is Author.Agent && it.readByUser }
@@ -129,10 +148,11 @@ class CommentThread(
     fun turn(): Turn? = turnFor(null)
 
     fun turnFor(agentKey: String?): Turn? {
-        val last = messages.lastOrNull()
+        val last = lastSpoken
         val turn = when {
             status !is ThreadStatus.Open -> null
             isReadFyi -> null
+            last == null && messages.isNotEmpty() -> Turn.USER_OWES
             last?.awaits == Turn.USER_OWES -> Turn.USER_OWES
             else -> Turn.AGENT_OWES
         }

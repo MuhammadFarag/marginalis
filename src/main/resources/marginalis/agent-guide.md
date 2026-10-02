@@ -58,8 +58,9 @@ first contact, look before you consume:
    every thread's metadata with no message bodies, marking nothing seen
    (`marked_seen: 0`). Each thread carries `messages` (the count),
    `unread` (for your identity), `last_author`, and `awaiting` (`agent`
-   when the reply is yours, `user` when it is theirs; absent once
-   closed, or while the last message is addressed to another agent).
+   when the reply is yours, `user` when it is theirs — read from the
+   last message that was not relayed; absent once closed, on an fyi the
+   user has read, or while that message is addressed to another agent).
    It composes with every other filter.
 3. Read deliberately — the bodies you are about to answer, scoped by
    `file=` or `awaiting=agent`. Those reads mark seen, as they should:
@@ -81,13 +82,14 @@ who else is here.
   one session holding it.
 - **A message addressed to someone else is not your debt.**
   `awaiting=agent` is computed for your identity: a thread whose last
-  message is addressed to another agent drops out of your list and
-  into theirs; one addressed to `user` awaits the user, whoever wrote
-  it. An agent can hand a thread to another agent by replying with
+  message that was not relayed is addressed to another agent drops out
+  of your list and into theirs; one addressed to `user` awaits the
+  user, whoever wrote it. An agent can hand a thread to another agent by replying with
   `to` — the thread then awaits that agent, not the user.
 - **The three-party etiquette.** The completer resolves: whoever lands
-  the outcome resolves the thread, as always. The requester verifies:
-  sweep `comment_list?status=resolved&updated_after=<cursor>` for the
+  the outcome resolves the thread, as always — except an fyi, which only
+  the user resolves. The requester verifies: sweep
+  `comment_list?status=resolved&updated_after=<cursor>&project=…&author_id=…` for the
   threads you asked for, and when the outcome falls short, reopen with
   a reply saying what is missing. The user overrules everyone — their
   word on a thread settles it, whoever it was addressed to.
@@ -106,28 +108,36 @@ thread carries `updated_at`; hand the newest one back as
 `updated_after=` and a later sweep returns only what has moved —
 including threads the user resolved while you were away.
 Unread is what you haven't *seen*; your debt is what you haven't
-*answered*. `comment_list?awaiting=agent&project=…` lists every open
-thread whose last message is yours to answer — the user's, unless it
-was addressed to someone else, or anything addressed to you — reading
+*answered*. `comment_list?awaiting=agent&project=…&author_id=…` lists
+every open thread whose last message that was not relayed is yours to
+answer — the user's, unless it was addressed to someone else, or
+anything addressed to you. Without your identity (`author_id`, else
+`author_name`) the list is the anonymous "Agent"'s, not yours. Reading
 doesn't shrink it, only a reply (or a resolve) does. End the sweep with
 it empty.
 
 **2. Never edit a file that has open threads.**
-`GET comment_list?file=<path>&status=open` before editing. Open threads
+`GET comment_list?file=<path>&status=open&project=…&author_id=…` before editing. Open threads
 are unfinished conversations; drive each to resolution first — its
 conclusion becomes part of your edit, or reply why it needs no action
 and resolve. Editing underneath an open thread orphans the discussion.
 An fyi is the exception: an `intent: fyi` thread doesn't block the
 edit — it stays open as the record until the user resolves it, and you
-never resolve it. Replies on it still reach you through your sweep. If
-your edit orphans it, leave it for the user to decide.
+never resolve it. Replies on it still reach you through your sweep.
+Once the user replies to it, it blocks the edit until you have answered
+that reply in-thread (landing whatever they asked for first); it then
+stays open for the user to resolve, never you. If your edit orphans it,
+leave it for the user to decide.
 
 **3. The resolver is the completer.**
 `RESOLVED` means "the outcome is in the code, or explicitly moot" — the
 gutter marker disappears at that moment. A user reply of "do it" is
 approval, not completion: make the edit first, then resolve. If the
 user resolves a thread themselves while action seems pending, ask
-rather than assuming. Resolve immediately only when no action is needed.
+rather than assuming. Resolve immediately only when no action is needed
+— never an fyi, which is the user's to resolve. An Agree (`agrees:
+true`, addressed to you) is the same approval: land what was agreed,
+then resolve.
 
 ## Ending a turn: wait for the hand back
 
@@ -152,14 +162,16 @@ carries the one that woke you. So a hand back the user made while you
 were still working answers at once instead of being missed, and one you
 have already answered never wakes you twice. The wait's **completion is
 the signal**: `handed_back: true` means the user wants you now, and its
-`awaiting` list (the `awaiting=agent` set, same thread shape as
-`comment_list`) is your to-do list — answer each, then wait again.
+`awaiting` list (the `awaiting=agent` set plus any live thread holding
+messages you haven't seen, same thread shape as `comment_list`) is your
+to-do list — answer each, then wait again.
 `handed_back: false` is a timeout (default one hour) or a closing IDE:
 the user stepped away. Do **not** re-arm; they will type when they are
 back.
 
-A hand back with nothing awaiting you ends the loop — stop waiting,
-exactly as on a timeout. That is how the user closes a round: they
+A hand back (`reason: "hand_back"`) with nothing awaiting you ends the
+loop — stop waiting, exactly as on a timeout. An empty live wake does
+not: wait again (see Live threads). That is how the user closes a round: they
 resolve the threads they are done with and hand back once more. The
 user sees whether you are waiting — the hand-back gestures name you
 while your wait is armed.
@@ -182,16 +194,19 @@ The user can switch a thread **live** — several can be live at once —
 but only while you are waiting; going live is their call, never yours.
 While a thread is live, each Submit in it (and an Agree) wakes you at
 once with that thread alone — no Hand Back. Switching Live on wakes you
-the same way when the thread already holds messages you haven't seen.
+the same way when the thread already holds messages you haven't seen;
+that wake's `handed_back_at` is the time of the thread's last change.
 Every wake names its `reason`: `"hand_back"` for the batch, `"live"`
 for a live submit. A live wake's `awaiting` holds only the live
 thread(s) with something new for you — owed to you, or holding messages
 you haven't seen (a follow-up the user sent while you were answering) —
 in the same shape, marked seen; other threads the user drafted wait for
 the next Hand Back. It wakes one agent: the one the reply `@`-addresses,
-else the `to` of the thread's last message when the user wrote it,
-else the agent who spoke most recently in the thread, else — on a
-thread the user started — the one agent waiting on the project.
+else the `to` of the thread's last message that was not relayed, when
+the user wrote it, else the agent who spoke most recently in the thread
+in its own words (relays are skipped; on a thread of only relays, the
+agent that relayed them), else — on a thread the user started — the one
+agent waiting on the project.
 Its `handed_back_at` is the live submit's time — advance your cursor to
 it as usual — but it does not move the project's hand back in
 `comment_list`'s envelope. A live submit made while you were still
@@ -219,10 +234,13 @@ you "listening" while your wait is armed and "working" until you reply.
   — the exact text you believe occupies the line. The server verifies,
   searches ±20 lines, and answers with `line_adjusted: true` when it
   corrected you.
-- **409 means your picture of the file is stale**: re-read the file, find
-  the target again, retry with fresh values. Never respond to a 409 by
-  dropping `anchor_text` — that trades an honest failure for a comment
-  silently pinned to the wrong line.
+- **On an anchored call, a 409 with `reason: "stale_anchor"` means your
+  picture of the file is stale**: re-read the file, find the target
+  again, retry with fresh values. Never respond to it by dropping
+  `anchor_text` — that trades an honest failure for a comment silently
+  pinned to the wrong line. Every 409 carries a `reason`; the others are
+  `not_orphaned` (see Orphans) and the two relay refusals,
+  `deleted_relay` and `relayed_elsewhere` (see Relaying from GitHub).
 
 ## Above the line: file and project threads
 
@@ -268,12 +286,14 @@ is exactly those two words — anything else is rejected with a teaching
 write the level into the body ("HIGH:", "Blocker:") — the UI carries it
 everywhere it matters and the user can filter to blockers. Importance
 is not severity; importance lives in your prose, argued with reasons.
+An fyi takes none: it asks for nothing, so it gates nothing.
 
 ## Intents
 
 `intent` on `comment_add` says what kind of response the thread wants —
-a **gate, not a weight**, exactly like severity and completely
-independent of it. Four words, nothing else:
+a **gate, not a weight**, exactly like severity and independent of it —
+except that an fyi takes no severity and is the user's to resolve. Four
+words, nothing else:
 
 - `finding` — something here is wrong. It ends when the code is fixed.
 - `guidance` — how the code around here should be written. It ends when
@@ -283,9 +303,11 @@ independent of it. Four words, nothing else:
   boundary — keep it"), code you copied from elsewhere, context, a
   heads-up. If anything should be done or answered, it isn't an fyi. The
   user owes it only a read; once read, it leaves `awaiting=user`. It
-  ends when the user resolves it — never you — and it never blocks an
-  edit. It never gates, so it takes no `severity` (a teaching 400 says
-  so). Don't pad a review with it.
+  ends when the user resolves it — never you. It doesn't block an edit;
+  once the user replies to it, it blocks the edit until you have
+  answered that reply in-thread (landing whatever they asked for
+  first), and it still stays open for the user to resolve. It never gates, so it takes no `severity` (a teaching
+  400 says so). Don't pad a review with it.
 
 `label` on `comment_add` (fyi only) names what kind of fyi it is —
 `praise`, `copied`, `context` and `heads-up` are the usual ones — and
@@ -304,10 +326,12 @@ intent into the body ("Question:", "FINDING —"): the UI carries it, and
 
 Intent and severity compose freely, because they answer different
 questions: a `guidance` `blocker` ("do not bring the rejected approach
-back") is a normal and useful thing to say. Resolution works identically
-for all of them — what differs is what resolving *means*, which is the
-list above. Before editing a file, `comment_list?file=…&intent=guidance`
-is the cheapest way to learn what its authors already decided.
+back") is a normal and useful thing to say. The one exception is fyi,
+which takes no severity. Resolution works identically for the others —
+what differs is what resolving *means*, which is the list above — and
+an fyi is the user's to resolve, never yours. Before editing a file,
+`comment_list?file=…&intent=guidance&project=…&author_id=…` is the
+cheapest way to learn what its authors already decided.
 
 ## Message bodies
 
@@ -317,9 +341,10 @@ code links in the editor — see Code links),
 lists, and headings (rescaled to margin proportions). Fenced code
 blocks display as read-only editor fragments with native syntax
 highlighting — tag your fences with a language and prefer them to
-prose-wrapped code. Deliberately outside the scope: tables, images,
-and raw HTML degrade to plain text, so stay within the constructs
-above.
+prose-wrapped code. Deliberately outside the scope: tables degrade to
+plain text, images show as `[image]`, and raw HTML is reduced to the
+constructs above — any other tag is dropped, keeping its text — so stay
+within them. Only http and https links open in the browser.
 
 ## References
 
@@ -369,6 +394,89 @@ explaining how code hangs together, or onboarding. Create steps with
   go. A step resolved without a reply is seen-and-approved; a reply is a
   change request — land the change first, then resolve it.
 
+## Relaying from GitHub
+
+When the user asks you to bring a pull request's discussion into the
+margin, relay each GitHub comment as a message attributed to its
+original author. Pass `relayed: {source, comment_id, url, name, login,
+bot?, avatar_url?}` on `comment_add`, each `comment_add_batch` item, or
+`comment_reply`:
+
+- `source` is `github`.
+- `comment_id` is the comment's `id` — digits, as a number or a string.
+- `url` is its `html_url`: https (GitHub Enterprise hosts too), ending
+  in `#discussion_r…`, `#issuecomment-…` or `#pullrequestreview-…`
+  followed by that same `comment_id`.
+- `avatar_url` is optional: `user.avatar_url`, an https link.
+- `login` is `user.login` (Enterprise managed logins like `mona_acme`
+  included). GitHub's comment carries no display name, so
+  `name` is the login unless you look it up
+  (`gh api users/{login} --jq .name`, which may be null); at most 100
+  characters, never starting with `<`.
+- `bot` is `user.type == "Bot"`; a login ending in `[bot]` is a bot
+  anyway.
+- `body` is the GitHub comment's body verbatim — never a summary or a
+  paraphrase. Your own view of it goes in a separate reply without
+  `relayed`.
+- A relayed message addresses no one: `to` with `relayed` is a 400.
+
+The message's `author` stays you: the user sees "Mona · via <your
+name>", a ↗ to the comment on GitHub, and consecutive relayed messages
+grouped under their pull request.
+
+Relaying is one-way: the margin never writes back to GitHub. The user
+answers there themselves; your replies in the margin stay in the margin.
+
+```
+gh pr checkout {n}                                           # line numbers refer to the PR head
+gh api repos/{owner}/{repo}/pulls/{n}/comments --paginate   # review comments
+gh api repos/{owner}/{repo}/pulls/{n}/reviews --paginate    # review summaries
+gh api repos/{owner}/{repo}/issues/{n}/comments --paginate  # conversation
+```
+
+- A review thread is a root comment (no `in_reply_to_id`) plus the
+  comments replying to it, in `created_at` order. Relay the root with
+  `comment_add` on its `path` and `line` (`anchor_text` = that line in
+  the checked-out PR head), then each reply with `comment_reply`. A
+  root whose `line` is null (outdated, or about the file), whose `side`
+  is `LEFT` (a removed line), or that you can't anchor because the PR
+  isn't checked out becomes a file-level thread: omit `line` and
+  `anchor_text`.
+- A `file` your checkout doesn't have is a 404, even without `line`:
+  check the PR out, or relay that comment as a project-level thread.
+- A conversation comment, and a review summary with a non-empty `body`,
+  is about the whole pull request: relay it as a project-level thread
+  (omit `file`). Relay conversation comments in `created_at` order and
+  review summaries in `submitted_at` order.
+- Always pass `project` on `comment_add` and batches: without it, the
+  relay lookups below span every open project, and a worktree holding
+  the same pull request answers for it. `comment_reply` ignores
+  `project` — its `thread_id` already names one — but its relay checks
+  still span the thread's project only.
+- Relaying is idempotent within a project, keyed by the comment's kind
+  (from its `url`) and `comment_id`, so re-relay freely and only what is
+  new lands. A `comment_add` whose comment is already in the margin
+  creates nothing and answers that thread with `existing: true`, even
+  if its file has since moved. A `comment_reply` whose comment is
+  already in that thread answers the message with `existing: true`; one
+  already relayed into another thread is a 409 naming it
+  (`reason: "relayed_elsewhere"`, with that thread's `thread_id`).
+- A newly relayed reply reopens a resolved thread: the user closed it
+  before those words existed. An orphaned thread stays orphaned.
+- A relayed thread the user deleted from the margin stays out of it
+  (GitHub is untouched): relaying its root comment again — as a
+  `comment_add`, or as a reply in that project — is a 409
+  (`reason: "deleted_relay"`) and creates nothing; skip it and its
+  replies. Only the root is remembered: its replies, relayed into
+  another thread, are not refused.
+- Relayed messages are context, not turns: whose turn it is follows the
+  last message that was not relayed, and a thread holding only relayed
+  messages is the user's move — before and after they read it. On an
+  ordinary thread, an unread relay never changes the turn. On an fyi
+  the user has already read, a new relay makes it their move again until
+  they read it. Relayed messages never raise a notification. The user
+  can agree only with your own word, never with a relayed one.
+
 ## Orphans
 
 `status: orphaned` means the anchored content disappeared. Orphans are
@@ -377,7 +485,8 @@ where the content lives now, `comment_reanchor {thread_id, line,
 anchor_text}`. The thread reopens with a fresh verified anchor. Only
 orphans may move (live anchors answer 409). When a sweep surfaces
 orphans, rescue them before other work; if the content is truly gone,
-reply saying so and resolve. When a whole file was rewritten and its
+reply saying so and resolve — except an orphaned fyi, which you leave
+for the user. When a whole file was rewritten and its
 threads orphaned together, `comment_reanchor_all {file}` runs the same
 search over all of them at once — widened to the whole file, since the
 old line numbers mean nothing after a rewrite — and answers per thread:
@@ -405,24 +514,25 @@ path, branch) so you can pick and retry. Check each listed thread's
 ## API reference
 
 Base: `http://127.0.0.1:<port>/api/marginalis/` — errors are
-`{"error": "…"}` with 4xx status, written to be acted on.
+`{"error": "…"}` with 4xx status, written to be acted on; a 409 adds a
+machine-readable `reason` (see Anchoring).
 
 | Endpoint | Description → returns |
 |---|---|
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
 | `GET comment_list?ref=&file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question\|fyi&awaiting=agent\|user&unread_only=&summary=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last hand back) only when the listing covered one project and it has one; example below. `summary=true` swaps each thread's `messages` array for counts and marks nothing seen — see First contact. `ref=mg:…` narrows to the referenced thread — see References; ambiguous → 400 `{error, candidates: [{ref, thread_id, message_id?, project, file?}]}` |
-| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, label?, to?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}` |
-| `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults, `to` is per item only → `{results: [ …success shape… \| {error} ], created}` in request order, 200 unless the envelope itself is malformed |
-| `POST comment_reply {thread_id, body, to?, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}`; `to` (an `author_id`, or `user`) addresses the message — omit it to address everyone |
+| `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, label?, to?, relayed?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}`; a relayed comment already in the project creates nothing → `{thread_id, file?, line?, status, existing: true}`; errors are 409 `{error, reason}` — `stale_anchor` (re-read the file), `deleted_relay` (the user deleted that relayed thread) — see Relaying from GitHub |
+| `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults, `to` and `relayed` are per item only → `{results: [ …success shape… \| {error, reason?, open_projects?} ], created}` in request order, 200 unless the envelope itself is malformed; `created` leaves out items answered `existing: true` |
+| `POST comment_reply {thread_id, body, to?, relayed?, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}`; `to` (an `author_id`, or `user`) addresses the message — omit it to address everyone; `project` is ignored (the thread names it); a blank `body` is a 400; a relayed comment already in the thread adds nothing → `{message_id, thread_id, status, existing: true}`; one already relayed into another thread → 409 `{error, reason: "relayed_elsewhere", thread_id}`, the root of a thread the user deleted → 409 `reason: "deleted_relay"` |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
 | `POST comment_reopen {thread_id}` | resurface a resolved thread → `{thread_id, status}` |
-| `POST comment_reanchor {thread_id, line, anchor_text?}` | orphan rescue, line threads only (file-level → 400) → `{thread_id, line, status}` |
+| `POST comment_reanchor {thread_id, line, anchor_text?, file?}` | orphan rescue, line threads only (file-level → 400) → `{thread_id, line, status}`; the file is looked up in the thread's own project; `file`, when given, must be the thread's file (cross-file moves → 400); a live thread → 409 `reason: "not_orphaned"` |
 | `POST comment_reanchor_all {file, project?}` | rescue every orphan on one file, searching the whole file by content → `{file, results: [{thread_id, line?, status}], rescued}` |
-| `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve — only when the outcomes genuinely all landed → `{resolved: <count>}` |
-| `POST comment_clear_all {file?}` | DELETE threads and the resolved log — destructive; only on explicit user request, and sweep unread first → `{cleared: <count>}` |
+| `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve across **every open project** (`project` is ignored; `file` matches that path in each) — every thread not already resolved, fyi and orphaned ones included, so only when the outcomes genuinely all landed — which resolves fyis, the user's to close, so only on the user's explicit request → `{resolved: <count>}` |
+| `POST comment_clear_all {file?}` | DELETE threads and the resolved log across **every open project** (`project` is ignored; `file` matches that path in each) — destructive; only on explicit user request, and sweep unread first. A reset, not a deletion: relayed threads it removes come back if relayed again, with or without `file`; without `file` it also forgets the relayed threads the user deleted, so those come back too → `{cleared: <count>}` |
 | `GET comment_wait?project=&since=&timeout=&author_name=&author_id=` | hold until the user hands back — at once if they already did after `since` (ISO-8601, exclusive; omit to wait for the next one) — or until `timeout` seconds pass (default 3600, capped at 14400) → `{handed_back: true, reason, handed_back_at, awaiting: [threads]}` or `{handed_back: false}`; `reason` is `hand_back` (the batch: every thread awaiting you) or `live` (a live thread's Submit: only that thread — see Live threads); `awaiting` marks seen like `comment_list`; `project` is required when several are open; your `since` is the later of the newest `updated_at` and `handed_back_at` you have seen |
-| `GET comment_identities?project=` | who is in this margin; marks nothing seen → `{project, identities: [{kind: "user", name, messages_written} \| {kind: "agent", name, id, messages_written, unread, waiting}]}` — the user first, then agents by messages written; `name` is null for an identity known only from read receipts; `id` is the receipt key to pass as `author_id`; `project` is required when several are open |
+| `GET comment_identities?project=` | who is in this margin; marks nothing seen → `{project, identities: [{kind: "user", name, messages_written} \| {kind: "agent", name, id, messages_written, unread, waiting}]}` — the user first, then agents by messages written; `messages_written` counts an agent's own words, never its relays; `name` is null for an identity known only from read receipts; an agent in a `comment_wait` is listed (`waiting: true`) before it has written anything; `id` is the receipt key to pass as `author_id`; `project` is required when several are open |
 | `POST navigate {file, line?, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}`; without `line`, opens the file at the top → `{navigated, file}` |
 
 A `comment_list` thread, in full:
@@ -450,32 +560,40 @@ moved under the thread, without re-reading the file. (Live from the
 open document; for a file no editor has loaded it is the stored
 fingerprint — the most the server honestly knows without forcing the
 file into memory.) `updated_at` moves
-when the conversation does (a message, a resolve, a reopen, a rescue) and
-not when it is merely read or its line drifts, which is what makes it a
-usable cursor for `updated_after`. `author` is always an object — `kind`
-is `agent` or `user`, and agent authors carry `id`. Thread fields `segment`, `order`,
+when the conversation does (a message, relayed or not, a resolve, a
+reopen, an orphaning, a rescue, or the user editing a message — they can
+revise one until an agent reads it) and not when it is merely read or
+its line drifts, which is what makes it a usable cursor for
+`updated_after`. `author` is always an object — `kind` is `agent` or
+`user`, and an agent author carries `id` only when the agent gave one. Thread fields `segment`, `order`,
 `walkthrough`, `severity`, `intent`, `label`, and `resolved_by` appear only when
 set, and so does a message's `to` — and its `referenced`, on a `ref`
-listing. `agrees: true` marks a message the user posted with one click
+listing. `relayed` (the object you relayed it with, `comment_id` as a string and `bot` always
+present) marks a message relayed from GitHub; it never takes the turn
+from whoever spoke last, a thread of only relays awaits the user, and
+on an fyi the user has read, a new relay awaits the user until they read
+it. `agrees: true` marks a message the user posted with one click
 (body `Agreed.`, addressed to the agent whose message it answers):
 treat it as approval of that message. Only the user can agree.
-`awaiting` narrows to open threads whose last message is the other
-party's, as seen by your identity: `agent` — the user spoke last or
-someone addressed you, and you owe the reply (a message addressed to
-another agent is theirs); `user` — an agent spoke last unaddressed, or
-anyone addressed `user`, and the user owes one. An fyi is the
+`awaiting` narrows to open threads whose last message that was not
+relayed is the other party's, as seen by your identity: `agent` — the
+user spoke last or someone addressed you, and you owe the reply (a
+message addressed to another agent is theirs); `user` — an agent spoke
+last unaddressed, anyone addressed `user`, or only relays were said,
+and the user owes one. An fyi is the
 exception: the user owes it only a read, and an agent's further word on
-it owes only a read again — until the user replies, which makes it an
-ordinary conversation. It composes with every other
+it owes only a read again — until the user replies; from then on whose
+turn it is follows the rule above, though it stays the user's to
+resolve. It composes with every other
 filter, and listing still marks seen: awaiting is about *answered*, not
 *read*. Any other value is a teaching 400.
 With `summary=true` a thread keeps every field above except the
 message array: `messages` becomes its count, joined by `unread` (your
-identity's), `last_author` (same shape as `author`), and `awaiting`
+identity's), `last_author` (same shape as `author`; the last who spoke, so never a relay — absent when only relays were said), and `awaiting`
 (`agent` or `user`, as that filter reads it for you; absent when the
 thread is closed, when it is an fyi the user has already read, or when
-its last message is addressed to another agent — their turn, not
-yours) — and `marked_seen` is always 0.
+its last message that was not relayed is addressed to another agent —
+their turn, not yours) — and `marked_seen` is always 0.
 `newly_seen` marks messages this very listing consumed for your
 identity; `seen_by` lists the identities that have read the message.
 Timestamps are ISO-8601 UTC; `line` in every response is 1-based and

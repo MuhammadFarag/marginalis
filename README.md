@@ -44,10 +44,10 @@ editable until an agent has read it.
 - **Severity and intent.** Agents mark review findings `blocker` ("act
   before this proceeds") or `nit` ("dismiss guilt-free"), and say what a
   thread wants: a `finding` to fix, `guidance` to follow, a `question` to
-  answer, or an `fyi` that asks nothing once you've read it. The tool
-  window filters by either, or by whose move it is
-  (Awaiting You, Awaiting Agent). A gate, not a weight: importance lives
-  in prose.
+  answer, or an `fyi` that asks nothing once you've read it, labelled
+  by the agent ("praise", "context", "heads-up"). The tool window
+  filters by either, or by whose move it is (Awaiting You, Awaiting
+  Agent). A gate, not a weight: importance lives in prose.
 - **Walkthroughs.** Ordered steps across files for reviewing a change.
   Resolving a step advances to the next.
 - **Turn signals, not presence.** Files wear a small badge on their icon
@@ -62,6 +62,18 @@ editable until an agent has read it.
 - **One-click Agree.** When it's your move, *Agree* beside *Reply…*
   answers "Agreed." to the agent who spoke last and passes the turn —
   the margin protocol's "approval is a reply" without typing it.
+- **Live threads.** Switch a thread to *Live* (⚡) to go back and forth
+  on one item without waiting for a Hand Back: each Submit wakes the
+  agent you're answering with that thread alone, and the header shows
+  when it is listening or working.
+- **Pull request reviews in the margin.** Your agent can bring a PR's
+  review discussion — teammates, review bots and your own comments —
+  next to the code it is about, each comment attributed to its author
+  with a link back to GitHub. Bringing the PR in again adds only what is
+  new. Nothing is written back to GitHub.
+- **Code links.** Agents (and you) can link straight to code:
+  `[Clabo.do_the_thing()](src/Clabo.kt#L42)` opens the file at that
+  line, `#L42-L50` selects the range.
 - **A real composer.** Markdown with structure highlighting, code fences
   rendered through the IDE's own color scheme, quote-the-selection in one
   click, and drafts that survive closing the panel.
@@ -101,9 +113,9 @@ built-in server:
 ```
 GET  ping · agent_guide · comment_identities?project=
 GET  comment_list?file=&status=&intent=&awaiting=&unread_only=&updated_after=&summary=&ref=&project=
-GET  comment_wait?project=&since=&timeout=               (held until you hand back)
-POST comment_add {body, file?, line?, anchor_text?, severity?, intent?, to?, order?, walkthrough?, project?}
-POST comment_add_batch {items: [...]} · comment_reply {thread_id, body, to?}
+GET  comment_wait?project=&since=&timeout=               (held until you hand back, or a live Submit)
+POST comment_add {body, file?, line?, anchor_text?, severity?, intent?, label?, to?, order?, walkthrough?, relayed?, project?}
+POST comment_add_batch {items: [...]} · comment_reply {thread_id, body, to?, relayed?}
 POST comment_resolve · comment_reopen · comment_resolve_all {file?} · comment_clear_all {file?}
 POST comment_reanchor {thread_id, line, anchor_text?} · comment_reanchor_all {file}   (orphan rescue)
 POST navigate {file, line?, anchor_text?, project?}      (consent-gated)
@@ -136,9 +148,10 @@ When you have finished a round, click **Hand Back** in the Marginalis
 tool window (or pick **Submit & hand back** on the reply composer). An
 agent that ended its turn by starting `comment_wait` as a background
 command wakes up, once per click, with the list of threads awaiting
-its reply. The guide teaches the pattern and its cursor; a wait that
-times out (after an hour by default) is not re-armed — the agent
-assumes you stepped away.
+its reply. A thread switched to *Live* wakes it on every Submit instead,
+with that thread alone (`reason: "live"`). The guide teaches the pattern
+and its cursor; a wait that times out (after an hour by default) is not
+re-armed — the agent assumes you stepped away.
 
 ### If you use Claude Code
 
@@ -158,7 +171,7 @@ agent uses in the margin:
         "hooks": [
           {
             "type": "command",
-            "command": "curl -sfG --max-time 3 http://127.0.0.1:63342/api/marginalis/comment_list --data-urlencode \"project=$CLAUDE_PROJECT_DIR\" -d awaiting=agent -d author_id=claude | jq -r '\"Marginalis is running: GET http://127.0.0.1:63342/api/marginalis/agent_guide and follow it.\", (.threads | select(length > 0) | \"Marginalis: \\(length) thread(s) await your reply:\", (.[] | \"- \\(.thread_id) at \\(.file // \"(project)\")\\(if .line then \":\\(.line)\" else \"\" end)\", (.messages | (map(.author.kind == \"agent\") | rindex(true) // -1) as $i | .[$i + 1:][] | \"  \\(.author.name): \\(.body)\")))'"
+            "command": "curl -sfG --max-time 3 http://127.0.0.1:63342/api/marginalis/comment_list --data-urlencode \"project=$CLAUDE_PROJECT_DIR\" -d awaiting=agent -d author_id=claude | jq -r '\"Marginalis is running: GET http://127.0.0.1:63342/api/marginalis/agent_guide and follow it.\", (.threads | select(length > 0) | \"Marginalis: \\(length) thread(s) await your reply:\", (.[] | \"- \\(.thread_id) at \\(.file // \"(project)\")\\(if .line then \":\\(.line)\" else \"\" end)\", (.messages | (map(.author.kind == \"agent\" and .relayed == null) | rindex(true) // -1) as $i | .[$i + 1:][] | \"  \\(.relayed.name // .author.name)\\(if .relayed then \" on GitHub\" else \"\" end): \\(.body)\")))'"
           }
         ]
       }
@@ -168,7 +181,7 @@ agent uses in the margin:
         "hooks": [
           {
             "type": "command",
-            "command": "curl -sfG --max-time 3 http://127.0.0.1:63342/api/marginalis/comment_list --data-urlencode \"project=$CLAUDE_PROJECT_DIR\" -d awaiting=agent -d author_id=claude | jq -r '.threads | select(length > 0) | \"Marginalis: \\(length) thread(s) await your reply:\", (.[] | \"- \\(.thread_id) at \\(.file // \"(project)\")\\(if .line then \":\\(.line)\" else \"\" end)\", (.messages | (map(.author.kind == \"agent\") | rindex(true) // -1) as $i | .[$i + 1:][] | \"  \\(.author.name): \\(.body)\"))'"
+            "command": "curl -sfG --max-time 3 http://127.0.0.1:63342/api/marginalis/comment_list --data-urlencode \"project=$CLAUDE_PROJECT_DIR\" -d awaiting=agent -d author_id=claude | jq -r '.threads | select(length > 0) | \"Marginalis: \\(length) thread(s) await your reply:\", (.[] | \"- \\(.thread_id) at \\(.file // \"(project)\")\\(if .line then \":\\(.line)\" else \"\" end)\", (.messages | (map(.author.kind == \"agent\" and .relayed == null) | rindex(true) // -1) as $i | .[$i + 1:][] | \"  \\(.relayed.name // .author.name)\\(if .relayed then \" on GitHub\" else \"\" end): \\(.body)\"))'"
           }
         ]
       }
