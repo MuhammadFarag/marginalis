@@ -230,6 +230,18 @@ declined, captured from real use.
   hues, ✉ / ✈ turn badges on file icons via `FileIconPatcher`, the mini
   plugin icon on the tool window.
 
+## Shipped (2026-10-01, v0.1.30)
+
+- ✅ v0.1.30 — code links (#27): `[text](path#L42)` / `#L42-L50` open
+  the editor, parsed in core (`CodeLink`) with every escape check on the
+  decoded path; fyi + one-click Agree (#29): the `fyi` intent with an
+  agent-chosen `label`, per-message user read tracking, Agree as a
+  compact `agrees: true` reply; intent glyphs replace intent words in
+  headers and tool window rows; live threads (#30): a per-thread Live
+  toggle, `reason: live | hand_back` on wakes, pending live submits
+  delivered on unseen messages. Delivered with playgrounds in
+  `.features/` and live dev-zip demos instead of review walkthroughs.
+
 ## Decision log
 
 - **Importance dimension declined** (2026-07-24): severity stays
@@ -288,3 +300,27 @@ declined, captured from real use.
   evidence of under-triggering), #6 folded into #22. #1 (markdown API)
   waits for the floor to reach 262: 2025.2–2026.1 bundle markdown 0.7.2,
   where the modern signatures are missing or experimental.
+- **Praise became fyi** (2026-10-01, #29): every decision made for
+  "praise" was about *nothing owed*, none about praise itself, so the
+  intent is named for the behaviour and praise is one label of it
+  (agent-chosen, lowercase, ≤20 chars, never a vocabulary word). A
+  free-text label was accepted for fyi only; labels on other intents
+  stay with #21.
+- **fyi never blocks and is never the agent's to close** (2026-10-01,
+  #29): once read it owes nothing, so no wake would bring an agent back
+  to it — under the open-threads rule it would block its file forever.
+  It is exempt from that rule and stays open as the record until the
+  user resolves it. It takes no severity, and offers no Agree (Agree
+  answers a request; an fyi makes none).
+- **Live is a wake trigger, not a transport** (2026-10-01, #30): the
+  long-poll stays; a live thread changes what wakes the agent (Submit in
+  that thread, scoped to it and its agent). Session-only, user's call
+  only, offered while the agent waits (#35 tracks the busy-agent gap).
+  Claude Code channels (#31) would add push but need
+  `--dangerously-load-development-channels` during the research
+  preview, so the long-poll remains the default path.
+- **The skill stays a bootstrap** (2026-10-01): contract changes go in
+  the served guide only. #29 briefly added "(fyi excepted)" to the
+  skill's trigger text; reverted the same day — the guide already
+  carries the exemption, and touching the skill forces every user to
+  re-run the skills CLI for nothing.

@@ -1,6 +1,6 @@
 ---
 name: marginalis
-description: Converse with the user through Marginalis — shared comment threads anchored to code lines inside their JetBrains IDE, over HTTP on 127.0.0.1:63342. Use when the user mentions Marginalis, margin comments or notes, walkthroughs, "leave a comment on that line", "check my comments", "I replied in the editor", or asks you to discuss code in the editor rather than chat. Also use proactively — at the start of work in any project where the plugin responds to ping, sweep for unread comments, and before editing any file, check it for open threads (fyi excepted).
+description: Converse with the user through Marginalis — shared comment threads anchored to code lines inside their JetBrains IDE, over HTTP on 127.0.0.1:63342. Use when the user mentions Marginalis, margin comments or notes, walkthroughs, "leave a comment on that line", "check my comments", "I replied in the editor", or asks you to discuss code in the editor rather than chat. Also use proactively — at the start of work in any project where the plugin responds to ping, sweep for unread comments, and before editing any file, check it for open threads.
 ---
 
 # Marginalis — the margin is the channel
