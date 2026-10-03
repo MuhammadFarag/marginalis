@@ -34,7 +34,7 @@ data class Relayed(
         }
 
     fun isBy(githubLogin: String): Boolean {
-        val wanted = githubLogin.trim().removePrefix("@")
+        val wanted = GitHubLogin.bare(githubLogin)
         return wanted.isNotEmpty() && login.equals(wanted, ignoreCase = true)
     }
 
@@ -52,7 +52,6 @@ data class Relayed(
         private val DISCUSSION = Regex("/(pull|issues)/(\\d+)")
         private val COMMENT_ID = Regex("\\d+")
         private val LOGIN = Regex("[A-Za-z0-9][A-Za-z0-9_-]{0,99}(\\[bot])?")
-        private const val BOT_SUFFIX = "[bot]"
         private const val NAME_LIMIT = 100
         private const val AVATAR_LIMIT = 2048
         private const val SHAPE =
@@ -126,7 +125,7 @@ data class Relayed(
             if (botFlag != null && !(botFlag.isJsonPrimitive && botFlag.asJsonPrimitive.isBoolean)) {
                 return Parsed.Invalid(
                     "'bot' must be true or false — whether the author is a bot. Omit it to go by the login " +
-                        "('…$BOT_SUFFIX' is a bot).",
+                        "('…${GitHubLogin.BOT_SUFFIX}' is a bot).",
                 )
             }
             val avatarUrl = fields.text("avatar_url")
@@ -140,7 +139,7 @@ data class Relayed(
                     url = url,
                     name = name,
                     login = login,
-                    bot = botFlag?.asBoolean == true || login.endsWith(BOT_SUFFIX),
+                    bot = botFlag?.asBoolean == true || login.endsWith(GitHubLogin.BOT_SUFFIX),
                     avatarUrl = avatarUrl,
                 ),
             )

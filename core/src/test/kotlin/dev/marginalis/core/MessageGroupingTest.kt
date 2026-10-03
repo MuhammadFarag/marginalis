@@ -32,4 +32,21 @@ class MessageGroupingTest {
         assertFalse(Message(claude, "…").continues(Message(codex, "…")))
         assertFalse(Message(claude, "…").continues(null))
     }
+
+    @Test
+    fun `a message shows its avatar when its byline shows, an agent's continuation does not, and an agreement line never does`() {
+        val opener = Message(claude, "…")
+
+        assertTrue(opener.showsAvatar(null))
+        assertFalse(Message(claude, "…").showsAvatar(opener))
+        assertTrue(Message(codex, "…").showsAvatar(opener))
+        assertFalse(Message.agreement(user, claude).showsAvatar(opener))
+    }
+
+    @Test
+    fun `a two-person thread still shows avatars`() {
+        val thread = listOf(Message(user, "…"), Message(claude, "…"), Message(user, "…"), Message(claude, "…"))
+
+        assertTrue(thread.withIndex().all { (i, message) -> message.showsAvatar(thread.getOrNull(i - 1)) })
+    }
 }

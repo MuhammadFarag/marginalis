@@ -5,6 +5,24 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Added
+
+- See who said what at a glance (#32). Whenever the speaker changes in
+  a thread, a small picture of the author leads their message, and each
+  thread in the Marginalis tool window shows the faces taking part.
+  - Teammates and review bots appear with their GitHub pictures.
+  - Anyone without a picture gets their initials in their own colour.
+  - Agents carry a small mark, so you can tell them from people at a
+    glance, even when several agents share the margin.
+  - Give anyone a picture and a nickname in Settings → Tools →
+    Marginalis → People, and set your own picture next to your name.
+  - Nicknames now work for agents too.
+  - The GitHub nicknames you already set carry over as they are.
+  - Prefer nothing fetched from GitHub? Turn GitHub pictures off, and
+    initials show instead.
+
 ## [0.2.0] - 2026-10-02
 
 ### Added

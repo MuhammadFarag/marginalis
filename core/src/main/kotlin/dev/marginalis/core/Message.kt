@@ -20,7 +20,7 @@ class Message(
     }
 
     fun speaker(people: People): String =
-        relayed?.let { people.nicknameFor(it.login) ?: it.name } ?: author.displayName
+        relayed?.let { people.nicknameFor(it.login) ?: it.name } ?: people.displayNameOf(author)
 
     val notifiesUser: Boolean
         get() = author is Author.Agent && relayed == null
@@ -63,6 +63,8 @@ class Message(
     fun continues(previous: Message?): Boolean =
         previous != null && author is Author.Agent && author == previous.author && to == null && previous.to == null &&
             relayed == null && previous.relayed == null
+
+    fun showsAvatar(previous: Message?): Boolean = !agrees && !continues(previous)
 
     val awaits: Turn
         get() = when (to) {

@@ -40,18 +40,22 @@ import dev.marginalis.core.Addressee
 import dev.marginalis.core.AtMention
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.FaceKey
+import dev.marginalis.core.Faces
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
 import dev.marginalis.core.LiveThread
 import dev.marginalis.core.Mark
 import dev.marginalis.core.Message
+import dev.marginalis.core.People
 import dev.marginalis.core.Reference
 import dev.marginalis.core.Relayed
 import dev.marginalis.core.SendOption
 import dev.marginalis.core.Severity
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.WebLink
+import dev.marginalis.plugin.avatars.AvatarsListener
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.settings.TimeFormat
 import dev.marginalis.plugin.store.Authors
@@ -85,6 +89,7 @@ import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.SwingConstants
 import javax.swing.Timer
+import kotlin.math.roundToInt
 
 internal const val RELAYED_STAYS_DELETED = "This removes it from the margin only (GitHub is untouched), and relaying the PR again won't bring it back."
 
@@ -809,6 +814,8 @@ class ThreadPanel(
                 override fun applicationActivated(ideFrame: IdeFrame) = markReadIfSeenLater()
             },
         )
+        ApplicationManager.getApplication().messageBus.connect(attached)
+            .subscribe(AvatarsListener.TOPIC, AvatarsListener { repaint() })
         editor?.scrollingModel?.addVisibleAreaListener({ markReadIfSeen() }, attached)
         markReadIfSeenLater()
     }
@@ -860,6 +867,8 @@ class ThreadPanel(
         messagesBox.removeAll()
         messageComponents.clear()
         val timeFormat = messageTimeFormatter()
+        val people = MarginalisSettings.getInstance().people
+        val faces = Authors.facesOf(people)
         var previous: Message? = null
         var githubBlock: JPanel? = null
         renderedMessages = thread.messages
@@ -877,19 +886,13 @@ class ThreadPanel(
             if (relayed != null && githubBlock == null) {
                 githubBlock = githubBlock(relayed).also { messagesBox.add(it) }
             }
-            val component = messageComponent(message, timeFormat, showMeta = !grouped)
+            val component = messageComponent(message, timeFormat, people, faces, showMeta = message.showsAvatar(previous))
             messageComponents[message.id] = component
             (githubBlock ?: messagesBox).add(component)
             previous = message
         }
         revalidate()
         repaint()
-    }
-
-    /** User blue is deliberately absent from [AGENT_PALETTE]. */
-    private fun agentColor(agentKey: String): JBColor {
-        if (agentKey == Authors.agent.receiptKey) return AGENT_PALETTE[0]
-        return AGENT_PALETTE[Math.floorMod(agentKey.hashCode(), AGENT_PALETTE.size)]
     }
 
     private fun githubBlock(first: Relayed): JPanel = JPanel().apply {
@@ -913,14 +916,6 @@ class ThreadPanel(
         )
     }
 
-    private fun relayedColor(login: String): JBColor =
-        AGENT_PALETTE[Math.floorMod(login.lowercase().hashCode(), AGENT_PALETTE.size)]
-
-    private fun addresseeColor(to: Addressee): JBColor = when (to) {
-        Addressee.User -> USER_COLOR
-        is Addressee.Agent -> agentColor(to.key)
-    }
-
     private fun agreementLine(message: Message, timeFormat: DateTimeFormatter): JComponent {
         val line = JBLabel(
             "${message.author.displayName} agreed · ${timeFormat.format(message.createdAt)}",
@@ -928,7 +923,7 @@ class ThreadPanel(
             SwingConstants.LEADING,
         ).apply {
             font = JBUI.Fonts.smallFont()
-            foreground = USER_COLOR
+            foreground = AuthorColors.USER
             if (message.seenByAnyAgent) toolTipText = seenByNames(message)
         }
         return JPanel(BorderLayout()).apply {
@@ -938,23 +933,23 @@ class ThreadPanel(
         }
     }
 
-    private fun messageComponent(message: Message, timeFormat: DateTimeFormatter, showMeta: Boolean): JComponent {
+    private fun gapAfterAvatar(): Int =
+        (JBUI.scale(6) - AvatarGeometries.current().trailingPadding).roundToInt().coerceAtLeast(0)
+
+    private fun messageComponent(
+        message: Message,
+        timeFormat: DateTimeFormatter,
+        people: People,
+        faces: Faces,
+        showMeta: Boolean,
+    ): JComponent {
         if (message.agrees) return agreementLine(message, timeFormat)
         val relayed = message.relayed
-        val relayedByUser = relayed?.isBy(MarginalisSettings.getInstance().state.githubLogin) == true
-        val authorColor = when (val author = message.author) {
-            is Author.User -> USER_COLOR
-            is Author.Agent -> when {
-                relayed == null -> agentColor(author.receiptKey)
-                relayedByUser -> USER_COLOR
-                else -> relayedColor(relayed.login)
-            }
-        }
-        val byline = when {
-            relayed == null -> message.author.displayName
-            relayedByUser -> "${Authors.user.displayName} · via ${message.author.displayName}"
-            else -> "${message.speaker(MarginalisSettings.getInstance().people)} · via ${message.author.displayName}"
-        }
+        val face = faces.of(message)
+        val relayedByUser = relayed != null && face.key == FaceKey.User
+        val authorColor = AuthorColors.of(face.key)
+        val author = people.displayNameOf(message.author)
+        val byline = if (relayed == null) author else "${face.name} · via $author"
         val panel = JPanel(BorderLayout()).apply {
             isOpaque = false
             border = JBUI.Borders.compound(
@@ -967,14 +962,17 @@ class ThreadPanel(
             val meta = JBLabel("$byline · ${timeFormat.format(message.createdAt)}").apply {
                 font = JBUI.Fonts.smallFont().asBold()
                 foreground = authorColor
-                if (relayed != null) {
-                    icon = AllIcons.Vcs.Vendors.Github
-                    toolTipText = "@${relayed.login} on GitHub"
-                }
+                if (relayed != null) toolTipText = "@${relayed.login} on GitHub"
             }
             val who = JPanel().apply {
                 isOpaque = false
                 layout = BoxLayout(this, BoxLayout.X_AXIS)
+                add(
+                    JBLabel(AvatarIcon(face, UIUtil::getPanelBackground)).apply {
+                        alignmentY = AvatarGeometries.current().tileCentreShare.toFloat()
+                    },
+                )
+                add(Box.createHorizontalStrut(gapAfterAvatar()))
                 add(meta)
                 val chip = when {
                     relayedByUser -> "on GitHub"
@@ -987,7 +985,7 @@ class ThreadPanel(
                 }
                 message.to?.let { to ->
                     add(Box.createHorizontalStrut(JBUI.scale(6)))
-                    add(Chip("@${addresseeName(to)}", QUIET_PILL, addresseeColor(to)))
+                    add(Chip("@${addresseeName(to)}", QUIET_PILL, AuthorColors.of(to)))
                 }
             }
             metaRow.add(who, BorderLayout.WEST)
@@ -1085,21 +1083,10 @@ class ThreadPanel(
             Severity.NIT -> JBColor(Color(0x59, 0x59, 0x59), Color(0xBD, 0xBD, 0xBD))
         }
 
-        val USER_COLOR = JBColor(0x1565C0, 0x90CAF9)
-
         val GITHUB_BLOCK_COLOR = JBColor(Color(0xB0, 0xB7, 0xC3), Color(0x5A, 0x60, 0x6B))
 
         val LIVE_COLOR = JBColor(0x2E7D32, 0xA5D6A7)
         const val LIVE_PULSE_MILLIS = 600
-
-        val AGENT_PALETTE = arrayOf(
-            JBColor(0x9C27B0, 0xCE93D8),
-            JBColor(0x00796B, 0x80CBC4),
-            JBColor(0xE65100, 0xFFB74D),
-            JBColor(0xC2185B, 0xF48FB1),
-            JBColor(0x2E7D32, 0xA5D6A7),
-            JBColor(0x5D4037, 0xBCAAA4),
-        )
     }
 
 }

@@ -12,6 +12,7 @@ import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.actionSystem.UiDataProvider
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.DumbAware
@@ -32,8 +33,10 @@ import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.render.RenderingUtil
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.components.BorderLayoutPanel
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Faces
 import dev.marginalis.core.Intent
 import dev.marginalis.core.PathTrie
 import dev.marginalis.core.Severity
@@ -44,15 +47,18 @@ import dev.marginalis.core.Turn
 import dev.marginalis.core.TurnSignal
 import dev.marginalis.core.TurnTally
 import dev.marginalis.core.WaitingAgents
+import dev.marginalis.plugin.avatars.AvatarsListener
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileLevelThreads
 import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
+import dev.marginalis.plugin.ui.ParticipantStackIcon
 import dev.marginalis.plugin.ui.ProjectThreadPopup
 import dev.marginalis.plugin.ui.RELAYED_STAYS_DELETED
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Component
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -69,6 +75,7 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val panel = MarginalisToolWindowPanel(project)
         val content = ContentFactory.getInstance().createContent(panel, "", false)
+        Disposer.register(content, panel)
         toolWindow.contentManager.addContent(content)
         val common = CommonActionsManager.getInstance()
         toolWindow.setTitleActions(
@@ -263,9 +270,10 @@ private sealed class NodeData {
 }
 
 internal class MarginalisToolWindowPanel(private val project: Project) :
-    JPanel(BorderLayout()), UiDataProvider, OccurenceNavigator {
+    JPanel(BorderLayout()), UiDataProvider, OccurenceNavigator, Disposable {
 
     private val tree = Tree()
+    private val renderer = MarginalisTreeRenderer()
 
     /** Must be declared before init: init calls rebuild(), which reads it. */
     var filter: TreeFilter = TreeFilter.ALL
@@ -277,7 +285,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     init {
         tree.isRootVisible = false
         tree.showsRootHandles = true
-        tree.cellRenderer = MarginalisTreeRenderer()
+        tree.cellRenderer = renderer
         tree.emptyText.text = "No margin threads yet"
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -294,6 +302,9 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         })
         add(JBScrollPane(tree), BorderLayout.CENTER)
 
+        ApplicationManager.getApplication().messageBus.connect(this)
+            .subscribe(AvatarsListener.TOPIC, AvatarsListener { tree.repaint() })
+
         MarginalisStore.getInstance(project).threads.addListener {
             ApplicationManager.getApplication().invokeLater {
                 if (!project.isDisposed) rebuild()
@@ -301,6 +312,8 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         }
         rebuild()
     }
+
+    override fun dispose() = Unit
 
     /** Powers F4 / Jump to Source. */
     override fun uiDataSnapshot(sink: DataSink) {
@@ -480,6 +493,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         store.syncLines()
         val threads = store.threads.all().filter(filter.matches)
         tree.emptyText.text = filter.empty
+        renderer.faces = Authors.faces
 
         val root = DefaultMutableTreeNode()
         addGuidedSection(root, threads)
@@ -590,11 +604,16 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
 }
 
 private class MarginalisTreeRenderer : TreeCellRenderer {
+    var faces: Faces = Authors.faces
     private val words = RowWords()
+    private val participants = JBLabel().apply {
+        iconTextGap = JBUI.scale(2)
+        border = JBUI.Borders.emptyLeft(6)
+    }
     private val yourMove = turnLabel(Turn.USER_OWES)
     private val agentsMove = turnLabel(Turn.AGENT_OWES)
     private val cell = BorderLayoutPanel().addToCenter(words).addToRight(
-        BorderLayoutPanel().addToCenter(yourMove).addToRight(agentsMove).andTransparent(),
+        BorderLayoutPanel().addToLeft(participants).addToCenter(yourMove).addToRight(agentsMove).andTransparent(),
     )
 
     override fun getTreeCellRendererComponent(
@@ -607,13 +626,17 @@ private class MarginalisTreeRenderer : TreeCellRenderer {
         hasFocus: Boolean,
     ): Component {
         words.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
-        val spokenTurn = showTurnSignals((value as? DefaultMutableTreeNode)?.userObject)
-        cell.accessibleContext.accessibleName = listOfNotNull(words.accessibleContext.accessibleName, spokenTurn)
-            .filter { it.isNotBlank() }
-            .joinToString(", ")
+        val data = (value as? DefaultMutableTreeNode)?.userObject
+        val spokenTurn = showTurnSignals(data)
+        val spokenParticipants = showParticipants(data, RenderingUtil.getBackground(tree, selected))
+        cell.accessibleContext.accessibleName =
+            listOfNotNull(words.accessibleContext.accessibleName, spokenTurn, spokenParticipants)
+                .filter { it.isNotBlank() }
+                .joinToString(", ")
         val foreground = RenderingUtil.getForeground(tree, selected)
         yourMove.foreground = foreground
         agentsMove.foreground = foreground
+        participants.foreground = if (selected) foreground else UIUtil.getContextHelpForeground()
         cell.isOpaque = words.isOpaque
         cell.background = words.background
         return cell
@@ -636,6 +659,16 @@ private class MarginalisTreeRenderer : TreeCellRenderer {
             agentsMove.isVisible = false
             null
         }
+    }
+
+    private fun showParticipants(data: Any?, rowBackground: Color): String? {
+        val stack = (data as? NodeData.ThreadNode)?.thread?.let(faces::participants)
+        participants.isVisible = !stack?.faces.isNullOrEmpty()
+        if (stack == null || stack.faces.isEmpty()) return null
+        participants.icon = ParticipantStackIcon(stack.faces) { rowBackground }
+        participants.text = if (stack.more > 0) "+${stack.more}" else null
+        val names = stack.faces.map { it.name } + listOfNotNull(stack.more.takeIf { it > 0 }?.let { "$it more" })
+        return "with ${names.joinToString(", ")}"
     }
 
     private fun turnLabel(turn: Turn) = JBLabel(MarginalisIcons.turnSignal(turn)).apply {
