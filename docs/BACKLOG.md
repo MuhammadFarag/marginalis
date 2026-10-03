@@ -253,6 +253,18 @@ declined, captured from real use.
   read-action fix for 2026.2; an end-to-end audit of the served guide
   and a CI check that matches exact API table rows.
 
+## Shipped (2026-10-02, v0.2.1)
+
+- ✅ v0.2.1 — avatars (#32): an inline avatar on each byline where the
+  speaker changes (picture → GitHub avatar → initials in the author
+  colour, ✦ badge for agents), participant stacks on tool window rows,
+  the nickname table grown into a People table (Person/Agent rows,
+  click-to-choose pictures copied into the IDE config dir), GitHub
+  avatars fetched only from GitHub's avatar host and cached on disk for
+  a week, and a switch to turn GitHub fetching off. Refined through two
+  playgrounds, built in TDD slices with review rounds, reviewed by live
+  demo.
+
 ## Decision log
 
 - **Importance dimension declined** (2026-07-24): severity stays
@@ -352,3 +364,12 @@ declined, captured from real use.
   escaped bugs (a read-action assertion, a settings edit lost on OK)
   were all in the shell — CI-only platform tests for REST and threading
   are the candidate if that keeps happening.
+- **Avatars live in IDE Settings, not a config directory** (2026-10-02,
+  #32): the People table (identity, nickname, Person/Agent, picture)
+  covers what a `~/.config/marginalis/avatars/` folder would, without a
+  second place to look. Person rows match a GitHub login, Agent rows an
+  author id.
+- **A loaded avatar is kept for the session** (2026-10-02, #32): people
+  rarely change their GitHub picture, so a good load is never refetched
+  until restart; only a failed fetch retries (5 minutes), and the disk
+  cache expires after a week.
