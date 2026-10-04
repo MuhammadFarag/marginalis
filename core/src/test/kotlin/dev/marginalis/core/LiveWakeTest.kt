@@ -153,7 +153,7 @@ class LiveWakeTest {
         val woke = handBack.await(since = t0, timeout = hour, agent = claude).getNow(null)
 
         assertEquals(Wake.HandedBack(live, liveThreadIds = listOf("a")), woke)
-        assertFalse(handBack.await(since = woke?.at, timeout = hour, agent = claude).isDone)
+        assertFalse(handBack.await(since = (woke as Wake.Delivery).at, timeout = hour, agent = claude).isDone)
     }
 
     @Test
@@ -272,5 +272,11 @@ class LiveWakeTest {
     fun `wakes name their reason on the wire`() {
         assertEquals("hand_back", Wake.HandedBack(t0).reason)
         assertEquals("live", Wake.Live(t0, listOf("a")).reason)
+    }
+
+    @Test
+    fun `a timeout wake names reason timeout and carries no handed back time`() {
+        assertEquals("timeout", Wake.TimedOut.reason)
+        assertFalse((Wake.TimedOut as Wake) is Wake.Delivery)
     }
 }

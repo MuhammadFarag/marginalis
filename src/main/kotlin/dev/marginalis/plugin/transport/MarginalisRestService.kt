@@ -902,7 +902,7 @@ class MarginalisRestService : RestService() {
             "since",
             params["since"]?.firstOrNull(),
             "pass the later of the newest 'updated_at' and the 'handed_back_at' from the sweep or wake that " +
-                "started your turn; omit it to wait for the next hand back.",
+                "started your turn; omit it to wait for the next round.",
         ).getOrElse { return sendBadRequest(it, request, context) }
         val timeout = WaitTimeout.parse(params["timeout"]?.firstOrNull())
             .getOrElse { return sendBadRequest(it, request, context) }
@@ -916,11 +916,12 @@ class MarginalisRestService : RestService() {
                 },
                 request, context,
             )
+        val stay = params["stay"]?.firstOrNull()?.toBoolean() ?: false
         val caller = agentAuthor(params)
         val requestHead = DefaultHttpRequest(request.protocolVersion(), request.method(), request.uri(), request.headers().copy())
         val closeFuture = context.channel().closeFuture()
 
-        val waited = MarginalisStore.getInstance(project).handBack.await(since, timeout, caller)
+        val waited = MarginalisStore.getInstance(project).handBack.await(since, timeout, caller, stay)
         val cancelOnHangUp = ChannelFutureListener { waited.cancel(false) }
         closeFuture.addListener(cancelOnHangUp)
         waited.whenComplete { _, _ -> closeFuture.removeListener(cancelOnHangUp) }
@@ -940,30 +941,39 @@ class MarginalisRestService : RestService() {
         )
     }
 
-    private fun waitAnswer(project: Project, wake: Wake?, callerKey: String): JsonObject =
-        if (wake == null || project.isDisposed) {
-            JsonObject().apply { addProperty("handed_back", false) }
-        } else {
-            val store = MarginalisStore.getInstance(project)
-            val awaiting = ApplicationManager.getApplication().runReadAction(
-                Computable {
-                    val owed = when (wake) {
-                        is Wake.HandedBack -> store.threads.query(awaiting = Turn.AGENT_OWES, awaitingFor = callerKey) +
-                            wake.liveThreadIds.mapNotNull(store.threads::byId).filter { LiveThread.hasUnseen(it, callerKey) }
-                        is Wake.Live -> wake.threadIds.mapNotNull(store.threads::byId).filter {
-                            it.turnFor(callerKey) == Turn.AGENT_OWES || LiveThread.hasUnseen(it, callerKey)
-                        }
-                    }
-                    renderThreads(project, store, owed.distinct().sortedWith(ThreadOrder.byAnchor), callerKey)
-                },
-            )
-            JsonObject().apply {
-                addProperty("handed_back", true)
-                addProperty("reason", wake.reason)
-                addProperty("handed_back_at", wake.at.iso())
-                add("awaiting", JsonArray().apply { awaiting.forEach { add(it.json) } })
-            }
+    private fun waitAnswer(project: Project, wake: Wake, callerKey: String): JsonObject =
+        when (wake) {
+            is Wake.Ending -> notHandedBack(wake.reason)
+            is Wake.Delivery ->
+                if (project.isDisposed) notHandedBack(Wake.Closing.reason) else deliveryAnswer(project, wake, callerKey)
         }
+
+    private fun notHandedBack(reason: String) = JsonObject().apply {
+        addProperty("handed_back", false)
+        addProperty("reason", reason)
+    }
+
+    private fun deliveryAnswer(project: Project, wake: Wake.Delivery, callerKey: String): JsonObject {
+        val store = MarginalisStore.getInstance(project)
+        val awaiting = ApplicationManager.getApplication().runReadAction(
+            Computable {
+                val owed = when (wake) {
+                    is Wake.HandedBack -> store.threads.query(awaiting = Turn.AGENT_OWES, awaitingFor = callerKey) +
+                        wake.liveThreadIds.mapNotNull(store.threads::byId).filter { LiveThread.hasUnseen(it, callerKey) }
+                    is Wake.Live -> wake.threadIds.mapNotNull(store.threads::byId).filter {
+                        it.turnFor(callerKey) == Turn.AGENT_OWES || LiveThread.hasUnseen(it, callerKey)
+                    }
+                }
+                renderThreads(project, store, owed.distinct().sortedWith(ThreadOrder.byAnchor), callerKey)
+            },
+        )
+        return JsonObject().apply {
+            addProperty("handed_back", true)
+            addProperty("reason", wake.reason)
+            addProperty("handed_back_at", wake.at.iso())
+            add("awaiting", JsonArray().apply { awaiting.forEach { add(it.json) } })
+        }
+    }
 
     private fun Instant.iso(): String = DateTimeFormatter.ISO_INSTANT.format(this)
 

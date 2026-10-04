@@ -87,7 +87,7 @@ class MarginalisStore(private val project: Project) : Disposable {
     fun snapshot() = ThreadsCodec.Document(threads.all(), handBack.lastAt, threads.deletedRelays)
 
     override fun dispose() {
-        handBack.releaseAll()
+        handBack.close()
         if (savePending.getAndSet(false)) MarginalisPersistence.save(project, snapshot())
     }
 

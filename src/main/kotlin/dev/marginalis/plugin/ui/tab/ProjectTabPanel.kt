@@ -31,9 +31,11 @@ import dev.marginalis.core.ProjectTabTally
 import dev.marginalis.core.ThreadText
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.AgentPresenceGroup
 import dev.marginalis.plugin.ui.CoalescedEdtRunner
-import dev.marginalis.plugin.ui.HandBackAction
 import dev.marginalis.plugin.ui.MarginalisPalette
+import dev.marginalis.plugin.ui.StopAgentsGroup
+import dev.marginalis.plugin.ui.SubmitRoundAction
 import dev.marginalis.plugin.ui.ThreadPanel
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import java.awt.BorderLayout
@@ -157,7 +159,7 @@ class ProjectTabPanel(private val project: Project) : Disposable {
 
     private val root = JPanel(BorderLayout()).apply { isFocusable = true }
     private val toolbar = ActionManager.getInstance()
-        .createActionToolbar("MarginalisProjectTab", DefaultActionGroup(HandBackAction()), true)
+        .createActionToolbar("MarginalisProjectTab", DefaultActionGroup(AgentPresenceGroup(), SubmitRoundAction(), StopAgentsGroup()), true)
         .also {
             it.targetComponent = root
             it.component.isOpaque = false

@@ -62,6 +62,12 @@ class FacesTest {
     }
 
     @Test
+    fun `a listening agent shows the face it speaks with, nickname and picture included`() {
+        assertEquals(faces.of(Message(builder, "…")), faces.of(builder))
+        assertEquals(faces.of(Message(claude, "…")), faces.of(claude))
+    }
+
+    @Test
     fun `a configured picture comes first, then a GitHub avatar, then the monogram`() {
         assertEquals(
             listOf(

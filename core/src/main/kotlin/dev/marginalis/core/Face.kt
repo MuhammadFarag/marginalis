@@ -54,11 +54,13 @@ class Faces(private val people: People, private val you: You) {
             relayed != null -> FaceKey.GitHub(relayed.login).let { key ->
                 Face(key, message.speaker(people), relayed.login, relayed.avatarUrl, people.pictureFor(key), agent = false)
             }
-            author is Author.Agent -> FaceKey.Agent(author.receiptKey).let { key ->
-                Face(key, people.displayNameOf(author), login = null, avatarUrl = null, people.pictureFor(key), agent = true)
-            }
+            author is Author.Agent -> of(author)
             else -> yours
         }
+    }
+
+    fun of(agent: Author.Agent): Face = FaceKey.Agent(agent.receiptKey).let { key ->
+        Face(key, people.displayNameOf(agent), login = null, avatarUrl = null, people.pictureFor(key), agent = true)
     }
 
     fun participants(thread: CommentThread, max: Int = 3): Participants {

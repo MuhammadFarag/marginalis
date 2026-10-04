@@ -16,7 +16,7 @@ import javax.swing.Icon
 import javax.swing.SwingConstants
 
 object MarginalisIcons {
-    val HandBack = load("handBack")
+    val SubmitRound = load("handBack")
     val Agree = load("agree")
 
     private val marks: Map<Mark, Icon> = Mark.all().associateWith { mark ->

@@ -17,8 +17,8 @@ History before 0.1.19 lives in git tags.
   - Threads that need you open expanded. The rest stay folded to their
     latest message, so you can scan them at a glance.
   - Unread messages are marked new until you read them.
-  - Hand Back and "+ New project thread" sit at the top of the tab, so
-    you can keep the tool window closed.
+  - Submit round and "+ New project thread" sit at the top of the tab,
+    so you can keep the tool window closed.
   - The tab works as a home base. It tells you when replies wait for you
     in files, and one click takes you to the first.
   - A pull request's conversation from GitHub folds into one group
@@ -28,6 +28,17 @@ History before 0.1.19 lives in git tags.
     is still there when you reopen the tab.
   - A walkthrough step about the whole project opens the tab at that
     thread.
+- Your agents can keep listening across rounds (#38). Write your
+  replies, submit them as one round, and the agent answers and waits
+  for the next one without you asking again.
+  - Submit round, formerly Hand Back, sends every reply you wrote this
+    round.
+  - Submit round is off while no agent listens, so no reply goes
+    unheard. Replies you write meanwhile wait in their threads for the
+    next round.
+  - The composer's "Submit & send round" sends your reply and the
+    round in one step.
+  - Listening agents stop cleanly when you close the project.
 
 ### Added
 
@@ -40,6 +51,14 @@ History before 0.1.19 lives in git tags.
     click into.
   - Turn off grouping to see each comment from a pull request as its
     own thread.
+- See at a glance who is listening and who is working (#38). The tool
+  window and the Margin tab show each agent's avatar, with a green dot
+  while it listens and a spinner while it works on your round. Hover to
+  see for how long.
+  - An agent that answers a single round and then stops is marked
+    one-shot.
+- Stop any agent, or all of them, from the arrow beside Submit round
+  (#38).
 
 ## [0.2.1] - 2026-10-02
 

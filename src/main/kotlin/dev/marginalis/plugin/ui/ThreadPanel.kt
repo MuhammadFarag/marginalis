@@ -128,14 +128,14 @@ class ThreadPanel(
         override fun actionPerformed(e: ActionEvent?) = submitWiderThan(file = null)
     }
     private val handBack = MarginalisStore.getInstance(project).handBack
-    private val submitAndHandBackAction = object : AbstractAction("Submit & hand back") {
+    private val submitAndSendRoundAction = object : AbstractAction("Submit & send round") {
         override fun actionPerformed(e: ActionEvent?) {
             if (replyArea.text.isBlank()) return
             sendReply()
             MarginalisStore.getInstance(project).recordHandBack()
         }
     }
-    private val sendButton = JBOptionButton(submitAction, arrayOf(submitAndHandBackAction))
+    private val sendButton = JBOptionButton(submitAction, arrayOf(submitAndSendRoundAction))
     private val replyRow = JPanel(BorderLayout()).apply {
         isOpaque = false
         border = JBUI.Borders.emptyTop(4)
@@ -788,10 +788,10 @@ class ThreadPanel(
             thread,
             isDraft = isDraft(),
             isEditing = editingMessageId != null,
-            anyoneWaiting = handBack.waitingNames.isNotEmpty(),
+            anyoneListening = handBack.canSubmitRound,
         ).map {
             when (it) {
-                SendOption.HAND_BACK -> submitAndHandBackAction
+                SendOption.SEND_ROUND -> submitAndSendRoundAction
                 SendOption.COMMENT_ON_FILE -> commentOnFileAction
                 SendOption.COMMENT_ON_PROJECT -> commentOnProjectAction
             }

@@ -7,7 +7,6 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HandBackTest {
@@ -80,13 +79,13 @@ class HandBackTest {
     }
 
     @Test
-    fun `a wait with no hand back ends empty at its timeout`() {
+    fun `a wait with no round ends at its timeout with a timeout wake`() {
         val startedAndDropped = CountDownLatch(2)
         handBack.addListener { startedAndDropped.countDown() }
 
         val waited = handBack.await(since = t0, timeout = Duration.ofMillis(20))
 
-        assertNull(waited.get(5, TimeUnit.SECONDS))
+        assertEquals(Wake.TimedOut, waited.get(5, TimeUnit.SECONDS))
         assertTrue(startedAndDropped.await(5, TimeUnit.SECONDS))
         assertEquals(0, handBack.waiting)
     }
@@ -101,15 +100,14 @@ class HandBackTest {
     }
 
     @Test
-    fun `releasing ends every wait empty`() {
+    fun `closing ends every open wait with a closing wake`() {
         val first = handBack.await(since = t0, timeout = hour)
         val second = handBack.await(since = t0, timeout = hour)
 
-        handBack.releaseAll()
+        handBack.close()
 
-        assertTrue(first.isDone && second.isDone)
-        assertNull(first.getNow(Wake.HandedBack(t0)))
-        assertNull(second.getNow(Wake.HandedBack(t0)))
+        assertEquals(Wake.Closing, first.getNow(null))
+        assertEquals(Wake.Closing, second.getNow(null))
         assertEquals(0, handBack.waiting)
     }
 
@@ -137,36 +135,28 @@ class HandBackTest {
     @Test
     fun `nobody is waiting until a wait starts, and the start is announced`() {
         handBack.addListener(countChange)
-        assertEquals(emptyList<String>(), handBack.waitingNames)
+        assertEquals(emptyList<Author.Agent>(), handBack.waitingAgents)
 
         handBack.await(since = t0, timeout = hour, agent = claude)
 
-        assertEquals(listOf("Claude"), handBack.waitingNames)
+        assertEquals(listOf(claude), handBack.waitingAgents)
         assertEquals(1, changes)
     }
 
     @Test
-    fun `a wait answered at once never counts as waiting`() {
+    fun `a wait answered at once never counts as waiting, but announces the agent at work`() {
         handBack.record()
         handBack.addListener(countChange)
 
         handBack.await(since = t0.minusSeconds(1), timeout = hour, agent = claude)
 
-        assertEquals(emptyList<String>(), handBack.waitingNames)
-        assertEquals(0, changes)
+        assertEquals(emptyList<Author.Agent>(), handBack.waitingAgents)
+        assertEquals(listOf(Presence.State.WORKING), handBack.presence.map { it.state })
+        assertEquals(1, changes)
     }
 
     @Test
-    fun `waiting agents are named once each, in the order they started`() {
-        handBack.await(since = t0, timeout = hour, agent = codex)
-        handBack.await(since = t0, timeout = hour, agent = claude)
-        handBack.await(since = null, timeout = hour, agent = codex)
-
-        assertEquals(listOf("Codex", "Claude"), handBack.waitingNames)
-    }
-
-    @Test
-    fun `waiting agents are known by identity, once each`() {
+    fun `waiting agents are known by identity, once each, in the order they started`() {
         handBack.await(since = t0, timeout = hour, agent = codex)
         handBack.await(since = t0, timeout = hour, agent = claude)
         handBack.await(since = null, timeout = hour, agent = codex)
@@ -182,7 +172,7 @@ class HandBackTest {
 
         handBack.record()
 
-        assertEquals(emptyList<String>(), handBack.waitingNames)
+        assertEquals(emptyList<Author.Agent>(), handBack.waitingAgents)
         assertEquals(1, changes)
     }
 
@@ -196,7 +186,7 @@ class HandBackTest {
         handBack.await(since = t0, timeout = Duration.ofMillis(20), agent = codex)
 
         assertTrue(startedAndDropped.await(5, TimeUnit.SECONDS))
-        assertEquals(listOf("Claude"), handBack.waitingNames)
+        assertEquals(listOf(claude), handBack.waitingAgents)
         assertEquals(2, changes)
     }
 
@@ -207,18 +197,18 @@ class HandBackTest {
 
         waited.cancel(false)
 
-        assertEquals(emptyList<String>(), handBack.waitingNames)
+        assertEquals(emptyList<Author.Agent>(), handBack.waitingAgents)
         assertEquals(1, changes)
     }
 
     @Test
-    fun `released waits drop out and are announced`() {
+    fun `closed waits drop out and are announced`() {
         handBack.await(since = t0, timeout = hour, agent = claude)
         handBack.addListener(countChange)
 
-        handBack.releaseAll()
+        handBack.close()
 
-        assertEquals(emptyList<String>(), handBack.waitingNames)
+        assertEquals(emptyList<Author.Agent>(), handBack.waitingAgents)
         assertEquals(1, changes)
     }
 
@@ -227,7 +217,7 @@ class HandBackTest {
         handBack.addListener(countChange)
 
         handBack.record()
-        handBack.releaseAll()
+        handBack.close()
 
         assertEquals(0, changes)
     }
@@ -246,7 +236,7 @@ class HandBackTest {
     fun `an unintroduced waiter is just Agent`() {
         handBack.await(since = t0, timeout = hour)
 
-        assertEquals(listOf(Author.Agent.ANONYMOUS_NAME), handBack.waitingNames)
+        assertEquals(listOf(Author.Agent.ANONYMOUS), handBack.waitingAgents)
     }
 
     @Test

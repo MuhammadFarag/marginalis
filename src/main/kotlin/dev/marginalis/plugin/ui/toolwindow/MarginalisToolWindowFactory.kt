@@ -48,12 +48,14 @@ import dev.marginalis.core.TurnTally
 import dev.marginalis.plugin.avatars.AvatarsListener
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.AgentPresenceGroup
 import dev.marginalis.plugin.ui.FileLevelThreads
-import dev.marginalis.plugin.ui.HandBackAction
 import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ParticipantStackIcon
 import dev.marginalis.plugin.ui.RELAYED_STAYS_DELETED
+import dev.marginalis.plugin.ui.StopAgentsGroup
+import dev.marginalis.plugin.ui.SubmitRoundAction
 import dev.marginalis.plugin.ui.WalkthroughNavigator
 import dev.marginalis.plugin.ui.tab.ProjectTab
 import java.awt.BorderLayout
@@ -85,7 +87,9 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
                 common.createNextOccurenceAction(panel),
                 LastStepAction(panel),
                 FilterMenuAction(panel),
-                HandBackAction(),
+                AgentPresenceGroup(),
+                SubmitRoundAction(),
+                StopAgentsGroup(),
                 ResolveAllAction(),
                 ClearAllAction(),
             ),

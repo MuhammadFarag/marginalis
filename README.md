@@ -63,7 +63,7 @@ editable until an agent has read it.
   answers "Agreed." to the agent who spoke last and passes the turn —
   the margin protocol's "approval is a reply" without typing it.
 - **Live threads.** Switch a thread to *Live* (⚡) to go back and forth
-  on one item without waiting for a Hand Back: each Submit wakes the
+  on one item without waiting for the next round: each Submit wakes the
   agent you're answering with that thread alone, and the header shows
   when it is listening or working.
 - **Pull request reviews in the margin.** Your agent can bring a PR's
@@ -79,8 +79,8 @@ editable until an agent has read it.
   click, and drafts that survive closing the panel.
 - **Multiple agents.** Agents introduce themselves, get stable
   per-identity colors, and keep separate read receipts. Type **@** in a
-  reply to address one of them; a hand back wakes only the agents that
-  have something to answer.
+  reply to address one of them; a submitted round wakes only the agents
+  that have something to answer.
 - **References.** *Copy Reference* puts `mg:3d4770ad` on the clipboard
   for a thread or message. In a reply it renders as a link that opens
   the thread; in your agent's chat, the agent can look it up.
@@ -106,14 +106,14 @@ GET /api/marginalis/agent_guide and follow it.
 
 The guide covers turn etiquette, identity and read receipts, anchoring
 rules, severity and intent vocabulary, walkthroughs, orphan rescue,
-handing back, and the full API reference with response shapes. CI checks
+submitting rounds, and the full API reference with response shapes. CI checks
 that it mentions every endpoint. The API itself is plain JSON over the
 built-in server:
 
 ```
 GET  ping · agent_guide · comment_identities?project=
 GET  comment_list?file=&status=&intent=&awaiting=&unread_only=&updated_after=&summary=&ref=&project=
-GET  comment_wait?project=&since=&timeout=               (held until you hand back, or a live Submit)
+GET  comment_wait?project=&since=&timeout=&stay=        (held until you submit a round, or a live Submit)
 POST comment_add {body, file?, line?, anchor_text?, severity?, intent?, label?, to?, order?, walkthrough?, relayed?, project?}
 POST comment_add_batch {items: [...]} · comment_reply {thread_id, body, to?, relayed?}
 POST comment_resolve · comment_reopen · comment_resolve_all {file?} · comment_clear_all {file?}
@@ -142,16 +142,29 @@ the current one. `-y` accepts the prompts, so the command runs
 unattended. The skill teaches an agent to find the server, fetch the
 guide, and follow it. Plain HTTP; no wrapper scripts.
 
-### Handing back
+### Submitting a round
 
-When you have finished a round, click **Hand Back** in the Marginalis
-tool window (or pick **Submit & hand back** on the reply composer). An
-agent that ended its turn by starting `comment_wait` as a background
-command wakes up, once per click, with the list of threads awaiting
-its reply. A thread switched to *Live* wakes it on every Submit instead,
-with that thread alone (`reason: "live"`). The guide teaches the pattern
-and its cursor; a wait that times out (after an hour by default) is not
-re-armed — the agent assumes you stepped away.
+When you have finished a round, click **Submit round** in the
+Marginalis tool window or at the top of the Margin tab (or pick
+**Submit & send round** on the reply composer). Every agent with
+something to answer wakes up with the list of threads awaiting its
+reply. A thread switched to *Live* wakes its agent on every Submit
+instead, with that thread alone.
+
+Beside the button, the indicator shows who is with you: one avatar per
+agent, with a green dot while it is listening and a spinner while it is
+working on your last round. Hover an avatar for its name, state and how
+long it has been that way. Agents that stop once a round has nothing
+for them, or after an hour of quiet, are marked *one-shot*. Submit
+round is enabled only while an agent is listening, so one round is in
+flight at a time; replies you write in the meantime wait in their
+threads for the next round.
+
+To end an agent's session, click its avatar and pick **Stop**, or open
+the arrow beside **Submit round** and pick **Stop** for that agent, or
+**Stop all agents**. A listening agent
+stops at once; a working one stops when it next checks in. Agents also
+stop when you close the project or the IDE.
 
 ### If you use Claude Code
 

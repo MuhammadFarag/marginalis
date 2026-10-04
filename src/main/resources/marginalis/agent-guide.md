@@ -139,51 +139,72 @@ rather than assuming. Resolve immediately only when no action is needed
 true`, addressed to you) is the same approval: land what was agreed,
 then resolve.
 
-## Ending a turn: wait for the hand back
+## Ending a turn: wait for the next round
 
 When the user has finished a round — read your replies, answered what
-they wanted to — they **hand back**: a "Hand Back" button in the
-Marginalis tool window, or "Submit & hand back" on the reply composer.
-It is project-wide ("I've finished this round"), and it is how you learn
-you are wanted.
+they wanted to — they **submit the round**: "Submit round" in the
+Marginalis tool window or the Margin tab header, or "Submit & send
+round" on the reply composer. It is project-wide ("here is my batch"),
+and it is how you learn you are wanted. A round reaches you as reason
+`"hand_back"`; the wire names `handed_back` and `handed_back_at` are
+historical and mean "a round arrived".
 
 End every turn the same way: leave your replies, then start the wait as
 a **background command** and stop.
 
 ```
-curl -s "http://127.0.0.1:63342/api/marginalis/comment_wait?project=…&since=<cursor>&author_name=…&author_id=…"
+curl -s "http://127.0.0.1:63342/api/marginalis/comment_wait?project=…&since=<cursor>&stay=<true if your harness re-invokes you>&author_name=…&author_id=…"
 ```
+
+**Pass `stay=true` if your harness re-invokes you when a background
+command exits** — in Claude Code, run the curl with `run_in_background`.
+It tells the user you will keep listening, and the plugin remembers it
+for your identity for the session. Without such a harness, leave `stay`
+off: you are a **one-shot** agent.
 
 `since` is your cursor: the later of the newest `updated_at` and the
 `handed_back_at` from the sweep or wake that started this turn — not
 the timestamp of your own replies. A `comment_list?project=…` listing
 carries the project's last `handed_back_at` in its envelope; a wake
-carries the one that woke you. So a hand back the user made while you
+carries the one that woke you. So a round the user submitted while you
 were still working answers at once instead of being missed, and one you
 have already answered never wakes you twice. The wait's **completion is
 the signal**: `handed_back: true` means the user wants you now, and its
 `awaiting` list (the `awaiting=agent` set plus any live thread holding
 messages you haven't seen, same thread shape as `comment_list`) is your
 to-do list — answer each, then wait again.
-`handed_back: false` is a timeout (default one hour) or a closing IDE:
-the user stepped away. Do **not** re-arm; they will type when they are
-back.
 
-A hand back (`reason: "hand_back"`) with nothing awaiting you ends the
-loop — stop waiting, exactly as on a timeout. An empty live wake does
-not: wait again (see Live threads). That is how the user closes a round: they
-resolve the threads they are done with and hand back once more. The
-user sees whether you are waiting — the hand-back gestures name you
-while your wait is armed.
+`handed_back: false` carries a `reason` and nothing else:
 
-Any agent harness that re-invokes the agent when a background command
-exits turns the click into your wake-up — in Claude Code, run the curl
-with `run_in_background`. A hand back is **targeted**: it wakes only the
-waiting agents that have something awaiting them, and the rest keep
-waiting — a hand back that passed you by does not answer your next wait
-either. Only when no waiting agent has anything awaiting it does every
-waiter wake with an empty `awaiting` — the end-of-loop signal above.
-Without an armed wait, nothing reaches you until the user types; Claude
+- `"timeout"` — `timeout` seconds passed (default one hour).
+- `"stopped"` — the user pressed Stop on you.
+- `"closing"` — the IDE or the project is closing.
+
+When to wait again:
+
+- **Opted in (`stay=true`)**: re-arm after every wake — a round, an
+  empty round, a live submit — and after a timeout, keeping the cursor
+  you had. An empty round is not the end of the loop for you.
+- **One-shot**: wait again after a wake with something in `awaiting`.
+  A round with nothing awaiting you, or a timeout, ends the loop — stop
+  waiting; the user will type when they are back. An empty live wake
+  does not end it (see Live threads).
+- **Everyone**: on `"stopped"` or `"closing"`, stop waiting and do
+  **not** re-arm until the user asks you to in chat. A `"stopped"` can
+  answer your very first wait — a Stop the user pressed while you were
+  working, or one left for your identity; treat it the same.
+
+The user sees you in the margin's indicator: **listening** while your
+wait is open, **working** from the wake until you open the next one.
+Submit round is enabled only while some agent is listening, so one
+round is in flight at a time.
+
+A round is **targeted**: it wakes only the waiting agents that have
+something awaiting them, and the rest keep waiting — a round that
+passed you by does not answer your next wait either. Only when no
+waiting agent has anything awaiting it does every waiter wake with an
+empty `awaiting` — the empty round above.
+Without an open wait, nothing reaches you until the user types; Claude
 Code users can close that gap with two hooks that put the awaiting
 threads into every prompt — offer them the recipe at
 https://github.com/MuhammadFarag/marginalis#if-you-use-claude-code.
@@ -193,25 +214,25 @@ https://github.com/MuhammadFarag/marginalis#if-you-use-claude-code.
 The user can switch a thread **live** — several can be live at once —
 but only while you are waiting; going live is their call, never yours.
 While a thread is live, each Submit in it (and an Agree) wakes you at
-once with that thread alone — no Hand Back. Switching Live on wakes you
+once with that thread alone — no Submit round. Switching Live on wakes you
 the same way when the thread already holds messages you haven't seen;
 that wake's `handed_back_at` is the time of the thread's last change.
-Every wake names its `reason`: `"hand_back"` for the batch, `"live"`
+Every wake names its `reason`: `"hand_back"` for a Submit round, `"live"`
 for a live submit. A live wake's `awaiting` holds only the live
 thread(s) with something new for you — owed to you, or holding messages
 you haven't seen (a follow-up the user sent while you were answering) —
 in the same shape, marked seen; other threads the user drafted wait for
-the next Hand Back. It wakes one agent: the one the reply `@`-addresses,
+the next Submit round. It wakes one agent: the one the reply `@`-addresses,
 else the `to` of the thread's last message that was not relayed, when
 the user wrote it, else the agent who spoke most recently in the thread
 in its own words (relays are skipped; on a thread of only relays, the
 agent that relayed them), else — on a thread the user started — the one
 agent waiting on the project.
 Its `handed_back_at` is the live submit's time — advance your cursor to
-it as usual — but it does not move the project's hand back in
+it as usual — but it does not move the project's last round in
 `comment_list`'s envelope. A live submit made while you were still
-working answers your next wait at once when you pass `since`; if a Hand
-Back is pending too, the hand back wins and carries the whole
+working answers your next wait at once when you pass `since`; if a
+round is pending too, the round wins and carries the whole
 `awaiting` set, live threads included — even a live follow-up you have
 not seen in a thread where you spoke last — and its `handed_back_at` then
 covers the live submit too, so it can be later than the one in
@@ -220,7 +241,7 @@ covers the live submit too, so it can be later than the one in
 After a live wake, answer the thread and **always wait again** — even
 when `awaiting` comes back empty (the thread was resolved, or you had
 already answered it, between the wake and its reply). The user sees
-you "listening" while your wait is armed and "working" until you reply.
+you "listening" while your wait is open and "working" until you open the next one.
 
 ## Anchoring
 
@@ -525,7 +546,7 @@ machine-readable `reason` (see Anchoring).
 |---|---|
 | `GET ping` | status, ide, plugin version, open projects with branches — full shape under Discovery |
 | `GET agent_guide` | this document (markdown, not JSON) |
-| `GET comment_list?ref=&file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question\|fyi&awaiting=agent\|user&unread_only=&summary=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last hand back) only when the listing covered one project and it has one; example below. `summary=true` swaps each thread's `messages` array for counts and marks nothing seen — see First contact. `ref=mg:…` narrows to the referenced thread — see References; ambiguous → 400 `{error, candidates: [{ref, thread_id, message_id?, project, file?}]}` |
+| `GET comment_list?ref=&file=&status=open\|resolved\|orphaned&intent=finding\|guidance\|question\|fyi&awaiting=agent\|user&unread_only=&summary=&updated_after=&project=&author_name=&author_id=` | threads with messages; reading marks seen for the calling identity → `{threads: […], marked_seen, handed_back_at?}` — `handed_back_at` (the project's last round) only when the listing covered one project and it has one; example below. `summary=true` swaps each thread's `messages` array for counts and marks nothing seen — see First contact. `ref=mg:…` narrows to the referenced thread — see References; ambiguous → 400 `{error, candidates: [{ref, thread_id, message_id?, project, file?}]}` |
 | `POST comment_add {body, file?, line?, anchor_text?, order?, walkthrough?, severity?, intent?, label?, to?, relayed?, project?, author_name?, author_id?}` | start a thread on a line → `{thread_id, file, line, line_adjusted, status}`; without `line`, on the file as a whole → `{thread_id, file, status}`; without `file` either, on the project (pass `project` when several are open) → `{thread_id, status}`; a relayed comment already in the project creates nothing → `{thread_id, file?, line?, status, existing: true}`; errors are 409 `{error, reason}` — `stale_anchor` (re-read the file), `deleted_relay` (the user deleted that relayed thread) — see Relaying from GitHub |
 | `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults, `to` and `relayed` are per item only → `{results: [ …success shape… \| {error, reason?, open_projects?} ], created}` in request order, 200 unless the envelope itself is malformed; `created` leaves out items answered `existing: true` |
 | `POST comment_reply {thread_id, body, to?, relayed?, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}`; `to` (an `author_id`, or `user`) addresses the message — omit it to address everyone; `project` is ignored (the thread names it); a blank `body` is a 400; a relayed comment already in the thread adds nothing → `{message_id, thread_id, status, existing: true}`; one already relayed into another thread → 409 `{error, reason: "relayed_elsewhere", thread_id}`, the root of a thread the user deleted → 409 `reason: "deleted_relay"` |
@@ -535,7 +556,7 @@ machine-readable `reason` (see Anchoring).
 | `POST comment_reanchor_all {file, project?}` | rescue every orphan on one file, searching the whole file by content → `{file, results: [{thread_id, line?, status}], rescued}` |
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve across **every open project** (`project` is ignored; `file` matches that path in each) — every thread not already resolved, fyi and orphaned ones included, so only when the outcomes genuinely all landed — which resolves fyis, the user's to close, so only on the user's explicit request → `{resolved: <count>}` |
 | `POST comment_clear_all {file?}` | DELETE threads and the resolved log across **every open project** (`project` is ignored; `file` matches that path in each) — destructive; only on explicit user request, and sweep unread first. A reset, not a deletion: relayed threads it removes come back if relayed again, with or without `file`; without `file` it also forgets the relayed threads the user deleted, so those come back too → `{cleared: <count>}` |
-| `GET comment_wait?project=&since=&timeout=&author_name=&author_id=` | hold until the user hands back — at once if they already did after `since` (ISO-8601, exclusive; omit to wait for the next one) — or until `timeout` seconds pass (default 3600, capped at 14400) → `{handed_back: true, reason, handed_back_at, awaiting: [threads]}` or `{handed_back: false}`; `reason` is `hand_back` (the batch: every thread awaiting you) or `live` (a live thread's Submit: only that thread — see Live threads); `awaiting` marks seen like `comment_list`; `project` is required when several are open; your `since` is the later of the newest `updated_at` and `handed_back_at` you have seen |
+| `GET comment_wait?project=&since=&timeout=&stay=&author_name=&author_id=` | hold until the user submits a round — at once if they already did after `since` (ISO-8601, exclusive; omit to wait for the next one) — or until `timeout` seconds pass (default 3600, capped at 14400) → `{handed_back: true, reason, handed_back_at, awaiting: [threads]}` or `{handed_back: false, reason}`; on `handed_back: true`, `reason` is `hand_back` (a Submit round: every thread awaiting you) or `live` (a live thread's Submit: only that thread — see Live threads); on `handed_back: false`, `reason` is `timeout`, `stopped` (the user pressed Stop) or `closing` (the IDE or project is closing); `stay=true` keeps you listening across rounds — re-arm after every wake and timeout, but never after `stopped` or `closing` (see Ending a turn); `awaiting` marks seen like `comment_list`; `project` is required when several are open; your `since` is the later of the newest `updated_at` and `handed_back_at` you have seen |
 | `GET comment_identities?project=` | who is in this margin; marks nothing seen → `{project, identities: [{kind: "user", name, messages_written} \| {kind: "agent", name, id, messages_written, unread, waiting}]}` — the user first, then agents by messages written; `messages_written` counts an agent's own words, never its relays; `name` is null for an identity known only from read receipts; an agent in a `comment_wait` is listed (`waiting: true`) before it has written anything; `id` is the receipt key to pass as `author_id`; `project` is required when several are open |
 | `POST navigate {file, line?, anchor_text?, project?}` | consent-gated pointing → `{navigated, file, line, line_adjusted}`; without `line`, opens the file at the top → `{navigated, file}` |
 
