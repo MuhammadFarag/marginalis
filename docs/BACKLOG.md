@@ -265,6 +265,21 @@ declined, captured from real use.
   playgrounds, built in TDD slices with review rounds, reviewed by live
   demo.
 
+## Shipped (2026-10-04, v0.2.2)
+
+- ✅ v0.2.2 — the Margin tab (#37): project-level threads leave their
+  popups for a pinnable editor tab titled by its turn signals (or
+  "Margin"), backed by a small virtual file system so it restores after
+  restart; counts, Submit round, new-message markers, one folded group
+  per relayed PR, the resolved fold, an "Also your move" link to file
+  threads, an empty state, a ⌘F filter, and four Settings switches
+  (live vs hold still, auto-expand, what counts as read, relay
+  grouping). Submit round (#38): Hand Back renamed; agents opt in with
+  `stay=true` to keep listening across rounds; `stopped` and `closing`
+  wake reasons; a listening/working avatar indicator in the tool window
+  and the tab; Stop per agent or all. Both refined through playgrounds
+  and reviewed by live demo.
+
 ## Decision log
 
 - **Importance dimension declined** (2026-07-24): severity stays
@@ -373,3 +388,17 @@ declined, captured from real use.
   rarely change their GitHub picture, so a good load is never refetched
   until restart; only a failed fetch retries (5 minutes), and the disk
   cache expires after a week.
+- **Project threads live in a pinned tab, not popups** (2026-10-04,
+  #37): the tab is a home base that exists even when empty; the list is
+  live by default, except a thread holding an unsent reply keeps its
+  place. Plugins can't pin a tab through public API, so the user pins it
+  once and the platform remembers it.
+- **Submit round, with opt-in listening** (2026-10-04, #38): "Hand
+  Back" read as pausing the conversation; a round is a batch. Agents
+  opt in to keep listening (`stay=true`) so harnesses that can't loop
+  keep today's behaviour, and the wire names stay unchanged. Connection
+  state is deterministic — an open wait is listening, a hang-up is
+  gone — so there is no "away" timer; a working agent shows how long.
+  One round in flight: Submit round is off while nobody listens.
+  Stopped and disconnected agents vanish from the indicator, since
+  every session is different.
