@@ -119,6 +119,9 @@ class CommentThread(
     val isRelayedRoot: Boolean
         get() = messages.firstOrNull()?.relayed != null
 
+    val discussion: String?
+        get() = messages.firstOrNull()?.relayed?.discussion
+
     val lastSpoken: Message?
         get() = messages.lastOrNull { it.relayed == null }
 
@@ -140,6 +143,8 @@ class CommentThread(
 
     private val isReadFyi: Boolean
         get() = intent == Intent.FYI && messages.all { it.author is Author.Agent && it.readByUser }
+
+    fun unreadByUserCount(): Int = messages.count { !it.readByUser }
 
     fun unreadCount(): Int = messages.count { !it.seenByAnyAgent }
 

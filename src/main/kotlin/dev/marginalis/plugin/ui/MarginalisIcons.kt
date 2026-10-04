@@ -34,10 +34,10 @@ object MarginalisIcons {
     private val noTurnSignal = EmptyIcon.create(16)
     private val markWithTurn = ConcurrentHashMap<Pair<Icon, Turn?>, Icon>()
 
-    private val toolWindow = load("marginalisToolWindow")
+    val Brand = load("marginalisToolWindow")
     private val toolWindowBadged = mapOf(
-        StripeBadge.BLOCKER to BadgeIconSupplier(toolWindow).getErrorIcon(true),
-        StripeBadge.AWAITING_YOU to badged(toolWindow, turnBadges.getValue(Turn.USER_OWES)),
+        StripeBadge.BLOCKER to BadgeIconSupplier(Brand).getErrorIcon(true),
+        StripeBadge.AWAITING_YOU to badged(Brand, turnBadges.getValue(Turn.USER_OWES)),
     )
 
     fun mark(mark: Mark): Icon = marks.getValue(mark)
@@ -51,7 +51,7 @@ object MarginalisIcons {
 
     fun withTurnBadge(fileIcon: Icon, turn: Turn): Icon = badged(fileIcon, turnBadges.getValue(turn))
 
-    fun toolWindow(badge: StripeBadge?): Icon = badge?.let(toolWindowBadged::getValue) ?: toolWindow
+    fun toolWindow(badge: StripeBadge?): Icon = badge?.let(toolWindowBadged::getValue) ?: Brand
 
     fun markOf(threads: List<CommentThread>): Icon =
         markInState.computeIfAbsent(Mark.of(threads) to AggregateState.of(threads)) { (mark, state) -> inState(marks.getValue(mark), state) }

@@ -50,6 +50,7 @@ import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.MarginalisMarkers
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.WalkthroughNavigator
+import dev.marginalis.plugin.ui.tab.ProjectTab
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelFutureListener
 import io.netty.channel.ChannelHandlerContext
@@ -400,6 +401,7 @@ class MarginalisRestService : RestService() {
                 project.guessProjectDir()?.let { base -> VfsUtilCore.getRelativePath(file, base) }
             }
             if (thread.file != null && selectedRel == thread.file) return@invokeLater
+            if (thread.isProjectLevel && ProjectTab.isInFront(project)) return@invokeLater
             val where = thread.file?.plus(thread.line?.let { ":${it + 1}" } ?: "") ?: project.name
             NotificationGroupManager.getInstance().getNotificationGroup("Marginalis")
                 .createNotification(

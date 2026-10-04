@@ -88,4 +88,29 @@ class ThreadStoreWatchTest {
 
         assertSame(draft, heard.single())
     }
+
+    @Test
+    fun `an observer hears every thread's change`() {
+        val store = ThreadStore()
+        val heard = mutableListOf<CommentThread>()
+        store.observe { heard += it }
+
+        val first = thread().also(store::add)
+        val second = thread().also(store::add)
+        store.notifyChanged(first)
+
+        assertEquals(listOf(first, second, first), heard)
+    }
+
+    @Test
+    fun `a closed observer hears nothing more`() {
+        val store = ThreadStore()
+        val heard = mutableListOf<CommentThread>()
+        val observer = store.observe { heard += it }
+
+        observer.close()
+        store.add(thread())
+
+        assertTrue(heard.isEmpty())
+    }
 }

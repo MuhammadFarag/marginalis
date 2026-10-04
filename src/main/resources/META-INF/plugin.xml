@@ -93,6 +93,11 @@
                     factoryClass="dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindowFactory"/>
         <!-- At-a-glance: the turn signal badges the file's own icon — editor tabs and the Project view alike. -->
         <fileIconPatcher implementation="dev.marginalis.plugin.ui.TurnSignalIconPatcher"/>
+        <!-- The project tab: project-level threads in an editor tab of their own. -->
+        <virtualFileSystem key="marginalis" implementationClass="dev.marginalis.plugin.ui.tab.MarginFileSystem"/>
+        <fileEditorProvider implementation="dev.marginalis.plugin.ui.tab.MarginEditorProvider"/>
+        <editorTabTitleProvider implementation="dev.marginalis.plugin.ui.tab.MarginTabTitleProvider" order="first"/>
+        <fileIconProvider implementation="dev.marginalis.plugin.ui.tab.MarginTabIconProvider"/>
         <!-- The turn signal's long arm: agent posts in unfocused files. -->
         <notificationGroup id="Marginalis" displayType="BALLOON"/>
         <!-- Navigation consent + display name; app-level, these follow the user. -->

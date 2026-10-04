@@ -9,6 +9,7 @@ import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.ThreadInlayManager
 import dev.marginalis.plugin.ui.TurnSignalIconPatcher
+import dev.marginalis.plugin.ui.tab.ProjectTab
 
 // Strips our classes from platform structures that outlive the classloader
 // (file-icon badges, highlighters on the persistent document markup model,
@@ -34,6 +35,7 @@ class MarginalisUnloadListener : DynamicPluginListener {
                 }
             }
         }
+        ProjectTab.closeEverywhere()
         ThreadInlayManager.disposeAll()
     }
 }

@@ -70,16 +70,16 @@ import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.awt.datatransfer.StringSelection
 import java.awt.event.ActionEvent
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 import java.awt.event.HierarchyEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.AbstractAction
 import javax.swing.Action
-import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.Icon
@@ -95,11 +95,14 @@ internal const val RELAYED_STAYS_DELETED = "This removes it from the margin only
 
 class ThreadPanel(
     private val project: Project,
-    /** Null when the panel floats in a popup of its own. */
     private val editor: Editor?,
     private val thread: CommentThread,
     private val ensureStored: () -> Unit,
     private val onClose: () -> Unit,
+    private val hostWidth: () -> Int,
+    private val mayMarkRead: (clickedInto: Boolean) -> Boolean = { true },
+    private val newTags: (CommentThread) -> Set<String> = { emptySet() },
+    private val onDraftPresenceChanged: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
 
     private val messagesBox = Box.createVerticalBox()
@@ -147,6 +150,8 @@ class ThreadPanel(
     }
     private var agreeableId: String? = null
     private var renderedMessages: List<Message> = emptyList()
+    var showsNewTags = false
+        private set
     private var whileAttached: Disposable? = null
     private var composerExpanded = false
     private var addressee: Addressee? = null
@@ -249,6 +254,12 @@ class ThreadPanel(
         replyArea.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
             override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) = saveDraft()
         })
+        replyArea.addFocusListener(object : FocusAdapter() {
+            override fun focusGained(e: FocusEvent) {
+                reloadDraft()
+                markRead()
+            }
+        })
         // The composer handles its own Esc: its editor consumes key events.
         registerKeyboardAction(
             { closeAndRefocus() },
@@ -272,10 +283,7 @@ class ThreadPanel(
         return Dimension(panelWidth(), computed.height)
     }
 
-    private fun panelWidth(): Int {
-        val viewport = editor?.scrollingModel?.visibleArea?.width ?: return JBUI.scale(560)
-        return (viewport - JBUI.scale(120)).coerceIn(JBUI.scale(360), JBUI.scale(800))
-    }
+    private fun panelWidth(): Int = hostWidth()
 
     private fun buildHeader(): JComponent {
         val header = JPanel(BorderLayout()).apply { isOpaque = false }
@@ -620,6 +628,7 @@ class ThreadPanel(
         replyArea.text = ""
         setComposerExpanded(false)
         MarginalisStore.getInstance(project).drafts.remove(thread.id)
+        markRead()
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         return sent
     }
@@ -632,13 +641,19 @@ class ThreadPanel(
             return
         }
         val agreement = Message.agreement(by = Authors.user, with = agent)
+        markRead()
         thread.addMessage(agreement)
         MarginalisStore.getInstance(project).threads.notifyChanged(thread)
         MarginalisStore.getInstance(project).wakeLive(thread, agreement.to)
     }
 
-    private fun markReadIfSeen() {
-        if (!isShowing || visibleRect.isEmpty || !ApplicationManager.getApplication().isActive) return
+    fun markReadIfSeen() {
+        if (!mayMarkRead(false) || !isShowing || visibleRect.isEmpty || !ApplicationManager.getApplication().isActive) return
+        if (thread.markReadByUser(renderedMessages)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+    }
+
+    fun markRead() {
+        if (!mayMarkRead(true) || isDraft() || !ApplicationManager.getApplication().isActive) return
         if (thread.markReadByUser(renderedMessages)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
     }
 
@@ -709,15 +724,24 @@ class ThreadPanel(
         refreshLive()
     }
 
+    private fun reloadDraft() {
+        if (editingMessageId != null) return
+        val saved = MarginalisStore.getInstance(project).drafts[thread.id]
+        addressTo(saved?.to)
+        if (replyArea.text != (saved?.text ?: "")) replyArea.text = saved?.text ?: ""
+    }
+
     private fun saveDraft() {
         if (editingMessageId != null) return // edits restore the original on cancel, not a draft
         val drafts = MarginalisStore.getInstance(project).drafts
+        val heldDraft = !drafts[thread.id]?.text.isNullOrBlank()
         val text = replyArea.text
         if (text.isBlank() && addressee == null) {
             drafts.remove(thread.id)
         } else {
             drafts[thread.id] = MarginalisStore.Draft(text, addressee)
         }
+        if (heldDraft == text.isBlank()) onDraftPresenceChanged()
     }
 
     private fun addresseeName(to: Addressee): String = when (to) {
@@ -784,26 +808,20 @@ class ThreadPanel(
     }
 
     private var watchingThread: AutoCloseable? = null
-    private val threadUpdateQueued = AtomicBoolean(false)
-
-    private fun onThreadChanged() {
-        if (!threadUpdateQueued.compareAndSet(false, true)) return
-        ApplicationManager.getApplication().invokeLater {
-            threadUpdateQueued.set(false)
-            if (project.isDisposed || watchingThread == null) return@invokeLater
-            if (MarginalisStore.getInstance(project).threads.byId(thread.id) == null) {
-                onClose()
-            } else {
-                refresh()
-                markReadIfSeen()
-            }
+    private val threadUpdate = CoalescedEdtRunner(project) {
+        if (watchingThread == null) return@CoalescedEdtRunner
+        if (MarginalisStore.getInstance(project).threads.byId(thread.id) == null) {
+            onClose()
+        } else {
+            refresh()
+            markReadIfSeen()
         }
     }
 
     override fun addNotify() {
         super.addNotify()
         handBack.addListener(onWaitersChanged)
-        watchingThread = MarginalisStore.getInstance(project).threads.watch(thread.id) { onThreadChanged() }
+        watchingThread = MarginalisStore.getInstance(project).threads.watch(thread.id) { threadUpdate.request() }
         refreshSendOptions()
         refreshLive()
         val attached = Disposer.newDisposable(MarginalisStore.getInstance(project), "Marginalis thread panel")
@@ -872,6 +890,8 @@ class ThreadPanel(
         var previous: Message? = null
         var githubBlock: JPanel? = null
         renderedMessages = thread.messages
+        val tagged = newTags(thread)
+        showsNewTags = renderedMessages.any { it.id in tagged }
         for (message in renderedMessages) {
             val grouped = message.continues(previous)
             val relayed = message.relayed
@@ -886,7 +906,9 @@ class ThreadPanel(
             if (relayed != null && githubBlock == null) {
                 githubBlock = githubBlock(relayed).also { messagesBox.add(it) }
             }
-            val component = messageComponent(message, timeFormat, people, faces, showMeta = message.showsAvatar(previous))
+            val component = messageComponent(
+                message, timeFormat, people, faces, showMeta = message.showsAvatar(previous), isNew = message.id in tagged,
+            )
             messageComponents[message.id] = component
             (githubBlock ?: messagesBox).add(component)
             previous = message
@@ -899,7 +921,7 @@ class ThreadPanel(
         isOpaque = false
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         border = JBUI.Borders.compound(
-            BorderFactory.createDashedBorder(GITHUB_BLOCK_COLOR, JBUI.scale(4).toFloat(), JBUI.scale(3).toFloat()),
+            MarginalisPalette.githubDashedBorder(),
             JBUI.Borders.empty(4, 6, 6, 6),
         )
         val title = first.discussion?.let { "From GitHub · $it" } ?: "From GitHub"
@@ -942,6 +964,7 @@ class ThreadPanel(
         people: People,
         faces: Faces,
         showMeta: Boolean,
+        isNew: Boolean,
     ): JComponent {
         if (message.agrees) return agreementLine(message, timeFormat)
         val relayed = message.relayed
@@ -951,7 +974,8 @@ class ThreadPanel(
         val author = people.displayNameOf(message.author)
         val byline = if (relayed == null) author else "${face.name} · via $author"
         val panel = JPanel(BorderLayout()).apply {
-            isOpaque = false
+            isOpaque = isNew
+            background = NEW_TINT
             border = JBUI.Borders.compound(
                 JBUI.Borders.customLine(authorColor, 0, 2, 0, 0),
                 JBUI.Borders.emptyLeft(7),
@@ -994,6 +1018,7 @@ class ThreadPanel(
         }
 
         val trailing = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply { isOpaque = false }
+        if (isNew) trailing.add(Chip("new", MarginalisPalette.ACCENT, NEW_TEXT))
         if (message.author is Author.User && !message.seenByAnyAgent && editingMessageId == null) {
             val editLink = ActionLink("Edit") {
                 editingMessageId = message.id
@@ -1083,7 +1108,8 @@ class ThreadPanel(
             Severity.NIT -> JBColor(Color(0x59, 0x59, 0x59), Color(0xBD, 0xBD, 0xBD))
         }
 
-        val GITHUB_BLOCK_COLOR = JBColor(Color(0xB0, 0xB7, 0xC3), Color(0x5A, 0x60, 0x6B))
+        val NEW_TINT = JBColor(Color(0xEE, 0xF3, 0xFE), Color(0x2B, 0x32, 0x40))
+        val NEW_TEXT = JBColor(Color.WHITE, Color.WHITE)
 
         val LIVE_COLOR = JBColor(0x2E7D32, 0xA5D6A7)
         const val LIVE_PULSE_MILLIS = 600

@@ -262,9 +262,12 @@ standup rather than in a diff.
   disappears (reopening on its own when the path comes back), a
   project-level one never orphans. `comment_reanchor` refuses both, and
   `navigate` still needs a `file`.
+- Either may carry a `segment` as provenance — the user's selection
+  that sparked it, not an anchor.
 - `severity`, `order`, and `walkthrough` work unchanged; stepping to a
-  file-level step opens the file at the top. Either may carry a `segment`
-  as provenance — the user's selection that sparked it, not an anchor.
+  file-level step opens the file at the top; stepping to a project-level
+  step opens the user's project tab (the Margin tab) and scrolls to that
+  thread.
 
 ## Spans (read-only for you)
 
@@ -388,8 +391,9 @@ explaining how code hangs together, or onboarding. Create steps with
   all three (steps render as "(2/5)" in a tree sorted in walking order).
 - Order by the code's structure — entry point first, then callees —
   never by severity; severity has its own channel.
-- A step can sit at any rung: a line, a file, or the project — a
-  project-level step opens nothing, since there is no file to jump to.
+- A step can sit at any rung: a line, a file, or the project; a
+  project-level step opens the user's project tab (the Margin tab) and
+  scrolls to that thread.
 - The user walks with next/previous controls and resolves steps as they
   go. A step resolved without a reply is seen-and-approved; a reply is a
   change request — land the change first, then resolve it.

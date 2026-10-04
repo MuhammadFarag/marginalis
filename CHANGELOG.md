@@ -5,6 +5,42 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Changed
+
+- Conversations about the whole project now live in a Margin tab you can
+  pin next to your code (#37). Plans, release notes and a pull request's
+  conversation stay in one place you can return to.
+  - The tab's title shows what waits on you: ✉ for your move, ✈ for the
+    agent's, and simply "Margin" when nothing waits.
+  - Threads that need you open expanded. The rest stay folded to their
+    latest message, so you can scan them at a glance.
+  - Unread messages are marked new until you read them.
+  - Hand Back and "+ New project thread" sit at the top of the tab, so
+    you can keep the tool window closed.
+  - The tab works as a home base. It tells you when replies wait for you
+    in files, and one click takes you to the first.
+  - A pull request's conversation from GitHub folds into one group
+    instead of filling the tab.
+  - Find (⌘F or Ctrl+F) narrows the tab to the threads that mention your search.
+  - A pinned tab comes back after a restart, and a half-written reply
+    is still there when you reopen the tab.
+  - A walkthrough step about the whole project opens the tab at that
+    thread.
+
+### Added
+
+- Make the Margin tab work the way you read, in Settings → Tools →
+  Marginalis → Project Tab (#37).
+  - Keep the list still while you read, with new threads waiting behind
+    a pill, or let it follow the latest activity.
+  - Choose whether a thread opens by itself when it becomes your move.
+  - Choose what counts as read: a thread you can see, or only one you
+    click into.
+  - Turn off grouping to see each comment from a pull request as its
+    own thread.
+
 ## [0.2.1] - 2026-10-02
 
 ### Added

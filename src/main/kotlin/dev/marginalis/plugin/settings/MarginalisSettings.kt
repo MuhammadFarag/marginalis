@@ -8,7 +8,10 @@ import com.intellij.openapi.components.Storage
 import com.intellij.util.xmlb.annotations.Attribute
 import com.intellij.util.xmlb.annotations.Tag
 import com.intellij.util.xmlb.annotations.XCollection
+import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.People
+import dev.marginalis.core.ProjectTabPrefs
+import dev.marginalis.core.ReadWhen
 
 // App-level, not per project: navigation consent and display name follow the person.
 @Service
@@ -36,6 +39,14 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
         var walkthroughAutoAdvance: Boolean = true
 
         var notifyOnAgentReply: Boolean = true
+
+        var projectTabList: String = ListWhileInFront.LIVE.stored
+
+        var expandOnYourMove: Boolean = true
+
+        var projectTabReadWhen: String = ReadWhen.EXPANDED_IN_FRONT.stored
+
+        var groupRelayedConversation: Boolean = true
     }
 
     @Tag("person")
@@ -91,6 +102,26 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
         set(value) {
             state.timeFormat = value.stored
         }
+
+    var listWhileInFront: ListWhileInFront
+        get() = ListWhileInFront.fromStored(state.projectTabList)
+        set(value) {
+            state.projectTabList = value.stored
+        }
+
+    var readWhen: ReadWhen
+        get() = ReadWhen.fromStored(state.projectTabReadWhen)
+        set(value) {
+            state.projectTabReadWhen = value.stored
+        }
+
+    val projectTabPrefs: ProjectTabPrefs
+        get() = ProjectTabPrefs(
+            list = listWhileInFront,
+            expandOnYourMove = state.expandOnYourMove,
+            readWhen = readWhen,
+            groupRelayed = state.groupRelayedConversation,
+        )
 
     companion object {
         fun getInstance(): MarginalisSettings =

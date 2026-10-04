@@ -14,8 +14,10 @@ import dev.marginalis.core.CommentThread
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.plugin.store.MarginalisPersistence
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.CoalescedEdtRunner
 import dev.marginalis.plugin.ui.FileTurn
 import dev.marginalis.plugin.ui.MarginalisMarkers
+import dev.marginalis.plugin.ui.tab.ProjectTab
 
 class MarginalisStartup : ProjectActivity {
 
@@ -29,6 +31,10 @@ class MarginalisStartup : ProjectActivity {
                 thread.file?.let { FileTurn.track(project, it) }
             }
             store.scheduleSave()
+        }
+        refreshTabOnChange(project, store)
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) ProjectTab.openOnStartup(project)
         }
 
         val loaded = MarginalisPersistence.load(project)
@@ -50,6 +56,11 @@ class MarginalisStartup : ProjectActivity {
                 persisted.lastOrNull()?.let { store.threads.notifyChanged(it) }
             }
         }
+    }
+
+    private fun refreshTabOnChange(project: Project, store: MarginalisStore) {
+        val refresh = CoalescedEdtRunner(project) { ProjectTab.refreshPresentation(project) }
+        store.threads.addListener { refresh.request() }
     }
 
     // EDT. An orphaned line thread stays orphaned: moving a line anchor is the

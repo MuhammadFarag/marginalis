@@ -32,4 +32,11 @@ class TurnSignalTest {
         assertEquals("agent's move 3", TurnSignal.spoken(TurnTally(user = 0, agent = 3)))
         assertEquals("", TurnSignal.spoken(TurnTally(user = 0, agent = 0)))
     }
+
+    @Test
+    fun `a tally is shown as turn glyphs with its counts and silent about empty sides`() {
+        assertEquals("✉ 2 · ✈ 1", TurnSignal.glyphs(TurnTally(user = 2, agent = 1)))
+        assertEquals("✈ 3", TurnSignal.glyphs(TurnTally(user = 0, agent = 3)))
+        assertEquals("", TurnSignal.glyphs(TurnTally(user = 0, agent = 0)))
+    }
 }

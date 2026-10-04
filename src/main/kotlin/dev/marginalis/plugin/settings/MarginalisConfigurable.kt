@@ -13,7 +13,6 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.DocumentAdapter
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
@@ -23,6 +22,7 @@ import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.ui.table.TableView
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.JBUI
@@ -31,9 +31,11 @@ import com.intellij.util.ui.UIUtil
 import dev.marginalis.core.Face
 import dev.marginalis.core.Faces
 import dev.marginalis.core.Intent
+import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.Mark
 import dev.marginalis.core.MarkSubject
 import dev.marginalis.core.People
+import dev.marginalis.core.ReadWhen
 import dev.marginalis.core.You
 import dev.marginalis.plugin.avatars.AvatarsListener
 import dev.marginalis.plugin.store.Authors
@@ -41,6 +43,7 @@ import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.AvatarGeometries
 import dev.marginalis.plugin.ui.AvatarIcon
 import dev.marginalis.plugin.ui.MarginalisIcons
+import dev.marginalis.plugin.ui.tab.ProjectTab
 import java.awt.Component
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
@@ -294,12 +297,43 @@ class MarginalisConfigurable : Configurable {
                     .bindSelected(state::notifyOnAgentReply)
             }
             row("Time format:") {
-                comboBox(TimeFormat.entries, SimpleListCellRenderer.create("") { it.label })
+                comboBox(TimeFormat.entries, textListCellRenderer { it?.label })
                     .comment("Message timestamps in thread panels.")
                     .bindItem(
                         { settings.timeFormat },
                         { settings.timeFormat = it ?: TimeFormat.AUTO },
                     )
+            }
+            group("Project Tab") {
+                row("List while the tab is in front:") {
+                    comboBox(ListWhileInFront.entries, textListCellRenderer { it?.let(::labelOf) })
+                        .comment(
+                            "Live keeps the latest activity on top. Hold still keeps everything in place " +
+                                "while you read, and new threads wait behind a pill.",
+                        )
+                        .bindItem(
+                            { settings.listWhileInFront },
+                            { settings.listWhileInFront = it ?: ListWhileInFront.LIVE },
+                        )
+                }
+                row {
+                    checkBox("Expand a collapsed thread when it becomes your move")
+                        .comment("When off, a thread stays as you left it.")
+                        .bindSelected(state::expandOnYourMove)
+                }
+                row("What counts as read:") {
+                    comboBox(ReadWhen.entries, textListCellRenderer { it?.let(::labelOf) })
+                        .comment("Matters most for an FYI: its ✉ clears once you've read it.")
+                        .bindItem(
+                            { settings.readWhen },
+                            { settings.readWhen = it ?: ReadWhen.EXPANDED_IN_FRONT },
+                        )
+                }
+                row {
+                    checkBox("Group a pull request's relayed conversation")
+                        .comment("Folds a PR's conversation from GitHub into one group. When off, each comment is its own thread.")
+                        .bindSelected(state::groupRelayedConversation)
+                }
             }
             group("Intent Glyphs") {
                 for ((intent, meaning) in INTENT_LEGEND) {
@@ -336,12 +370,14 @@ class MarginalisConfigurable : Configurable {
         }
         val settings = MarginalisSettings.getInstance()
         val bylinesBefore = bylineSettings()
+        val tabBefore = settings.projectTabPrefs
         panel?.apply()
         settings.rows = edited
         settings.state.userPicture = userPicture
         Pictures.deleteUnreferenced(edited, userPicture)
         resetPeople()
         if (bylineSettings() != bylinesBefore) refreshThreads()
+        if (settings.projectTabPrefs != tabBefore) ProjectTab.applyPrefs()
     }
 
     private fun bylineSettings(): List<Any> {
@@ -407,6 +443,16 @@ class MarginalisConfigurable : Configurable {
         fun labelOf(kind: People.Kind): String = when (kind) {
             People.Kind.PERSON -> "Person"
             People.Kind.AGENT -> "Agent"
+        }
+
+        fun labelOf(list: ListWhileInFront): String = when (list) {
+            ListWhileInFront.LIVE -> "Live"
+            ListWhileInFront.HOLD_STILL -> "Hold still"
+        }
+
+        fun labelOf(readWhen: ReadWhen): String = when (readWhen) {
+            ReadWhen.EXPANDED_IN_FRONT -> "Expanded while the tab is in front"
+            ReadWhen.CLICKED_INTO -> "Only when you click into the thread"
         }
 
         fun roleOf(kind: People.Kind): String = when (kind) {

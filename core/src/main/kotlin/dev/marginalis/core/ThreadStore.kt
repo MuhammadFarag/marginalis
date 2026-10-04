@@ -99,11 +99,13 @@ class ThreadStore {
         listeners.remove(listener)
     }
 
-    fun watch(id: String, onChange: (CommentThread?) -> Unit): AutoCloseable {
-        val listener: (CommentThread) -> Unit = { changed -> if (changed.id == id) onChange(byId(id)) }
+    fun observe(listener: (CommentThread) -> Unit): AutoCloseable {
         addListener(listener)
         return AutoCloseable { removeListener(listener) }
     }
+
+    fun watch(id: String, onChange: (CommentThread?) -> Unit): AutoCloseable =
+        observe { changed -> if (changed.id == id) onChange(byId(id)) }
 
     fun notifyChanged(thread: CommentThread) {
         for (listener in listeners) listener(thread)

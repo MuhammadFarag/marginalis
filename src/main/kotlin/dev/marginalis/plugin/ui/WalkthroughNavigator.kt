@@ -9,6 +9,7 @@ import dev.marginalis.core.Message
 import dev.marginalis.core.WalkPosition
 import dev.marginalis.core.Walkthrough
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.tab.ProjectTab
 
 object WalkthroughNavigator {
 
@@ -19,7 +20,7 @@ object WalkthroughNavigator {
         Walkthrough.stableTotal(MarginalisStore.getInstance(project).threads.all(), thread)
 
     fun navigateTo(project: Project, thread: CommentThread, revealing: Message? = null) {
-        val path = thread.file ?: return ProjectThreadPopup.open(project, thread, revealing)
+        val path = thread.file ?: return ProjectTab.reveal(project, thread, revealing)
         val base = project.guessProjectDir() ?: return
         val vFile = base.findFileByRelativePath(path) ?: return
         val line = MarginalisStore.getInstance(project).syncLine(thread) ?: 0

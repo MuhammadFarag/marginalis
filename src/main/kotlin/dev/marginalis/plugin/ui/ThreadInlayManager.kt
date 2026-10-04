@@ -9,6 +9,7 @@ import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
+import com.intellij.util.ui.JBUI
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Message
 import dev.marginalis.core.ThreadStatus
@@ -59,7 +60,14 @@ object ThreadInlayManager {
             open.remove(thread.id)
         }
 
-        val panel = ThreadPanel(project, editor, thread, ensureStored) { close(editor, thread.id) }
+        val panel = ThreadPanel(
+            project,
+            editor,
+            thread,
+            ensureStored,
+            onClose = { close(editor, thread.id) },
+            hostWidth = { inlayWidth(editor) },
+        )
         val aboveFirstLine = thread.isFileLevel
         val line = (MarginalisStore.getInstance(project).syncLine(thread) ?: 0)
             .coerceAtMost(editor.document.lineCount - 1)
@@ -107,6 +115,11 @@ object ThreadInlayManager {
             editor.putUserData(OPEN_INLAYS, null)
             editor.putUserData(LISTENER_INSTALLED, null)
         }
+    }
+
+    private fun inlayWidth(editor: Editor): Int {
+        val viewport = editor.scrollingModel.visibleArea.width
+        return (viewport - JBUI.scale(120)).coerceIn(JBUI.scale(360), JBUI.scale(800))
     }
 
     private fun installStoreListener(project: Project, editor: Editor) {

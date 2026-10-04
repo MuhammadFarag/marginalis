@@ -19,7 +19,6 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -46,17 +45,17 @@ import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.Turn
 import dev.marginalis.core.TurnSignal
 import dev.marginalis.core.TurnTally
-import dev.marginalis.core.WaitingAgents
 import dev.marginalis.plugin.avatars.AvatarsListener
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.FileLevelThreads
+import dev.marginalis.plugin.ui.HandBackAction
 import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ParticipantStackIcon
-import dev.marginalis.plugin.ui.ProjectThreadPopup
 import dev.marginalis.plugin.ui.RELAYED_STAYS_DELETED
 import dev.marginalis.plugin.ui.WalkthroughNavigator
+import dev.marginalis.plugin.ui.tab.ProjectTab
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
@@ -120,7 +119,7 @@ private class CommentOnProjectAction :
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        ProjectThreadPopup.openDraft(project, CommentThread(file = null, line = null, anchorText = null))
+        ProjectTab.draftNew(project)
     }
 }
 
@@ -177,24 +176,6 @@ private class FilterMenuAction(private val panel: MarginalisToolWindowPanel) :
                 }
             })
         }
-    }
-}
-
-private class HandBackAction :
-    AnAction("Hand Back", "Hand the turn back to the waiting agents", MarginalisIcons.HandBack) {
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-
-    override fun update(e: AnActionEvent) {
-        val project = e.project ?: return
-        val waitingNames = MarginalisStore.getInstance(project).handBack.waitingNames
-        e.presentation.icon =
-            if (waitingNames.isNotEmpty()) MarginalisIcons.HandBack else IconLoader.getDisabledIcon(MarginalisIcons.HandBack)
-        e.presentation.text = WaitingAgents.handBackText(waitingNames)
-    }
-
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        MarginalisStore.getInstance(project).recordHandBack()
     }
 }
 
