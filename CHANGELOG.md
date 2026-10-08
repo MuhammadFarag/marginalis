@@ -31,6 +31,9 @@ History before 0.1.19 lives in git tags.
 - Messages render GitHub-flavoured Markdown: tables, ~~strikethrough~~
   and task lists. A wide table scrolls sideways instead of squeezing the
   text around it, and plain web addresses are links.
+- Thread icons now show in the gutter of a pull or merge request review
+  diff too, and in any other diff that shows a file from a commit. Click
+  one to open the thread right there in the diff.
 
 ## [0.2.2] - 2026-10-04
 
