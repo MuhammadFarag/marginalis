@@ -18,6 +18,10 @@ History before 0.1.19 lives in git tags.
   to the end of the thread.
 - With several walkthroughs open, step numbers read cleanly: the section title names the walkthrough,
   and the number stands on its own.
+- Stepping through the Marginalis tool window with Next and Previous no
+  longer loses its place: the selection survives the tree refreshing,
+  so the next press continues from the step you are on instead of the
+  first one.
 
 ## [0.2.2] - 2026-10-04
 
