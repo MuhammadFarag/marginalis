@@ -91,6 +91,8 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
                 common.createPrevOccurenceAction(panel),
                 common.createNextOccurenceAction(panel),
                 LastStepAction(panel),
+                ExpandSectionAction(panel),
+                CollapseSectionAction(panel),
                 FilterMenuAction(panel),
                 ActionManager.getInstance().getAction(SelectOpenedThreadAction.ID),
                 AgentPresenceGroup(),
@@ -153,6 +155,30 @@ private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
     }
 
     override fun actionPerformed(e: AnActionEvent) = panel.goLast()
+}
+
+private class ExpandSectionAction(private val panel: MarginalisToolWindowPanel) :
+    AnAction("Expand", "Expand the selected folder; each press one level further out, then every section", AllIcons.Actions.Expandall) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = panel.hasSections()
+        e.presentation.text = panel.expandText()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) = panel.expandStep()
+}
+
+private class CollapseSectionAction(private val panel: MarginalisToolWindowPanel) :
+    AnAction("Collapse", "Collapse the selected folder; each press one level further out, then every section", AllIcons.Actions.Collapseall) {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = panel.hasSections()
+        e.presentation.text = panel.collapseText()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) = panel.collapseStep()
 }
 
 internal enum class TreeFilter(
@@ -544,9 +570,12 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         steps().first.lastOrNull()?.let { goTo(it) }
     }
 
+    // Any thread change rebuilds the tree, and opening a step is one (it marks the step read); step navigation
+    // walks from the selection, and folders the user folded must stay folded, so both are carried over by key.
     fun rebuild() {
         val selection = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.let(::keyPath)
         val selectionInView = tree.selectionPath?.let(::isInView) == true
+        val wasExpanded = branchStates()
         val store = MarginalisStore.getInstance(project)
         store.syncLines()
         val threads = store.threads.all().filter(filter.matches)
@@ -560,10 +589,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         addTreeSection(root, "Resolved", threads.filter { it.status is ThreadStatus.Resolved })
 
         tree.model = DefaultTreeModel(root)
-        for (i in 0 until root.childCount) {
-            val section = root.getChildAt(i) as DefaultMutableTreeNode
-            if ((section.userObject as NodeData.Section).title != "Resolved") expandRecursively(section)
-        }
+        restoreExpansion(root, wasExpanded)
         selection?.let { restoreSelection(it, keepInView = selectionInView) }
     }
 
@@ -574,6 +600,90 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
 
     private fun keyPath(node: DefaultMutableTreeNode): List<String> =
         node.path.drop(1).map { (it as DefaultMutableTreeNode).keyAcrossRebuilds }
+
+    /** Expanded or not, per branch node of the current tree; empty before the first build (the stock model). */
+    private fun branchStates(): Map<List<String>, Boolean> {
+        val root = tree.model.root as? DefaultMutableTreeNode ?: return emptyMap()
+        return root.preorderEnumeration().asSequence().filterIsInstance<DefaultMutableTreeNode>().drop(1)
+            .filter { !it.isLeaf && it.userObject is NodeData }
+            .associate { keyPath(it) to tree.isExpanded(TreePath(it.path)) }
+    }
+
+    /** A branch seen before keeps its state; a new one opens unless it is under Resolved. */
+    private fun restoreExpansion(root: DefaultMutableTreeNode, wasExpanded: Map<List<String>, Boolean>) {
+        val branches = root.preorderEnumeration().asSequence().filterIsInstance<DefaultMutableTreeNode>().drop(1)
+            .filter { !it.isLeaf }
+            .toList()
+        val (open, folded) = branches.partition { node ->
+            val section = (node.path[1] as DefaultMutableTreeNode).userObject as NodeData.Section
+            wasExpanded[keyPath(node)] ?: (section.title != "Resolved")
+        }
+        open.forEach { tree.expandPath(TreePath(it.path)) }
+        // Deepest first: expanding a child opened its parents, and a folded parent keeps its children's state.
+        folded.sortedByDescending { it.level }.forEach { tree.collapsePath(TreePath(it.path)) }
+    }
+
+    private fun sections(): List<DefaultMutableTreeNode> =
+        (tree.model.root as? DefaultMutableTreeNode)?.children()?.asSequence()
+            ?.filterIsInstance<DefaultMutableTreeNode>()?.toList().orEmpty()
+
+    /** The folders and the section around the selection, innermost first; files are not a level of their own. */
+    private fun levelsAroundSelection(): List<DefaultMutableTreeNode> {
+        val selected = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return emptyList()
+        return selected.path.reversed().filterIsInstance<DefaultMutableTreeNode>().filter {
+            it.userObject is NodeData.DirNode || it.userObject is NodeData.ProjectNode || it.userObject is NodeData.Section
+        }
+    }
+
+    private fun isFullyExpanded(node: DefaultMutableTreeNode): Boolean =
+        node.preorderEnumeration().asSequence().filterIsInstance<DefaultMutableTreeNode>()
+            .all { it.isLeaf || tree.isExpanded(TreePath(it.path)) }
+
+    // Each press works one level further out from the selection, then on every section (a null target).
+    private fun collapseTarget(): DefaultMutableTreeNode? =
+        levelsAroundSelection().firstOrNull { tree.isExpanded(TreePath(it.path)) }
+
+    private fun expandTarget(): DefaultMutableTreeNode? = levelsAroundSelection().firstOrNull { !isFullyExpanded(it) }
+
+    fun collapseText(): String = "Collapse ${scopeOf(collapseTarget())}"
+
+    fun expandText(): String = "Expand ${scopeOf(expandTarget())}"
+
+    private fun scopeOf(target: DefaultMutableTreeNode?): String = when (target?.userObject) {
+        null -> "All Sections"
+        is NodeData.Section -> "Section"
+        else -> "Folder"
+    }
+
+    fun hasSections(): Boolean = sections().isNotEmpty()
+
+    fun collapseStep() {
+        val target = collapseTarget()
+        if (target == null) {
+            sections().forEach(::collapseRecursively)
+            return
+        }
+        collapseRecursively(target)
+        // The next press starts from here, one level further out.
+        tree.selectionPath = TreePath(target.path)
+    }
+
+    fun expandStep() {
+        val target = expandTarget()
+        if (target == null) {
+            sections().forEach(::expandRecursively)
+            return
+        }
+        expandRecursively(target)
+    }
+
+    // Like IntelliJ's Collapse All: reopening the node shows one level, not the folders as they were left.
+    private fun collapseRecursively(node: DefaultMutableTreeNode) {
+        node.preorderEnumeration().asSequence().filterIsInstance<DefaultMutableTreeNode>()
+            .filter { !it.isLeaf }
+            .sortedByDescending { it.level }
+            .forEach { tree.collapsePath(TreePath(it.path)) }
+    }
 
     private fun restoreSelection(keyPath: List<String>, keepInView: Boolean) {
         val root = tree.model.root as DefaultMutableTreeNode
