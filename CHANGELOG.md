@@ -7,6 +7,14 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+### Added
+
+- *Live by default*, a ⚡ toggle in the Marginalis tool window's toolbar: every open
+  thread of the project is live without switching each one. A thread's
+  own ⚡ still switches it off. The choice is kept per project, in your
+  workspace, not in version control; a checkbox in Settings sets where a
+  project starts.
+
 ### Fixed
 
 - A thread you left open shows the agent's reply when you come back to
@@ -68,7 +76,6 @@ Thanks to [@schrek1](https://github.com/schrek1) for the fixes and features in t
 - In a Guided section, First, Previous, Next and Last Step in the tool
   window follow the step numbers, as the arrows in a thread's header do,
   instead of the folder-and-file order the tree shows them in.
-
 ## [0.2.2] - 2026-10-04
 
 ### Changed

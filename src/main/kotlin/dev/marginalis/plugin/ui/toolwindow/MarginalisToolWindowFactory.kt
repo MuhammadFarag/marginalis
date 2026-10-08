@@ -53,6 +53,7 @@ import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.AgentPresenceGroup
 import dev.marginalis.plugin.ui.FileLevelThreads
+import dev.marginalis.plugin.ui.LiveByDefaultAction
 import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ParticipantStackIcon
@@ -99,6 +100,7 @@ class MarginalisToolWindowFactory : ToolWindowFactory, DumbAware {
                 ActionManager.getInstance().getAction(SelectOpenedThreadAction.ID),
                 AgentPresenceGroup(),
                 SubmitRoundAction(),
+                LiveByDefaultAction(),
                 StopAgentsGroup(),
                 ResolveAllAction(),
                 ClearAllAction(),
