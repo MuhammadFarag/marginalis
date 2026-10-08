@@ -14,6 +14,8 @@ History before 0.1.19 lives in git tags.
 - Walking through steps in the same file keeps you in the editor you are reading, a pull request's
   review diff included. Resolve, Previous and Next scroll to the step there instead of opening the
   file's regular editor tab.
+- Zooming the editor (Ctrl+mouse wheel) with a thread open no longer scrolls the code to the end of
+  that thread; the zoom stays where the mouse points.
 
 ## [0.2.2] - 2026-10-04
 
