@@ -23,6 +23,13 @@ History before 0.1.19 lives in git tags.
   "Walkthrough".
 - Resolving a comment with "Jump to the next thread after resolving" on
   opens the next open comment.
+- The Margin tab now reads top to bottom, oldest thread first, the same
+  way messages read inside a thread. A reply no longer makes a thread
+  jump, and a walkthrough's steps read 1, 2, 3.
+  - A Sort menu in the tab switches to newest first or to the previous
+    most-recent-activity order. Each project remembers its choice.
+  - A new thread you start, and threads that arrive while the list holds
+    still, appear on the side the chosen order puts new threads.
 
 ### Fixed
 
