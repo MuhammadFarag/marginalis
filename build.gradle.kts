@@ -1,3 +1,4 @@
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -34,6 +35,9 @@ dependencies {
     // The domain core: model, lifecycle, anchoring policy, persistence codec.
     implementation(project(":core"))
 
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.opentest4j:opentest4j:1.3.0")
+
     intellijPlatform {
         // Markdown parsing for message bodies comes from the IDE's bundled
         // Markdown plugin (org.intellij.markdown lives inside it) — declared
@@ -51,6 +55,7 @@ dependencies {
         } else {
             intellijIdeaCommunity("2025.2")
         }
+        testFramework(TestFrameworkType.Platform)
     }
 }
 

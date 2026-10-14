@@ -11,7 +11,8 @@ is the shipped record and decision log.
 - `./gradlew buildPlugin` → zip in `build/distributions/`;
   `./gradlew :core:test` runs the domain tests (`scripts/test-core.sh`
   runs them in a single JVM for environments where forked test workers
-  can't connect back).
+  can't connect back); `./gradlew test` runs the plugin's platform tests
+  against a real in-memory IDE.
 - CI (`.github/workflows/`) is the honest environment: compiles against
   the real `ideaIC-2025.2` floor and runs the Plugin Verifier
   (`recommended()` IDE set). Local builds may compile against a newer
