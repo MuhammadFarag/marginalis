@@ -1,11 +1,11 @@
 package dev.marginalis.plugin.ui
 
+import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.editor.LogicalPosition
-import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.vfs.VirtualFile
@@ -24,40 +24,36 @@ object WalkthroughNavigator {
     fun stableTotal(project: Project, thread: CommentThread): Int? =
         Walkthrough.stableTotal(MarginalisStore.getInstance(project).threads.all(), thread)
 
-    /**
-     * @param from the editor the move starts in; a step in the file it shows scrolls that editor, a diff included
-     */
-    fun navigateTo(project: Project, thread: CommentThread, revealing: Message? = null, from: Editor? = null) {
-        val path = thread.file ?: return ProjectTab.reveal(project, thread, revealing)
-        val base = project.guessProjectDir() ?: return
-        val targetFile = base.findFileByRelativePath(path) ?: return
+    fun navigateTo(project: Project, thread: CommentThread, revealing: Message? = null) {
+        if (thread.file == null) return ProjectTab.reveal(project, thread, revealing)
+        val place = placeOf(project, thread) ?: return
+        place.navigate(true)
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
+        ThreadInlayManager.open(project, editor, thread, revealing)
+    }
+
+    fun navigateWithin(editor: Editor, project: Project, thread: CommentThread): Boolean {
+        if (editor.isDisposed) return false
+        val place = placeOf(project, thread)?.takeIf { editor.shows(it.file) } ?: return false
+        place.navigateInRecordingHistory(editor)
+        editor.contentComponent.requestFocusInWindow()
+        ThreadInlayManager.open(project, editor, thread)
+        return true
+    }
+
+    private fun placeOf(project: Project, thread: CommentThread): OpenFileDescriptor? {
+        val path = thread.file ?: return null
+        val file = project.guessProjectDir()?.findFileByRelativePath(path) ?: return null
         val line = MarginalisStore.getInstance(project).syncLine(thread) ?: 0
-        val currentEditor = from?.takeIf { !it.isDisposed }
-        if (currentEditor != null && currentEditor.shows(targetFile)) {
-            scrollToStep(project, currentEditor, line, thread, revealing)
-        } else {
-            openStepInFileTab(project, targetFile, line, thread, revealing)
-        }
+        return OpenFileDescriptor(project, file, line, 0)
     }
 
     private fun Editor.shows(file: VirtualFile): Boolean = FileDocumentManager.getInstance().getFile(document) == file
 
-    private fun scrollToStep(project: Project, editor: Editor, line: Int, thread: CommentThread, revealing: Message?) {
-        editor.caretModel.moveToLogicalPosition(LogicalPosition(line, 0))
-        editor.scrollingModel.scrollToCaret(ScrollType.CENTER)
-        editor.contentComponent.requestFocusInWindow()
-        ThreadInlayManager.open(project, editor, thread, revealing)
-    }
-
-    private fun openStepInFileTab(
-        project: Project,
-        file: VirtualFile,
-        line: Int,
-        thread: CommentThread,
-        revealing: Message?,
-    ) {
-        OpenFileDescriptor(project, file, line, 0).navigate(true)
-        val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return
-        ThreadInlayManager.open(project, editor, thread, revealing)
+    private fun OpenFileDescriptor.navigateInRecordingHistory(editor: Editor) {
+        CommandProcessor.getInstance().executeCommand(project, {
+            IdeDocumentHistory.getInstance(project).includeCurrentCommandAsNavigation()
+            navigateIn(editor)
+        }, null, null)
     }
 }
