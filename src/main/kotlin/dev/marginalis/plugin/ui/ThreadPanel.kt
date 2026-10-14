@@ -331,7 +331,7 @@ class ThreadPanel(
             MarginalisStore.getInstance(project).threads.notifyChanged(thread)
             if (next != null) {
                 onClose()
-                WalkthroughNavigator.navigateTo(project, next, from = editor)
+                stayOrNavigateTo(next)
             }
         } else {
             thread.reopen()
@@ -517,7 +517,7 @@ class ThreadPanel(
             val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
             val destination = target(walk, i) ?: return
             onClose()
-            WalkthroughNavigator.navigateTo(project, destination, from = editor)
+            stayOrNavigateTo(destination)
         }
     }
 
@@ -671,7 +671,14 @@ class ThreadPanel(
         store.drafts.remove(thread.id)
         onClose()
         store.threads.add(wider)
-        WalkthroughNavigator.navigateTo(project, wider)
+        stayOrNavigateTo(wider)
+    }
+
+    private fun stayOrNavigateTo(target: CommentThread) {
+        val here = editor
+        if (here == null || !WalkthroughNavigator.navigateWithin(here, project, target)) {
+            WalkthroughNavigator.navigateTo(project, target)
+        }
     }
 
     private fun pickAddressee(atOffset: Int) {
