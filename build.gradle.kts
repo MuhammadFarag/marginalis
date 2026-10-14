@@ -157,3 +157,11 @@ kotlin {
         freeCompilerArgs.add("-jvm-default=no-compatibility")
     }
 }
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release = 21
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions.jvmTarget = JvmTarget.JVM_21
+}

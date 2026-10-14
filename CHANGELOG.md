@@ -5,6 +5,13 @@ All notable changes to Marginalis. The format follows
 current version's section into the plugin's Marketplace change notes.
 History before 0.1.19 lives in git tags.
 
+## [Unreleased]
+
+### Fixed
+
+- Marginalis now runs on 2025.2 versions of JetBrains IDEs. Until now those versions couldn't load
+  it, even though the Marketplace listed them as supported.
+
 ## [0.2.2] - 2026-10-04
 
 ### Changed
