@@ -13,6 +13,17 @@ class ThreadStoreWatchTest {
     private fun thread() = CommentThread(file = "a.py", line = 3, anchorText = "def f():")
 
     @Test
+    fun `closing an observer takes it off the store`() {
+        val store = ThreadStore()
+        val observer = store.observe {}
+        assertEquals(1, store.listenerCount)
+
+        observer.close()
+
+        assertEquals(0, store.listenerCount)
+    }
+
+    @Test
     fun `a watcher hears its own thread change`() {
         val store = ThreadStore()
         val watched = thread().also(store::add)
