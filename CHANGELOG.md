@@ -9,6 +9,10 @@ History before 0.1.19 lives in git tags.
 
 ### Fixed
 
+- The Margin tab shows only when there is something in it. A project
+  without project threads opens without it, and the tab appears with
+  the first one. It no longer pins itself, and a tab left empty stays
+  closed after a restart.
 - A thread you left open shows the agent's reply when you come back to
   it. A reply that arrived while its file, or the Margin tab, was in a
   background tab used to stay hidden until something else changed on
