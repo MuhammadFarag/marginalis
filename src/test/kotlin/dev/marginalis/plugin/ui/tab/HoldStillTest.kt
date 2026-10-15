@@ -24,7 +24,7 @@ class HoldStillTest : TabInFrontTestCase() {
 
         agent.reply(alpha, "More on alpha")
 
-        assertEquals(listOf("✉ Bravo question [expanded]", "✉ Alpha question [expanded]"), shown())
+        assertEquals(listOf("Bravo question [expanded]", "Alpha question [expanded]"), shown())
     }
 
     // FixMe: Known issue - #48 the Margin tab lists threads newest first, so the pill releases new threads above the ones you were reading
@@ -36,12 +36,12 @@ class HoldStillTest : TabInFrontTestCase() {
         agent.ask("Charlie question")
 
         assertEquals("↑ 2 new threads", tab.pill())
-        assertEquals(listOf("✉ Alpha question [expanded]"), shown())
-        assertEquals("✉ 3", tab.title())
+        assertEquals(listOf("Alpha question [expanded]"), shown())
+        assertEquals("✉ 2", tab.title())
         tab.clickPill()
         assertNull(tab.pill())
         assertEquals(
-            listOf("✉ Charlie question [expanded]", "✉ Bravo question [expanded]", "✉ Alpha question [expanded]"),
+            listOf("Charlie question [expanded]", "Bravo question [expanded]", "Alpha question [expanded]"),
             shown(),
         )
     }
@@ -62,7 +62,7 @@ class HoldStillTest : TabInFrontTestCase() {
 
         agent.post("comment_resolve", "thread_id" to alpha)
 
-        assertEquals(listOf("✉ Bravo question [expanded]", "Alpha question resolved just now [expanded]"), shown())
+        assertEquals(listOf("Bravo question [expanded]", "Alpha question resolved just now [expanded]"), shown())
     }
 
     fun testLookingAwayAndBackLetsTheListCatchUp() {
@@ -76,7 +76,7 @@ class HoldStillTest : TabInFrontTestCase() {
         lookAgain()
 
         assertNull(tab.pill())
-        assertEquals(listOf("✉ Charlie question [expanded]", "✉ Bravo question [expanded]", "▸ 1 resolved"), shown())
+        assertEquals(listOf("Charlie question [expanded]", "Bravo question [expanded]", "▸ 1 resolved"), shown())
     }
 
     fun testAThreadYouStartIsShownAtOnce() {
@@ -88,7 +88,7 @@ class HoldStillTest : TabInFrontTestCase() {
         user.submit(tab.draft()!!)
 
         assertNull(tab.pill())
-        assertEquals(listOf("✈ My own topic [expanded]", "✉ Alpha question [expanded]"), shown())
+        assertEquals(listOf("✈ My own topic [expanded]", "Alpha question [expanded]"), shown())
     }
 
     fun testARelayedCommentJoinsItsHeldConversation() {
@@ -118,7 +118,7 @@ class HoldStillTest : TabInFrontTestCase() {
 
         user.changeProjectTabSettings { listWhileInFront("Live") }
 
-        assertEquals(listOf("✉ Alpha question [expanded]", "✉ Bravo question [expanded]"), shown())
+        assertEquals(listOf("Alpha question [expanded]", "Bravo question [expanded]"), shown())
     }
 
     // FixMe: Known issue - #48 the Margin tab lists threads newest first, so a revealed newer thread lands above the ones you were reading
@@ -130,7 +130,7 @@ class HoldStillTest : TabInFrontTestCase() {
         WalkthroughNavigator.navigateTo(project, user.thread(bravo))
         tab.settle()
 
-        assertEquals(listOf("✉ Bravo question [expanded]", "✉ Alpha question [expanded]"), shown())
+        assertEquals(listOf("Bravo question [expanded]", "Alpha question [expanded]"), shown())
         assertNull(tab.pill())
     }
 }
