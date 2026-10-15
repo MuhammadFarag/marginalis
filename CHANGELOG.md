@@ -28,10 +28,9 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
-- Message bodies render GitHub-flavoured Markdown: tables and
-  ~~strikethrough~~. A top-level table sits in its own pane at natural
-  width and scrolls sideways when it is wider than the panel, so the
-  prose around it keeps wrapping.
+- Messages render GitHub-flavoured Markdown: tables, ~~strikethrough~~
+  and task lists. A wide table scrolls sideways instead of squeezing the
+  text around it, and plain web addresses are links.
 
 ## [0.2.2] - 2026-10-04
 

@@ -214,6 +214,41 @@ class MessageBodiesTest : HttpContractTestCase() {
         assertTrue(tooltip, tooltip.contains("Then done."))
     }
 
+    fun testAOneLinePreviewReadsATableAsItsCellsWithoutPipesOrTheDelimiterRow() {
+        agent.addOnLine(5, "body" to "Totals:\n\n| Name | Age | Note |\n|:-----|----:|------|\n| Ann  | 3   |      |\n| **Bo** | ~~4~~ 5 | late |\n\nThen done.")
+
+        val tooltip = user.gutterIcon(SAMPLE, 5)!!.tooltipText
+
+        assertTrue(tooltip, tooltip.contains("Totals: Name · Age · Note · Ann · 3 · Bo · 4 5 · late Then done."))
+        assertFalse(tooltip, tooltip.contains("|"))
+        assertFalse(tooltip, tooltip.contains("--"))
+    }
+
+    fun testAOneLinePreviewReadsATableInsideAQuoteAsItsCellsToo() {
+        agent.addOnLine(5, "body" to "> | Name | Age |\n> |------|-----|\n> | Ann  | 3   |")
+
+        assertTrue(user.gutterIcon(SAMPLE, 5)!!.tooltipText.contains("Name · Age · Ann · 3"))
+    }
+
+    fun testAOneLinePreviewDropsTheTildesOfStrikethrough() {
+        agent.addOnLine(5, "body" to "Use ~~old~~ new.")
+
+        assertTrue(user.gutterIcon(SAMPLE, 5)!!.tooltipText.contains("Use old new."))
+    }
+
+    fun testAOneLinePreviewKeepsAPipeOrTildeInOrdinaryProse() {
+        agent.addOnLine(5, "body" to "Pick a | b, then wait ~5 minutes.")
+
+        assertTrue(user.gutterIcon(SAMPLE, 5)!!.tooltipText.contains("Pick a | b, then wait ~5 minutes."))
+    }
+
+    fun testATableRightAfterALineOfTextStaysRawPipesUnlikeOnGitHub() {
+        val body = rendered("Totals:\n| Name | Age |\n|------|-----|\n| Ann  | 3   |")
+
+        assertEquals(listOf("prose"), body.kinds())
+        assertTrue(body.text(), body.text().contains("| Name | Age |"))
+    }
+
     fun testTheContextMenuSelectsAllAndOffersCopyOnceSomethingIsSelected() {
         val body = rendered("Copy this sentence.")
         assertEquals(mapOf("Copy" to false, "Select All" to true), body.contextMenu("Copy this"))
