@@ -41,10 +41,10 @@ class ReviewDiffMarkers : DiffExtension() {
     override fun onViewerCreated(viewer: FrameDiffTool.DiffViewer, context: DiffContext, request: DiffRequest) {
         val project = context.project ?: return
         val target = RightSide.of(viewer) ?: return
-        val file = projectPath(project, target.content) ?: return
+        val path = projectPath(project, target.content) ?: return
         val local = target.content.highlightFile?.let { FileDocumentManager.getInstance().getCachedDocument(it) }
-        if (target.editor.document === local) return
-        DiffPainter(project, target, file).install()
+        if (target.content.document === local) return
+        DiffPainter(project, target, path).install()
     }
 
     private fun projectPath(project: Project, content: DocumentContent): String? {
@@ -76,10 +76,9 @@ class ReviewDiffMarkers : DiffExtension() {
 
                 is UnifiedDiffViewer ->
                     RightSide(viewer, viewer.getContent(Side.RIGHT), viewer.editor) {
-                        viewer.transferLineFromOnesideStrict(Side.RIGHT, it)
+                        viewer.transferLineToOnesideStrict(Side.RIGHT, it)
                     }
 
-                // A file the change adds: the diff shows only its new text.
                 is OnesideTextDiffViewer ->
                     if (viewer.side == Side.RIGHT) RightSide(viewer, viewer.content, viewer.editor) { it } else null
 
@@ -91,7 +90,7 @@ class ReviewDiffMarkers : DiffExtension() {
     private class DiffPainter(
         private val project: Project,
         private val target: RightSide,
-        private val file: String,
+        private val path: String,
     ) : DiffViewerListener() {
 
         private val store = MarginalisStore.getInstance(project)
@@ -101,7 +100,7 @@ class ReviewDiffMarkers : DiffExtension() {
 
         fun install() {
             target.viewer.addListener(this)
-            observer = store.threads.observe { thread -> if (thread.file == file) repaint.request() }
+            observer = store.threads.observe { thread -> if (thread.file == path) repaint.request() }
             target.editor.putUserData(ThreadInlayManager.THREAD_LINE, ::editorLineOf)
             live += this
         }
@@ -130,7 +129,7 @@ class ReviewDiffMarkers : DiffExtension() {
             if (observer == null || target.editor.isDisposed) return
             clear()
             store.threads.all()
-                .filter { it.file == file && it.status is ThreadStatus.Open }
+                .filter { it.file == path && it.status !is ThreadStatus.Resolved }
                 .mapNotNull { thread -> editorLineOf(thread)?.let { line -> line to thread } }
                 .groupBy({ it.first }, { it.second })
                 .forEach { (line, threads) ->
