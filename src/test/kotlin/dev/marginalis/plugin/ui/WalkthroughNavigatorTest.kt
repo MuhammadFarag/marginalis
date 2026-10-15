@@ -1,6 +1,10 @@
 package dev.marginalis.plugin.ui
 
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.testFramework.PlatformTestUtil
+import dev.marginalis.plugin.ui.tab.MarginFile
 import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory
 import dev.marginalis.plugin.testing.MarginalisTestCase
 import com.intellij.util.ui.UIUtil
@@ -70,5 +74,32 @@ class WalkthroughNavigatorTest : MarginalisTestCase() {
 
         val panel = UIUtil.findComponentOfType(myFixture.editor.contentComponent, ThreadPanel::class.java)
         assertNotNull(panel)
+    }
+
+    fun testAThreadInAnotherFileOpensThatFileAtItsLineWithItsPanel() {
+        myFixture.addFileToProject("Other.kt", (1..12).joinToString("\n") { "val other$it = $it" })
+
+        WalkthroughNavigator.navigateTo(project, CommentThread("Other.kt", 4, anchorText = "val other5 = 5"))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
+        assertEquals("Other.kt", FileDocumentManager.getInstance().getFile(editor.document)!!.name)
+        assertEquals(4, editor.caretModel.logicalPosition.line)
+        assertNotNull(UIUtil.findComponentOfType(editor.contentComponent, ThreadPanel::class.java))
+    }
+
+    fun testAThreadWhoseFileIsGoneGoesNowhere() {
+        WalkthroughNavigator.navigateTo(project, CommentThread("Gone.kt", 4, anchorText = "x"))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        assertEquals("Sample.kt", FileEditorManager.getInstance(project).selectedFiles.single().name)
+        assertNull(UIUtil.findComponentOfType(myFixture.editor.contentComponent, ThreadPanel::class.java))
+    }
+
+    fun testAProjectThreadIsShownInTheMarginTab() {
+        WalkthroughNavigator.navigateTo(project, CommentThread(null, null, anchorText = null))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        assertEquals(MarginFile, FileEditorManager.getInstance(project).selectedEditor?.file)
     }
 }
