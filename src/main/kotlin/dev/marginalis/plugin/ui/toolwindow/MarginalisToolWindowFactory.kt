@@ -504,7 +504,6 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
             )
             val total = WalkthroughNavigator.stableTotal(project, walkthroughThreads.first())
                 ?: walkthroughThreads.size
-            // The section title names the walkthrough; glued to the number, a label like "r2" made step 1 read "r21".
             val prefixFor = { thread: CommentThread -> "(${thread.order}/$total)" }
             addProjectNode(section, walkthroughThreads.filter { it.isProjectLevel }, prefixFor)
             val trie = PathTrie().apply { walkthroughThreads.forEach(::insert) }
