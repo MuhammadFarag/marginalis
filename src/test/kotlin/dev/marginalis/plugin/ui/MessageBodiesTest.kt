@@ -4,6 +4,7 @@ import com.intellij.openapi.fileTypes.PlainTextFileType
 import dev.marginalis.plugin.testing.Browser
 import dev.marginalis.plugin.testing.RenderedBody
 import dev.marginalis.plugin.transport.HttpContractTestCase
+import javax.swing.text.DefaultCaret
 import javax.swing.text.html.HTML
 
 class MessageBodiesTest : HttpContractTestCase() {
@@ -49,9 +50,10 @@ class MessageBodiesTest : HttpContractTestCase() {
     }
 
     fun testRenderedProseKeepsItsCaretAtTheStartSoARebuildCannotScrollTheCode() {
-        val body = rendered("A message long enough that its end sits well below its start.")
+        val body = rendered("Rendered once, never typed into.")
 
         assertEquals(listOf(0), body.prose.map { it.caretPosition })
+        assertEquals(listOf(DefaultCaret.NEVER_UPDATE), body.prose.map { (it.caret as DefaultCaret).updatePolicy })
     }
 
     fun testAQuoteIsSetApartAsAQuote() {
