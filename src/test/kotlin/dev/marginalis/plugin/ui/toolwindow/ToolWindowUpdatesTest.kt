@@ -109,9 +109,8 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
         assertEquals("✉ L5  here", window.rows().last())
     }
 
-    // FixMe: Known issue - #45 any thread change rebuilds the tree and drops the user's selection
     @DisplayOnly
-    fun testTheSelectionIsLostWhenAnAgentReplies() {
+    fun testTheSelectionSurvivesAnAgentsReply() {
         sample()
         val id = agent.addOnLine(5, "body" to "first")
         agent.addOnLine(9, "body" to "second")
@@ -120,7 +119,45 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
 
         window.rebuiltBy { agent.reply(id, "more") }
 
-        assertNull(window.selected())
+        assertEquals("✉ L9  second", window.selected())
+    }
+
+    fun testTheSelectedThreadStaysSelectedWhenANewFileRegroupsItsFolder() {
+        sample("a/b/Deep.kt")
+        sample("a/Shallow.kt")
+        agent.addOnLine(5, "body" to "deep", file = "a/b/Deep.kt")
+        window.press("Next Step")
+        assertEquals(listOf("Open  1", "a/b  1", "Deep.kt ✉1", "✉ L5  deep"), window.selectedPath())
+
+        window.rebuiltBy { agent.addOnLine(3, "body" to "shallow", file = "a/Shallow.kt") }
+
+        assertEquals(listOf("Open  2", "a  2", "b  1", "Deep.kt ✉1", "✉ L5  deep"), window.selectedPath())
+    }
+
+    @DisplayOnly
+    fun testARefreshUnfoldsTheResolvedSectionOnlyAlongTheSelectedThread() {
+        val steps = interleaved()
+        agent.post("comment_resolve", "thread_id" to steps.getValue(8))
+        agent.post("comment_resolve", "thread_id" to steps.getValue(18))
+        window.click("Resolved")
+        window.press("Next Step")
+        window.toggleFolding("shop-orders/src/main/java/com/acme/orders/api", under = "Resolved")
+        assertTrue(window.isExpanded("shop-orders/src/main/java/com/acme/orders/api", under = "Resolved"))
+
+        window.rebuiltBy { agent.reply(steps.getValue(9), "more") }
+
+        assertEquals("L10  Step 8", window.selected())
+        assertEquals(
+            """
+            Resolved  3
+              acme/backend  3
+                shop-common/src/main/java/com/acme/backend/common/order  1
+                  Order.java
+                    L10  Step 8
+                shop-orders/src/main/java/com/acme/orders/api  2
+            """.trimIndent(),
+            section("Resolved"),
+        )
     }
 
     // FixMe: Known issue - #46 any thread change unfolds every folder the user folded, and folds the Resolved section again
