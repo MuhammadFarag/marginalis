@@ -84,11 +84,11 @@ class MessageBodiesTest : HttpContractTestCase() {
         assertEquals(emptyList<String>(), browser.opened)
     }
 
-    fun testAnAngleBracketedAddressIsALinkButABareOneIsNot() {
+    fun testAnAngleBracketedAndABareWebAddressAreBothLinks() {
         val body = rendered("See <https://example.com/a> or https://example.com/b.")
 
         assertEquals("https://example.com/a", body.linkOn("https://example.com/a"))
-        assertNull(body.linkOn("https://example.com/b"))
+        assertEquals("https://example.com/b", body.linkOn("https://example.com/b"))
     }
 
     fun testACodeLinkIsALinkToo() {
@@ -172,18 +172,34 @@ class MessageBodiesTest : HttpContractTestCase() {
         assertEquals(listOf("Line one Line two"), body.lines())
     }
 
-    // FixMe: Known issue - #40 a table is not drawn as a table: its rows run together as raw pipes on one line
-    fun testATableRunsTogetherAsRawPipes() {
+    fun testATableIsDrawnAsATableOfCells() {
         val body = rendered("| Name | Age |\n|------|-----|\n| Ann  | 3   |")
 
-        assertEquals(listOf("| Name | Age | |------|-----| | Ann | 3 |"), body.lines())
+        assertEquals(listOf("table"), body.kinds())
+        assertEquals(listOf("Name", "Age", "Ann", "3"), body.lines())
+        assertTrue(body.enclosingBlocks("Name").containsAll(listOf("th", "tr", "table")))
+        assertTrue(body.enclosingBlocks("Ann").containsAll(listOf("td", "tr", "table")))
     }
 
-    // FixMe: Known issue - #40 strikethrough is not drawn: the tildes stay in the text
-    fun testStrikethroughKeepsItsTildes() {
+    fun testATaskListShowsWhichItemsAreDone() {
+        val body = rendered("- [ ] todo\n- [x] done")
+
+        assertEquals(listOf("☐ todo", "☑ done"), body.lines())
+    }
+
+    fun testADeeplyNestedRawTableRendersAsOneTableKeepingItsText() {
+        val body = rendered("<table><tr><td>".repeat(2_000) + "deep inside" + "</td></tr></table>".repeat(2_000))
+
+        assertEquals(listOf("deep inside"), body.lines())
+        assertEquals(1, body.enclosingBlocks("deep inside").count { it == "table" })
+    }
+
+    fun testStrikethroughIsStruckThroughWithoutItsTildes() {
         val body = rendered("Use ~~old~~ new.")
 
-        assertEquals(listOf("Use ~~old~~ new."), body.lines())
+        assertEquals(listOf("Use old new."), body.lines())
+        assertTrue(body.markedAs("old").contains("s"))
+        assertFalse(body.markedAs("new").contains("s"))
     }
 
     fun testAOneLinePreviewKeepsOnlyTheStartOfAFencedBlock() {

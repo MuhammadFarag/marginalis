@@ -29,10 +29,9 @@ import dev.marginalis.plugin.store.MarginalisStore
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
-import org.intellij.markdown.flavours.gfm.GFMTokenTypes
-import org.intellij.markdown.html.EqualDelimiterTrimmingInlineTagProvider
 import org.intellij.markdown.html.GeneratingProvider
 import org.intellij.markdown.html.HtmlGenerator
+import org.intellij.markdown.html.SimpleInlineTagProvider
 import org.intellij.markdown.parser.LinkMap
 import org.intellij.markdown.parser.MarkdownParser
 import java.awt.Component
@@ -120,14 +119,17 @@ object MarkdownRenderer {
     private class Flavour : GFMFlavourDescriptor() {
         override fun createHtmlGeneratingProviders(linkMap: LinkMap, baseURI: URI?): Map<IElementType, GeneratingProvider> =
             super.createHtmlGeneratingProviders(linkMap, baseURI) +
-                (GFMElementTypes.STRIKETHROUGH to EqualDelimiterTrimmingInlineTagProvider("s", GFMTokenTypes.TILDE))
+                (GFMElementTypes.STRIKETHROUGH to SimpleInlineTagProvider("s", 2, -2))
     }
+
+    private val GENERATED_TASK_CHECKBOX = Regex("<input type=\"checkbox\" class=\"task-list-item-checkbox\"( checked)? disabled />")
 
     private fun toHtml(markdown: String): String {
         val flavour = Flavour()
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
         return HtmlGenerator(markdown, tree, flavour).generateHtml()
             .removePrefix("<body>").removeSuffix("</body>")
+            .replace(GENERATED_TASK_CHECKBOX) { checkbox -> if (checkbox.groupValues[1].isEmpty()) "☐ " else "☑ " }
             .let(HtmlSanitizer::sanitize)
             // Added after sanitizing, so a body still cannot set any attribute.
             .replace("<table>", "<table cellspacing=\"0\">")
