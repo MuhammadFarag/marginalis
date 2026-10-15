@@ -1,8 +1,12 @@
 package dev.marginalis.core
 
 object TurnSignal {
-    /** The turn a thread's glyph shows: an Agree the agent has not answered yet is approval, shown as 👍, not ✈. */
-    fun of(thread: CommentThread): Turn? = thread.turn()?.takeUnless { thread.awaitsAgreementAnswer }
+    /**
+     * The turn a thread's glyph shows: an Agree the agent has not answered yet is approval, shown as 👍, not ✈;
+     * your move only while the thread holds a message you have not read.
+     */
+    fun of(thread: CommentThread): Turn? =
+        thread.turn()?.takeUnless { thread.awaitsAgreementAnswer || (it == Turn.USER_OWES && thread.unreadByUserCount() == 0) }
 
     fun spoken(turn: Turn): String = when (turn) {
         Turn.USER_OWES -> "your move"
