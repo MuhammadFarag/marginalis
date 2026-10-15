@@ -48,6 +48,12 @@ class MessageBodiesTest : HttpContractTestCase() {
         assertEquals("3", body.attributeOfBlock("three", "ol", HTML.Attribute.START))
     }
 
+    fun testRenderedProseKeepsItsCaretAtTheStartSoARebuildCannotScrollTheCode() {
+        val body = rendered("A message long enough that its end sits well below its start.")
+
+        assertEquals(listOf(0), body.prose.map { it.caretPosition })
+    }
+
     fun testAQuoteIsSetApartAsAQuote() {
         val body = rendered("> As the user said\n\nAgreed.")
 
