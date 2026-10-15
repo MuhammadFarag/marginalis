@@ -2,11 +2,11 @@ package dev.marginalis.plugin.ui
 
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import dev.marginalis.plugin.testing.MarginalisTestCase
 import com.intellij.util.ui.UIUtil
 import dev.marginalis.core.CommentThread
 
-class WalkthroughNavigatorTest : BasePlatformTestCase() {
+class WalkthroughNavigatorTest : MarginalisTestCase() {
 
     private val sample = (1..12).joinToString("\n") { "val line$it = $it" }
 
