@@ -87,7 +87,9 @@ is running the plugin:
 - Comments: write self-documenting code. Treat the urge to comment as a
   sign a rename or refactor is missing; comment only what the code can't
   say (typically a non-obvious platform quirk). Update comments a change
-  makes false.
+  makes false. One deliberate exception: a test that pins a known defect
+  carries `// FixMe: Known issue - #NN <one line>` above it; the fix flips
+  that test and removes the marker.
 - Icons: SVGs in `src/main/resources/icons/`, loaded through
   `MarginalisIcons`. Brand icons are single theme-neutral SVGs (no
   `_dark` twin), designed dark-first; monochrome toolbar icons (e.g.
