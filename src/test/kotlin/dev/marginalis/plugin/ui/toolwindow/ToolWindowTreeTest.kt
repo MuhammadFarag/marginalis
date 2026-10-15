@@ -178,16 +178,15 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         assertTrue(section("Guided"), section("Guided").contains("(1/2)  L3  one"))
     }
 
-    // FixMe: Known issue - #47 with two walkthroughs open, each step's label is glued to its number, so step 1 of "r2" reads "(r21/1)"
-    fun testTwoWalkthroughsEachGetASectionAndTheirStepsCarryTheirLabel() {
+    fun testTwoWalkthroughsEachGetASectionAndTheirStepsShowJustTheirNumber() {
         sample()
         agent.addOnLine(3, "order" to 1, "walkthrough" to "SHOP-42", "body" to "first walk, one")
         agent.addOnLine(6, "order" to 2, "walkthrough" to "SHOP-42", "body" to "first walk, two")
         agent.addOnLine(9, "order" to 1, "walkthrough" to "r2", "body" to "second walk")
 
         assertEquals(listOf("Guided SHOP-42  2", "Guided r2  1", "Open  3"), sections())
-        assertTrue(section("Guided SHOP-42"), section("Guided SHOP-42").contains("(SHOP-421/2)  L3  first walk, one"))
-        assertTrue(section("Guided r2"), section("Guided r2").contains("(r21/1)  L9  second walk"))
+        assertTrue(section("Guided SHOP-42"), section("Guided SHOP-42").contains("(1/2)  L3  first walk, one"))
+        assertTrue(section("Guided r2"), section("Guided r2").contains("(1/1)  L9  second walk"))
     }
 
     fun testProjectFileAndLineThreadsEachSayWhereTheyAre() {
@@ -334,8 +333,7 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         assertNull(window.participantsShown("Open"))
     }
 
-    // FixMe: Known issue - #47 with two walkthroughs open, each step's label is glued to its number, so step 1 of "r2" reads "(r21/1)"
-    fun testAnUnlabelledWalkthroughBesideALabelledOneKeepsPlainStepNumbers() {
+    fun testAnUnlabelledWalkthroughBesideALabelledOneGetsItsOwnGuidedSection() {
         sample()
         agent.addOnLine(3, "order" to 1, "body" to "plain one")
         agent.addOnLine(6, "order" to 2, "body" to "plain two")
@@ -343,6 +341,6 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
 
         assertEquals(listOf("Guided  2", "Guided r2  1", "Open  3"), sections())
         assertTrue(section("Guided  2"), section("Guided  2").contains("(2/2)  L6  plain two"))
-        assertTrue(section("Guided r2"), section("Guided r2").contains("(r21/1)  L9  labelled"))
+        assertTrue(section("Guided r2"), section("Guided r2").contains("(1/1)  L9  labelled"))
     }
 }
