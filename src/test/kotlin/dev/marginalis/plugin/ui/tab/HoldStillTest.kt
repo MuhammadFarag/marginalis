@@ -27,6 +27,19 @@ class HoldStillTest : TabInFrontTestCase() {
         assertEquals(listOf("✉ Bravo question [expanded]", "✉ Alpha question [expanded]"), shown())
     }
 
+    fun testAReplyAboveTheCardYouAreReadingLeavesThatCardWhereItIs() {
+        agent.ask("Charlie question\n\n$LONG_BODY")
+        agent.ask("Alpha question\n\n$LONG_BODY")
+        val bravo = agent.ask("Bravo question\n\n$LONG_BODY")
+        lookAgain()
+        tab.scrollToTop("Alpha question")
+        val alphaTop = tab.topInView("Alpha question")
+
+        agent.reply(bravo, LONG_BODY)
+
+        assertEquals(alphaTop, tab.topInView("Alpha question"))
+    }
+
     // FixMe: Known issue - #48 the Margin tab lists threads newest first, so the pill releases new threads above the ones you were reading
     fun testNewThreadsWaitBehindAPillUntilClicked() {
         agent.ask("Alpha question")
@@ -132,5 +145,9 @@ class HoldStillTest : TabInFrontTestCase() {
 
         assertEquals(listOf("✉ Bravo question [expanded]", "✉ Alpha question [expanded]"), shown())
         assertNull(tab.pill())
+    }
+
+    private companion object {
+        val LONG_BODY = (1..30).joinToString("\n\n") { "Paragraph $it." }
     }
 }

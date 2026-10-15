@@ -9,6 +9,10 @@ History before 0.1.19 lives in git tags.
 
 ### Fixed
 
+- The reply you are typing in the Margin tab stays where it is when an
+  agent posts into another thread above it, and keeps your cursor. The
+  same goes for a new project thread you are writing. Reading without
+  a draft, the card at the top of your view stays put too.
 - A thread you left open shows the agent's reply when you come back to
   it. A reply that arrived while its file, or the Margin tab, was in a
   background tab used to stay hidden until something else changed on

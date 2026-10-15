@@ -46,6 +46,7 @@ import java.awt.Container
 import java.awt.Graphics
 import java.awt.GraphicsEnvironment
 import java.awt.KeyboardFocusManager
+import java.awt.Point
 import java.awt.event.ActionEvent
 import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
@@ -57,6 +58,7 @@ import javax.swing.JFrame
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.KeyStroke
+import javax.swing.SwingUtilities
 
 class MarginTab(private val project: Project, private val disposable: Disposable) {
 
@@ -206,7 +208,9 @@ class MarginTab(private val project: Project, private val disposable: Disposable
 
     private val top: JComponent get() = (root.layout as BorderLayout).getLayoutComponent(BorderLayout.NORTH) as JComponent
 
-    private val stack: JPanel get() = (UIUtil.findComponentOfType(root, JBScrollPane::class.java)!!.viewport.view as JPanel)
+    private val scrollPane: JBScrollPane get() = UIUtil.findComponentOfType(root, JBScrollPane::class.java)!!
+
+    private val stack: JPanel get() = scrollPane.viewport.view as JPanel
 
     fun title(): String {
         settle()
@@ -404,6 +408,17 @@ class MarginTab(private val project: Project, private val disposable: Disposable
     private fun click(link: ActionLink) {
         link.doClick()
         settle()
+    }
+
+    fun scrollToTop(text: String) {
+        settle()
+        scrollPane.viewport.viewPosition = Point(0, SwingUtilities.convertPoint(card(text), 0, 0, stack).y)
+        settle()
+    }
+
+    fun topInView(text: String): Int {
+        settle()
+        return SwingUtilities.convertPoint(card(text), 0, 0, scrollPane.viewport).y
     }
 
     fun panel(text: String): ThreadPanel = card(text).panel ?: error("'$text' is folded in\n${outline()}")
