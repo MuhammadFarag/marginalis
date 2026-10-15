@@ -3,12 +3,14 @@ package dev.marginalis.plugin.testing
 import com.intellij.ui.EditorTextField
 import com.intellij.util.ui.UIUtil
 import dev.marginalis.plugin.ui.ThreadPanel
+import java.awt.Component
 import java.awt.Font
 import java.net.URI
 import javax.swing.Box
 import javax.swing.JComponent
 import javax.swing.JEditorPane
 import javax.swing.JMenuItem
+import javax.swing.JScrollPane
 import javax.swing.event.HyperlinkEvent
 import javax.swing.event.PopupMenuEvent
 import javax.swing.text.AttributeSet
@@ -20,11 +22,17 @@ import javax.swing.text.html.HTMLDocument
 
 class RenderedBody private constructor(private val parts: List<JComponent>) {
 
-    val prose: List<JEditorPane> get() = parts.filterIsInstance<JEditorPane>()
+    val prose: List<JEditorPane> get() = parts.map(::unwrapped).filterIsInstance<JEditorPane>()
 
     val codeBlocks: List<EditorTextField> get() = parts.filterIsInstance<EditorTextField>()
 
-    fun kinds(): List<String> = parts.map { if (it is JEditorPane) "prose" else "code" }
+    fun kinds(): List<String> = parts.map {
+        when (it) {
+            is JScrollPane -> "table"
+            is JEditorPane -> "prose"
+            else -> "code"
+        }
+    }
 
     fun lines(): List<String> = prose.flatMap { textOf(it).lines() }.map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -108,9 +116,11 @@ class RenderedBody private constructor(private val parts: List<JComponent>) {
     companion object {
         fun of(panel: ThreadPanel): RenderedBody {
             val bodies = UIUtil.uiTraverser(panel).filter(Box::class.java)
-                .filter { box -> box.components.isNotEmpty() && box.components.all { it is JEditorPane || it is EditorTextField || it is Box.Filler } }
+                .filter { box -> box.components.isNotEmpty() && box.components.map(::unwrapped).all { it is JEditorPane || it is EditorTextField || it is Box.Filler } }
                 .toList()
-            return RenderedBody(bodies.single().components.filter { it is JEditorPane || it is EditorTextField }.map { it as JComponent })
+            return RenderedBody(bodies.single().components.filter { unwrapped(it) is JEditorPane || it is EditorTextField }.map { it as JComponent })
         }
+
+        private fun unwrapped(part: Component): Component = (part as? JScrollPane)?.viewport?.view ?: part
     }
 }
