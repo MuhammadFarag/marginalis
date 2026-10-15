@@ -54,7 +54,7 @@ class GutterTest : HttpContractTestCase() {
         agent.addOnLine(5, "body" to "Rename max_retry_count; keep List<String> when a > b")
         settle()
 
-        assertTrue(tooltipAt(5), tooltipAt(5).contains("Rename maxretrycount; keep List&lt;String when a  b"))
+        assertTrue(tooltipAt(5), tooltipAt(5).contains("Rename maxretrycount; keep List&lt;String when a b"))
     }
 
     fun testAThreadTheUserStartedNamesTheUserInTheTooltip() {

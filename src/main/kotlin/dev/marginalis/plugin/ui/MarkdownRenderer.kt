@@ -27,8 +27,10 @@ import dev.marginalis.core.Reference
 import dev.marginalis.core.Resolution
 import dev.marginalis.plugin.store.MarginalisStore
 import org.intellij.markdown.IElementType
+import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.html.GeneratingProvider
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.html.SimpleInlineTagProvider
@@ -51,9 +53,10 @@ import javax.swing.text.DefaultCaret
 import javax.swing.text.html.HTMLEditorKit
 
 /**
- * GitHub-flavoured, minus images and raw HTML: each extra construct carries
- * its own Swing sizing tax. A top-level table pays it in its own pane at
- * natural width, scrolling sideways, so the prose around it keeps wrapping.
+ * GitHub-flavoured, with images as placeholders and raw HTML reduced to
+ * what the Markdown itself produces: each extra construct carries its own
+ * Swing sizing tax. A top-level table pays it in its own pane at natural
+ * width, scrolling sideways, so the prose around it keeps wrapping.
  */
 object MarkdownRenderer {
 
@@ -63,7 +66,7 @@ object MarkdownRenderer {
     fun render(project: Project, body: String, wrapWidth: Int): JComponent {
         val box = Box.createVerticalBox()
         var consumedUpTo = 0
-        // An unclosed fence is still prose to CommonMark.
+        // An unclosed fence is still prose to GitHub-flavoured Markdown.
         for (fence in closedFences(body)) {
             val textBefore = body.substring(consumedUpTo, fence.start)
             if (textBefore.isNotBlank()) addProse(box, project, textBefore, wrapWidth)
@@ -91,7 +94,6 @@ object MarkdownRenderer {
         if (remainder.isNotBlank()) box.add(htmlPane(project, remainder, wrapWidth))
     }
 
-    // A table nested in a list or quote stays inline and wraps with its prose.
     private fun topLevelTables(markdown: String): List<IntRange> =
         MarkdownParser(Flavour()).buildMarkdownTreeFromString(markdown).children
             .filter { it.type == GFMElementTypes.TABLE }
@@ -101,15 +103,42 @@ object MarkdownRenderer {
         val flattened = StringBuilder()
         var consumedUpTo = 0
         for (fence in closedFences(body)) {
-            flattened.append(body, consumedUpTo, fence.start)
+            flattened.append(proseWithoutGfmSyntax(body.substring(consumedUpTo, fence.start)))
                 .append(' ').append(body.substring(fence.codeStart, fence.codeEnd).take(FENCE_PREVIEW_CHARS)).append(' ')
             consumedUpTo = fence.end
         }
-        flattened.append(body, consumedUpTo, body.length)
+        flattened.append(proseWithoutGfmSyntax(body.substring(consumedUpTo)))
         return flattened.toString()
             .replace(Regex("[`*_#>]"), "")
-            .replace('\n', ' ')
+            .replace(Regex("\\s+"), " ")
             .trim()
+    }
+
+    private fun proseWithoutGfmSyntax(markdown: String): String =
+        withoutGfmSyntax(MarkdownParser(Flavour()).buildMarkdownTreeFromString(markdown), markdown)
+
+    private fun withoutGfmSyntax(node: ASTNode, markdown: String): String = when (node.type) {
+        GFMElementTypes.TABLE -> node.children
+            .filter { it.type == GFMElementTypes.HEADER || it.type == GFMElementTypes.ROW }
+            .flatMap { row -> row.children.filter { it.type == GFMTokenTypes.CELL } }
+            .map { withoutGfmSyntax(it, markdown).trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString(" · ")
+        GFMElementTypes.STRIKETHROUGH -> node.children
+            .filter { it.type != GFMTokenTypes.TILDE }
+            .joinToString("") { withoutGfmSyntax(it, markdown) }
+        else -> if (node.children.isEmpty()) {
+            markdown.substring(node.startOffset, node.endOffset)
+        } else {
+            buildString {
+                var consumedUpTo = node.startOffset
+                for (child in node.children) {
+                    append(markdown, consumedUpTo, child.startOffset).append(withoutGfmSyntax(child, markdown))
+                    consumedUpTo = child.endOffset
+                }
+                append(markdown, consumedUpTo, node.endOffset)
+            }
+        }
     }
 
     private fun closedFences(body: String): List<CodeFence> = CodeFences.find(body).filter { it.closed }
