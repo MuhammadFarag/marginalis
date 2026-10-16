@@ -9,6 +9,8 @@ History before 0.1.19 lives in git tags.
 
 ### Fixed
 
+- When an agent starts a project thread, the IDE no longer freezes for
+  up to half a minute while the Margin tab opens for it.
 - The Margin tab shows only when there is something in it. A project
   without project threads opens without it, and the tab appears with
   the first one. It no longer pins itself, and a tab left empty stays
