@@ -7,6 +7,19 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-16
+
+Thanks to [@schrek1](https://github.com/schrek1) for the fixes and features in this release.
+
+### Added
+
+- Messages render GitHub-flavoured Markdown: tables, ~~strikethrough~~
+  and task lists. A wide table scrolls sideways instead of squeezing the
+  text around it, and plain web addresses are links.
+- Thread icons now show in the gutter of a pull or merge request review
+  diff too, and in any other diff that shows a file from a commit. Click
+  one to open the thread right there in the diff.
+
 ### Fixed
 
 - Marginalis now runs on 2025.2 versions of JetBrains IDEs. Until now those versions couldn't load
@@ -25,15 +38,6 @@ History before 0.1.19 lives in git tags.
 - In a Guided section, First, Previous, Next and Last Step in the tool
   window follow the step numbers, as the arrows in a thread's header do,
   instead of the folder-and-file order the tree shows them in.
-
-### Added
-
-- Messages render GitHub-flavoured Markdown: tables, ~~strikethrough~~
-  and task lists. A wide table scrolls sideways instead of squeezing the
-  text around it, and plain web addresses are links.
-- Thread icons now show in the gutter of a pull or merge request review
-  diff too, and in any other diff that shows a file from a commit. Click
-  one to open the thread right there in the diff.
 
 ## [0.2.2] - 2026-10-04
 
