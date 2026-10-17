@@ -1,5 +1,6 @@
 package dev.marginalis.plugin.ui.tab
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.vfs.VirtualFileManager
 
 class OpeningTheTabTest : MarginTabTestCase() {
@@ -26,6 +27,20 @@ class OpeningTheTabTest : MarginTabTestCase() {
 
         assertTrue(tab.isOpen)
         assertFalse(tab.isPinned)
+        assertTrue(tab.isInFront)
+    }
+
+    fun testARevealWhileTheTabOpensBehindTheFileYouAreReadingLeavesTheTabInFront() {
+        sample()
+        val thread = user.thread(agent.ask("Which release name?"))
+        tab.close()
+        tab.openFileInFront(SAMPLE)
+        // Opening the tab runs queued EDT events while its editor is built; a reveal can be one of them.
+        ApplicationManager.getApplication().invokeLater { ProjectTab.reveal(project, thread) }
+
+        ProjectTab.showBehindSelection(project)
+        tab.settle()
+
         assertTrue(tab.isInFront)
     }
 
