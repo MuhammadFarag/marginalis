@@ -46,6 +46,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.opentest4j:opentest4j:1.3.0")
+    testImplementation("com.tngtech.archunit:archunit:1.5.1")
 
     "uiTestImplementation"("org.junit.jupiter:junit-jupiter:5.13.4")
     "uiTestRuntimeOnly"("org.junit.platform:junit-platform-launcher:1.13.4")
@@ -168,6 +169,25 @@ tasks.register<Test>("uiTest") {
     val installedIde = providers.gradleProperty("marginalis.localIde").orNull
     onlyIf("marginalis.localIde names an installed IDE to drive") { installedIde != null }
     installedIde?.let { systemProperty("marginalis.uiTestIde", it) }
+}
+
+tasks.test {
+    systemProperty("marginalis.rootProjectName", rootProject.name)
+}
+
+allprojects {
+    val guarded = this
+    plugins.withType<JavaBasePlugin> {
+        guarded.extensions.getByType<SourceSetContainer>().configureEach {
+            val kind = if (name == SourceSet.MAIN_SOURCE_SET_NAME) "production" else "test"
+            val property = "marginalis.ownClasses.$kind.$name.${guarded.path}"
+            val classesDirs = output.classesDirs
+            rootProject.tasks.named<Test>("test") {
+                inputs.files(classesDirs).withPropertyName(property)
+                jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-D$property=${classesDirs.asPath}") })
+            }
+        }
+    }
 }
 
 tasks.named<org.gradle.api.tasks.JavaExec>("runIde") {
