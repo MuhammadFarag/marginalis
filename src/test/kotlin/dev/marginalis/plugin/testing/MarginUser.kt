@@ -1,10 +1,13 @@
 package dev.marginalis.plugin.testing
 
+import com.intellij.ide.DataManager
+import com.intellij.ide.impl.HeadlessDataManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Presentation
 import com.intellij.openapi.actionSystem.Separator
@@ -47,8 +50,10 @@ import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
 import dev.marginalis.plugin.ui.ThreadInlayManager
 import dev.marginalis.plugin.ui.ThreadPanel
 import dev.marginalis.plugin.ui.WalkthroughNavigator
+import java.awt.Component
 import java.awt.KeyboardFocusManager
 import java.awt.event.ActionEvent
+import java.awt.event.FocusEvent
 import java.awt.event.HierarchyEvent
 import java.awt.event.KeyEvent
 import javax.swing.AbstractButton
@@ -277,7 +282,7 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
 
-    private fun editorContext(editor: Editor) = SimpleDataContext.builder()
+    fun editorContext(editor: Editor): DataContext = SimpleDataContext.builder()
         .add(CommonDataKeys.PROJECT, project)
         .add(CommonDataKeys.EDITOR, editor)
         .build()
@@ -286,6 +291,24 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
         composer(panel).text = text
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
+
+    fun focusComposer(panel: ThreadPanel) {
+        val composer = composer(panel)
+        composer.focusGained(FocusEvent(composer, FocusEvent.FOCUS_GAINED))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
+
+    private var productionData = false
+
+    fun dataContextOf(component: Component): DataContext {
+        if (!productionData) {
+            HeadlessDataManager.fallbackToProductionDataManager(disposable)
+            productionData = true
+        }
+        return DataManager.getInstance().getDataContext(component)
+    }
+
+    fun replyBoxContext(panel: ThreadPanel): DataContext = dataContextOf(composer(panel).editor!!.contentComponent)
 
     fun composer(panel: ThreadPanel): EditorTextField {
         panel.focusReply()

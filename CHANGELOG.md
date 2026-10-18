@@ -9,10 +9,12 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
-- Find any thread in the Marginalis tool window in one click: "Select in
-  Marginalis" in the thread's header opens the tool window on it, and
-  "Select Opened Thread" in the tool window picks the thread on the line
-  your caret is on, or the file when that line has none.
+- "Select in Marginalis" on a thread jumps straight to it in the
+  Marginalis tool window.
+- Select Opened Thread finds the thread on your line, in the editor or a
+  pull request's diff, or else the file.
+- Navigate › Select In takes you from a file to its threads in the
+  Marginalis tool window.
 
 ## [0.2.3] - 2026-10-16
 

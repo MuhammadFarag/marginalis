@@ -17,40 +17,28 @@ import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.TextRange
-import com.intellij.openapi.vfs.VfsUtilCore
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.ThreadStatus
+import dev.marginalis.plugin.ProjectPaths
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.CoalescedEdtRunner
 import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
+import dev.marginalis.plugin.ui.ShownThreads
 import dev.marginalis.plugin.ui.ThreadInlayManager
 
 /**
- * Gutter icons in diffs whose right side is a project file shown from a
- * revision (a pull/merge request review, a commit) — those editors hold a
- * copy of the text, so the markers on the file's own document never reach them.
- *
- * Icons are editor-local and re-anchored on the diff's text; a thread whose
- * anchor isn't there gets no icon. EDT only.
+ * Tags every diff editor about a project file with the threads it shows, and paints gutter icons where the
+ * diff holds a revision's copy of the text, which the markers on the file's own document never reach.
  */
 class ReviewDiffMarkers : DiffExtension() {
 
     override fun onViewerCreated(viewer: FrameDiffTool.DiffViewer, context: DiffContext, request: DiffRequest) {
         val project = context.project ?: return
-        val target = RightSide.of(viewer) ?: return
-        val path = projectPath(project, target.content) ?: return
-        val local = target.content.highlightFile?.let { FileDocumentManager.getInstance().getCachedDocument(it) }
-        if (target.content.document === local) return
-        DiffPainter(project, target, path).install()
-    }
-
-    private fun projectPath(project: Project, content: DocumentContent): String? {
-        val file = content.highlightFile ?: return null
-        val base = project.guessProjectDir() ?: return null
-        return VfsUtilCore.getRelativePath(file, base)
+        val sides = ReviewSides.of(viewer) ?: return
+        val path = sides.content.highlightFile?.let { ProjectPaths.of(project, it) } ?: return
+        DiffPainter(project, sides, path).install()
     }
 
     companion object {
@@ -62,25 +50,26 @@ class ReviewDiffMarkers : DiffExtension() {
         }
     }
 
-    /** The PR/after side: its text, the editor showing it, and how its lines map into that editor. */
-    private class RightSide(
+    private class ReviewSides(
         val viewer: DiffViewerBase,
         val content: DocumentContent,
-        val editor: EditorEx,
+        val editor: EditorEx?,
+        val baseEditor: EditorEx?,
         val toEditorLine: (Int) -> Int,
     ) {
         companion object {
-            fun of(viewer: FrameDiffTool.DiffViewer): RightSide? = when (viewer) {
+            fun of(viewer: FrameDiffTool.DiffViewer): ReviewSides? = when (viewer) {
                 is TwosideTextDiffViewer ->
-                    RightSide(viewer, viewer.getContent(Side.RIGHT), viewer.getEditor(Side.RIGHT)) { it }
+                    ReviewSides(viewer, viewer.getContent(Side.RIGHT), viewer.getEditor(Side.RIGHT), viewer.getEditor(Side.LEFT)) { it }
 
                 is UnifiedDiffViewer ->
-                    RightSide(viewer, viewer.getContent(Side.RIGHT), viewer.editor) {
+                    ReviewSides(viewer, viewer.getContent(Side.RIGHT), viewer.editor, null) {
                         viewer.transferLineToOnesideStrict(Side.RIGHT, it)
                     }
 
                 is OnesideTextDiffViewer ->
-                    if (viewer.side == Side.RIGHT) RightSide(viewer, viewer.content, viewer.editor) { it } else null
+                    if (viewer.side == Side.RIGHT) ReviewSides(viewer, viewer.content, viewer.editor, null) { it }
+                    else ReviewSides(viewer, viewer.content, null, viewer.editor) { it }
 
                 else -> null
             }
@@ -89,24 +78,33 @@ class ReviewDiffMarkers : DiffExtension() {
 
     private class DiffPainter(
         private val project: Project,
-        private val target: RightSide,
+        private val sides: ReviewSides,
         private val path: String,
     ) : DiffViewerListener() {
 
         private val store = MarginalisStore.getInstance(project)
         private val highlighters = mutableListOf<RangeHighlighter>()
         private val repaint = CoalescedEdtRunner(project) { paint() }
+        private val marked = mutableListOf<EditorEx>()
         private var observer: AutoCloseable? = null
 
         fun install() {
-            target.viewer.addListener(this)
-            observer = store.threads.observe { thread -> if (thread.file == path) repaint.request() }
-            target.editor.putUserData(ThreadInlayManager.THREAD_LINE, ::editorLineOf)
+            sides.viewer.addListener(this)
             live += this
+            val editor = sides.editor
+            when {
+                editor == null -> Unit
+                !showsTheLocalFile() -> {
+                    observer = store.threads.observe { thread -> if (thread.file == path) repaint.request() }
+                    mark(editor, ShownThreads.at(path, ::editorLineOf))
+                }
+                !showsAProjectFile(editor) -> mark(editor, ShownThreads.at(path, ::localEditorLineOf))
+            }
+            sides.baseEditor?.takeIf { !showsAProjectFile(it) }?.let { mark(it, ShownThreads.none(path)) }
         }
 
         fun uninstall() {
-            target.viewer.removeListener(this)
+            sides.viewer.removeListener(this)
             release()
         }
 
@@ -115,8 +113,20 @@ class ReviewDiffMarkers : DiffExtension() {
             observer?.close()
             observer = null
             clear()
-            target.editor.putUserData(ThreadInlayManager.THREAD_LINE, null)
+            marked.forEach { it.putUserData(ThreadInlayManager.SHOWN_THREADS, null) }
+            marked.clear()
         }
+
+        private fun mark(editor: EditorEx, shown: ShownThreads) {
+            editor.putUserData(ThreadInlayManager.SHOWN_THREADS, shown)
+            marked += editor
+        }
+
+        private fun showsTheLocalFile(): Boolean =
+            sides.content.highlightFile?.let { FileDocumentManager.getInstance().getCachedDocument(it) } === sides.content.document
+
+        private fun showsAProjectFile(editor: EditorEx): Boolean =
+            FileDocumentManager.getInstance().getFile(editor.document)?.let { ProjectPaths.of(project, it) } != null
 
         // A unified viewer rebuilds its document on every rediff, a side-by-side one has it only once the first diff lands.
         override fun onAfterRediff() = paint()
@@ -126,28 +136,33 @@ class ReviewDiffMarkers : DiffExtension() {
         override fun onDispose() = release()
 
         private fun paint() {
-            if (observer == null || target.editor.isDisposed) return
+            val editor = sides.editor ?: return
+            if (observer == null || editor.isDisposed) return
             clear()
             store.threads.all()
                 .filter { it.file == path && it.status !is ThreadStatus.Resolved }
                 .mapNotNull { thread -> editorLineOf(thread)?.let { line -> line to thread } }
                 .groupBy({ it.first }, { it.second })
                 .forEach { (line, threads) ->
-                    val highlighter = target.editor.markupModel.addLineHighlighter(line, HighlighterLayer.LAST, null)
+                    val highlighter = editor.markupModel.addLineHighlighter(line, HighlighterLayer.LAST, null)
                     highlighter.gutterIconRenderer = ThreadGutterIconRenderer(project, threads.sortedBy { it.createdAt })
                     highlighters += highlighter
                 }
         }
 
         private fun clear() {
-            if (!target.editor.isDisposed) {
-                highlighters.filter { it.isValid }.forEach { target.editor.markupModel.removeHighlighter(it) }
+            val editor = sides.editor
+            if (editor != null && !editor.isDisposed) {
+                highlighters.filter { it.isValid }.forEach { editor.markupModel.removeHighlighter(it) }
             }
             highlighters.clear()
         }
 
+        private fun localEditorLineOf(thread: CommentThread): Int? =
+            store.syncLine(thread)?.let(sides.toEditorLine)?.takeIf { it >= 0 }
+
         private fun editorLineOf(thread: CommentThread): Int? {
-            val document = target.content.document
+            val document = sides.content.document
             if (document.lineCount == 0) return null
             val line = if (thread.isFileLevel) 0 else AnchorPolicy.findAnchor(
                 lineCount = document.lineCount,
@@ -156,7 +171,7 @@ class ReviewDiffMarkers : DiffExtension() {
                 anchorText = thread.anchorText ?: "",
                 segment = thread.segment,
             )?.line ?: return null
-            return target.toEditorLine(line).takeIf { it >= 0 }
+            return sides.toEditorLine(line).takeIf { it >= 0 }
         }
 
         private fun lineText(document: Document, line: Int): String =
