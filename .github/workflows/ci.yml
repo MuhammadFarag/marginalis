@@ -45,35 +45,21 @@ jobs:
         # Margin tab tests that need an active IDE window skip themselves
         # without a display.
         run: sudo apt-get install -y xvfb
-      # The IntelliJ Platform Gradle plugin sometimes drops the bundled Java
-      # plugin from its index of the IDE (JetBrains/intellij-platform-gradle-plugin#2192,
-      # fixed after 2.19.0), and the platform tests then run without Java. A
-      # checked index is cached from main, so pull requests skip that race.
-      - uses: actions/cache/restore@v4
-        with:
-          path: .intellijPlatform/layoutIndex
-          key: ide-layout-index-${{ hashFiles('build.gradle.kts', 'settings.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
-      - name: Index the IDE's bundled plugins
+      # The IntelliJ Platform Gradle plugin (2.17–2.19) can drop the bundled
+      # Java plugin when it builds its index of the IDE, at random
+      # (JetBrains/intellij-platform-gradle-plugin#2192), and the platform
+      # tests then run without Java. A committed, checked index means it never
+      # builds one. When the IDE or the Gradle plugin changes, the check fails:
+      # take the new index from the failed run's test-reports artifact, make
+      # sure it lists com.intellij.java, and commit it in place of the old one.
+      - name: Use the checked IDE index
         run: |
-          for attempt in 1 2 3; do
-            ./gradlew dependencies --configuration compileClasspath --console=plain -q > /dev/null
-            complete=true
-            for index in .intellijPlatform/layoutIndex/*.json; do
-              if ! jq -e 'any(.entries[]; .id == "com.intellij.java")' "$index" > /dev/null; then
-                echo "Attempt $attempt: $index lacks the Java plugin; rebuilding it."
-                rm -f "$index"
-                complete=false
-              fi
-            done
-            [ "$complete" = true ] && exit 0
-          done
-          echo "The IDE index still lacks the Java plugin after 3 attempts."
-          exit 1
-      - uses: actions/cache/save@v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          path: .intellijPlatform/layoutIndex
-          key: ide-layout-index-${{ hashFiles('build.gradle.kts', 'settings.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          mkdir -p .intellijPlatform/layoutIndex
+          cp .github/ide-layout-index/*.json .intellijPlatform/layoutIndex/
+      - name: The build uses the checked IDE index
+        run: |
+          ./gradlew dependencies --configuration compileClasspath --console=plain -q > /dev/null
+          diff -r .github/ide-layout-index .intellijPlatform/layoutIndex
       - name: Build plugin
         # `build` alone runs checks but does not produce the distributable
         # zip — `buildPlugin` does.
@@ -82,9 +68,11 @@ jobs:
         if: failure()
         with:
           name: test-reports
+          include-hidden-files: true
           path: |
             build/test-results/test/
             core/build/test-results/test/
+            .intellijPlatform/layoutIndex/
       - uses: actions/upload-artifact@v4
         with:
           name: marginalis-plugin
