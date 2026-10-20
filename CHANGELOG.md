@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-19
+
+Thanks to [@schrek1](https://github.com/schrek1) for the features in this release.
+
 ### Added
 
 - "Select in Marginalis" on a thread jumps straight to it in the
