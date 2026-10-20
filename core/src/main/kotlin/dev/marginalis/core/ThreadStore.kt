@@ -9,6 +9,7 @@ class ThreadStore {
     private val listeners = CopyOnWriteArrayList<(CommentThread) -> Unit>()
     private val _deletedRelays = ConcurrentHashMap.newKeySet<Relayed.Key>()
     private val relayLock = Any()
+    private val revisions = ConcurrentHashMap<String, Long>()
 
     val deletedRelays: Set<Relayed.Key>
         get() = _deletedRelays.toSet()
@@ -30,6 +31,8 @@ class ThreadStore {
     }
 
     fun byId(id: String): CommentThread? = threads[id]
+
+    fun revisionOf(id: String): Long = revisions[id] ?: 0
 
     fun relaying(key: Relayed.Key): CommentThread? = all().firstOrNull { it.relayedMessage(key) != null }
 
@@ -110,6 +113,7 @@ class ThreadStore {
         observe { changed -> if (changed.id == id) onChange(byId(id)) }
 
     fun notifyChanged(thread: CommentThread) {
+        revisions.merge(thread.id, 1, Long::plus)
         for (listener in listeners) listener(thread)
     }
 }

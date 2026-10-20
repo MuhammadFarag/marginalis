@@ -63,6 +63,7 @@ import javax.swing.JEditorPane
 import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.KeyStroke
+import javax.swing.SwingUtilities
 import javax.swing.event.HyperlinkEvent
 import javax.swing.event.HyperlinkListener
 
@@ -108,7 +109,7 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
         return UIUtil.findComponentsOfType(panel, ActionLink::class.java).single { it.isVisible && it.text.startsWith("@") }.text
     }
 
-    private fun mention(panel: ThreadPanel, agentId: String) {
+    fun mention(panel: ThreadPanel, agentId: String) {
         val composer = composer(panel)
         UiInterceptors.register(object : UiInterceptors.UiInterceptor<JBPopup>(JBPopup::class.java) {
             override fun doIntercept(popup: JBPopup) {
@@ -209,6 +210,14 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
     }
 
     fun panel(editor: Editor = editor()): ThreadPanel = panels(editor).single()
+
+    fun whileInABackgroundTab(panel: ThreadPanel, editor: Editor = editor(), meanwhile: () -> Unit) {
+        panel.removeNotify()
+        meanwhile()
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        if (SwingUtilities.isDescendingFrom(panel, editor.contentComponent)) panel.addNotify()
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
 
     fun gutterIcon(file: String, line: Int): ThreadGutterIconRenderer? = gutterIconsOnLine(file, line).firstOrNull()
 
@@ -353,6 +362,9 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
         pane.fireHyperlinkUpdate(HyperlinkEvent(pane, HyperlinkEvent.EventType.ACTIVATED, url, href))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
+
+    fun messageBody(panel: ThreadPanel, text: String): JEditorPane =
+        UIUtil.findComponentsOfType(panel, JEditorPane::class.java).single { it.document.getText(0, it.document.length).contains(text) }
 
     fun hasLink(panel: ThreadPanel, href: String): Boolean =
         UIUtil.findComponentsOfType(panel, JEditorPane::class.java).any { it.text.contains("href=\"$href\"") }
