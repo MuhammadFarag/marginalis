@@ -515,6 +515,7 @@ class ThreadPanel(
     }
 
     fun reveal(message: Message) {
+        validate()
         messageComponents[message.id]?.let { it.scrollRectToVisible(Rectangle(it.size)) }
         markReadIfSeen()
     }
