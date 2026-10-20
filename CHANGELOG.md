@@ -15,11 +15,16 @@ History before 0.1.19 lives in git tags.
   pull request's diff, or else the file.
 - Navigate › Select In takes you from a file to its threads in the
   Marginalis tool window.
-- Expand and Collapse in the Marginalis tool window's toolbar start at
-  the folder of the selection and work one level further out with each
-  press, up to its section and then every section. Collapse folds
-  everything inside, as IntelliJ's Collapse All does. Folders you fold
-  stay folded when the tree refreshes.
+- Expand and Collapse in the Marginalis tool window tame a long review
+  one level at a time. Each press reaches one level further out from
+  your selection: its folder, each folder that contains it, its section,
+  then every section. The button names the level its next press acts on.
+
+### Fixed
+
+- Folds you make in the Marginalis tool window last. A reply or a
+  filter change no longer opens the folders you folded, or folds the
+  Resolved section you opened.
 
 ## [0.2.3] - 2026-10-16
 
