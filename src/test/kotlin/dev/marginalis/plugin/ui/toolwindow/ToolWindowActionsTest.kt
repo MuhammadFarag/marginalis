@@ -14,8 +14,8 @@ class ToolWindowActionsTest : ToolWindowTestCase() {
     fun testTheTitleBarOffersTheMarginsActionsInOrder() {
         assertEquals(
             listOf(
-                "Comment on Project", "First Step", "Previous Occurrence", "Next Occurrence", "Last Step", "Filter",
-                "Select Opened Thread", "Submit round", "Stop agents", "Resolve All", "Delete All",
+                "Comment on Project", "First Step", "Previous Occurrence", "Next Occurrence", "Last Step", "Expand", "Collapse",
+                "Filter", "Select Opened Thread", "Submit round", "Stop agents", "Resolve All", "Delete All",
             ),
             window.toolbar(),
         )

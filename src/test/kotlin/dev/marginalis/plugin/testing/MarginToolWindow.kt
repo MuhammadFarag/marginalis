@@ -245,6 +245,16 @@ class MarginToolWindow(private val project: Project, private val disposable: Dis
 
     fun isExpanded(text: String, under: String? = null): Boolean = tree.isExpanded(rowOf(text, under))
 
+    fun select(text: String, under: String? = null) {
+        tree.selectionPath = tree.getPathForRow(rowOf(text, under))
+        settle()
+    }
+
+    fun selectNothing() {
+        tree.clearSelection()
+        settle()
+    }
+
     fun canJumpToSource(): Boolean {
         val action = ActionManager.getInstance().getAction("EditSource")
         val event = TestActionEvent.createTestEvent(action, dataContext())
@@ -337,6 +347,7 @@ class MarginToolWindow(private val project: Project, private val disposable: Dis
             val action = action(text)
             val event = event(action)
             action.update(event)
+            check(event.presentation.isEnabled) { "$text is greyed out" }
             action.actionPerformed(event)
         } finally {
             TestDialogManager.setTestDialog(TestDialog.DEFAULT)
