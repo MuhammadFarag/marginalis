@@ -15,7 +15,7 @@ class ToolWindowActionsTest : ToolWindowTestCase() {
         assertEquals(
             listOf(
                 "Comment on Project", "First Step", "Previous Occurrence", "Next Occurrence", "Last Step", "Expand", "Collapse",
-                "Filter", "Select Opened Thread", "Submit round", "Stop agents", "Resolve All", "Delete All",
+                "Filter", "Select Opened Thread", "Submit round", "Make every open thread live", "Stop agents", "Resolve All", "Delete All",
             ),
             window.toolbar(),
         )

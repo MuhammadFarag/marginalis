@@ -49,6 +49,22 @@ class Agent(private val project: Project, val name: String = "Test agent", val i
         return await(send(request))
     }
 
+    fun startWait(vararg params: Pair<String, Any?>): CompletableFuture<Response> {
+        val waiting = getAsync("comment_wait", *params)
+        val inProject = params.filter { it.first == "project" }.toTypedArray()
+        val deadline = System.nanoTime() + 15_000_000_000
+        while (!waiting.isDone && !isListening(*inProject)) {
+            check(System.nanoTime() < deadline) { "$id never started waiting" }
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            Thread.sleep(20)
+        }
+        return waiting
+    }
+
+    private fun isListening(vararg inProject: Pair<String, Any?>): Boolean =
+        get("comment_identities", *inProject).json.getAsJsonArray("identities").map { it.asJsonObject }
+            .any { it["id"]?.asString == id && it["waiting"]?.asBoolean == true }
+
     fun await(response: CompletableFuture<Response>, seconds: Int = 15): Response {
         PlatformTestUtil.waitWithEventsDispatching("no answer within $seconds s", { response.isDone }, seconds)
         return response.get()

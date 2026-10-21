@@ -11,12 +11,14 @@ import com.intellij.diff.tools.util.base.DiffViewerListener
 import com.intellij.diff.tools.util.side.OnesideTextDiffViewer
 import com.intellij.diff.tools.util.side.TwosideTextDiffViewer
 import com.intellij.diff.util.Side
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.TextRange
 import dev.marginalis.core.AnchorPolicy
 import dev.marginalis.core.CommentThread
@@ -87,6 +89,7 @@ class ReviewDiffMarkers : DiffExtension() {
         private val repaint = CoalescedEdtRunner(project) { paint() }
         private val marked = mutableListOf<EditorEx>()
         private var observer: AutoCloseable? = null
+        private var liveWatch: Disposable? = null
 
         fun install() {
             sides.viewer.addListener(this)
@@ -96,6 +99,9 @@ class ReviewDiffMarkers : DiffExtension() {
                 editor == null -> Unit
                 !showsTheLocalFile() -> {
                     observer = store.threads.observe { thread -> if (thread.file == path) repaint.request() }
+                    liveWatch = Disposer.newDisposable("Marginalis review diff live badges").also {
+                        store.onLiveChange(it) { repaint.request() }
+                    }
                     mark(editor, ShownThreads.at(path, ::editorLineOf))
                 }
                 !showsAProjectFile(editor) -> mark(editor, ShownThreads.at(path, ::localEditorLineOf))
@@ -112,6 +118,8 @@ class ReviewDiffMarkers : DiffExtension() {
             live -= this
             observer?.close()
             observer = null
+            liveWatch?.let(Disposer::dispose)
+            liveWatch = null
             clear()
             marked.forEach { it.putUserData(ThreadInlayManager.SHOWN_THREADS, null) }
             marked.clear()
