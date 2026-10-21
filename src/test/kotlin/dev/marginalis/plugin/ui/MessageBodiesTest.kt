@@ -159,12 +159,6 @@ class MessageBodiesTest : HttpContractTestCase() {
         assertEquals(listOf("First paragraph.", "Second paragraph."), body.lines())
     }
 
-    fun testTwoTrailingSpacesBreakTheLine() {
-        val body = rendered("Line one  \nLine two")
-
-        assertEquals(listOf("Line one", "Line two"), body.lines())
-    }
-
     fun testASingleLineBreakStartsANewLine() {
         val body = rendered("Line one\nLine two")
 
@@ -175,6 +169,128 @@ class MessageBodiesTest : HttpContractTestCase() {
         val body = rendered("One.\n\n\nTwo.")
 
         assertEquals(listOf("One.", "", "Two."), body.text().lines().map { it.trim() })
+    }
+
+    fun testASingleLineBreakInsideAListItemStartsANewLine() {
+        val body = rendered("- one\n  more\n- two")
+
+        assertEquals(listOf("one", "more", "two"), body.screen())
+    }
+
+    fun testASingleLineBreakInsideAQuoteStartsANewLine() {
+        val body = rendered("> one\n> more")
+
+        assertEquals(listOf("one", "more"), body.screen())
+    }
+
+    fun testTwoTrailingSpacesBreakTheLineOnlyOnce() {
+        val body = rendered("Line one  \nLine two")
+
+        assertEquals(listOf("Line one", "Line two"), body.screen())
+    }
+
+    fun testABackslashBreaksTheLineOnlyOnce() {
+        val body = rendered("Line one\\\nLine two")
+
+        assertEquals(listOf("Line one", "Line two"), body.screen())
+    }
+
+    fun testASecondBlankLineBeforeAndAfterACodeBlockStaysAnEmptyLine() {
+        val body = rendered("Before.\n\n\n```\ncode\n```\n\n\nAfter.")
+
+        assertEquals(listOf("Before.", "", "[code]", "", "After."), body.screen())
+    }
+
+    fun testASecondBlankLineBetweenTwoCodeBlocksStaysAnEmptyLine() {
+        val body = rendered("```\none\n```\n\n\n```\ntwo\n```")
+
+        assertEquals(listOf("[code]", "", "[code]"), body.screen())
+    }
+
+    fun testASecondBlankLineBeforeAndAfterATableStaysAnEmptyLine() {
+        val body = rendered("Before.\n\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n\nAfter.")
+
+        assertEquals(listOf("Before.", "", "[table]", "", "After."), body.screen())
+    }
+
+    fun testASingleBlankLineAroundACodeBlockOrATableAddsNoEmptyLine() {
+        val body = rendered("Before.\n\n```\ncode\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nAfter.")
+
+        assertEquals(listOf("Before.", "[code]", "[table]", "After."), body.screen())
+    }
+
+    fun testTrailingBlankLinesAfterACodeBlockAddNoEmptyLine() {
+        val body = rendered("```\ncode\n```\n\n\n")
+
+        assertEquals(listOf("[code]"), body.screen())
+    }
+
+    fun testWindowsLineEndingsBreakLinesAndParagraphsAsPlainOnesDo() {
+        val body = rendered("Intro.\r\n\r\n- a\r\n- b\r\n\r\nOne\r\nTwo.\r\n\r\n\r\nEnd.")
+
+        assertEquals(listOf("Intro.", "a", "b", "One", "Two.", "", "End."), body.screen())
+    }
+
+    fun testAFencedBlockWithWindowsLineEndingsIsStillCode() {
+        val body = rendered("Before.\r\n\r\n\r\n```\r\ncode\r\n```\r\n\r\n\r\nAfter.")
+
+        assertEquals(listOf("Before.", "", "[code]", "", "After."), body.screen())
+    }
+
+    fun testParagraphsAreSpacedApartAndTheFirstSitsFlush() {
+        val body = rendered("One.\n\nTwo.")
+
+        assertEquals(0, body.marginAboveInPx("One.", "p"))
+        assertEquals(10, body.marginAboveInPx("Two.", "p"))
+    }
+
+    fun testAListSitsCloseUnderItsIntroAndItsItemsSitTogether() {
+        val body = rendered("Intro.\n\n- one\n- two")
+
+        assertEquals(3, body.marginAboveInPx("one", "ul"))
+        assertEquals(0, body.marginAboveInPx("one", "li"))
+        assertEquals(0, body.marginAboveInPx("two", "li"))
+    }
+
+    fun testAListThatOpensTheMessageSitsFlush() {
+        val body = rendered("1. one\n2. two")
+
+        assertEquals(0, body.marginAboveInPx("one", "ol"))
+    }
+
+    fun testANumberedListThatOpensTheMessageFromAboveOneSitsFlushAndKeepsItsNumber() {
+        val body = rendered("3. three\n4. four")
+
+        assertEquals(0, body.marginAboveInPx("three", "ol"))
+        assertEquals("3", body.attributeOfBlock("three", "ol", HTML.Attribute.START))
+    }
+
+    fun testTheItemsOfAListWithBlankLinesBetweenThemSitTogether() {
+        val body = rendered("Intro.\n\n- one\n\n- two\n\n- three")
+
+        assertEquals(3, body.marginAboveInPx("one", "ul"))
+        assertEquals(listOf(0, 0, 0), listOf("one", "two", "three").map { body.marginAboveInPx(it, "p") })
+    }
+
+    fun testASecondParagraphInsideAListItemIsStillSpacedApart() {
+        val body = rendered("- one\n\n  more\n- two")
+
+        assertEquals(10, body.marginAboveInPx("more", "p"))
+    }
+
+    fun testAListWithBlankLinesBetweenItsItemsThatOpensTheMessageSitsFlush() {
+        val body = rendered("- one\n\n- two")
+
+        assertEquals(0, body.marginAboveInPx("one", "ul"))
+        assertEquals(0, body.marginAboveInPx("one", "p"))
+    }
+
+    fun testAQuoteThatOpensTheMessageSitsFlush() {
+        val body = rendered("> quoted\n\nThen.")
+
+        assertEquals(0, body.marginAboveInPx("quoted", "blockquote"))
+        assertEquals(0, body.marginAboveInPx("quoted", "p"))
+        assertEquals(10, body.marginAboveInPx("Then.", "p"))
     }
 
     fun testATableIsDrawnAsATableOfCells() {
@@ -214,6 +330,16 @@ class MessageBodiesTest : HttpContractTestCase() {
 
         assertTrue(tooltip, tooltip.contains("Like this:"))
         assertTrue(tooltip, tooltip.contains("fun total() = items.sumOf { it.price + i"))
+        assertFalse(tooltip, tooltip.contains("quantity"))
+        assertFalse(tooltip, tooltip.contains("kotlin"))
+        assertTrue(tooltip, tooltip.contains("Then done."))
+    }
+
+    fun testAOneLinePreviewKeepsOnlyTheStartOfAFencedBlockWithWindowsLineEndings() {
+        agent.addOnLine(5, "body" to "Like this:\r\n```kotlin\r\nfun total() = items.sumOf { it.price + it.quantity + 1 }\r\n```\r\nThen done.")
+
+        val tooltip = user.gutterIcon(SAMPLE, 5)!!.tooltipText
+
         assertFalse(tooltip, tooltip.contains("quantity"))
         assertFalse(tooltip, tooltip.contains("kotlin"))
         assertTrue(tooltip, tooltip.contains("Then done."))

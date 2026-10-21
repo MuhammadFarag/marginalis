@@ -14,6 +14,8 @@ History before 0.1.19 lives in git tags.
   between paragraphs stays an empty line instead of collapsing.
 - Paragraphs and lists in a message get a small gap between them, so a
   long reply no longer reads as one dense block.
+- A stalled IDE no longer blames Marginalis. While the IDE waited on
+  other work, it reported "Cannot check provider" for the Margin tab.
 
 ## [0.2.5] - 2026-10-21
 
@@ -33,9 +35,6 @@ Thanks to [@schrek1](https://github.com/schrek1) for the features and fixes in t
 
 ### Fixed
 
-- A stalled IDE no longer blames Marginalis. While the IDE waited on
-  other work, it reported "Cannot check provider" for the Margin tab
-  after 30 seconds, though the tab needs no lock to answer.
 - A thread you left open shows the agent's reply when you come back to
   it. A reply that arrived while its file, or the Margin tab, was in a
   background tab used to stay hidden until something else changed on
