@@ -16,6 +16,10 @@ History before 0.1.19 lives in git tags.
   long reply no longer reads as one dense block.
 - A stalled IDE no longer blames Marginalis. While the IDE waited on
   other work, it reported "Cannot check provider" for the Margin tab.
+- A thread whose code an edit removed now always shows as orphaned. When
+  a tool rewrote a file and a reply or another change to the thread came
+  in before anything refreshed the list, the thread could stay open,
+  pinned to whatever code had taken its old line.
 
 ## [0.2.5] - 2026-10-21
 
