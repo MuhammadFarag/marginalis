@@ -124,7 +124,7 @@ class OpeningThreadsTest : ToolWindowTestCase() {
         window.outline()
 
         MarginalisToolWindow.reveal(project, ThreadInFront.Found(Opened.File("acme/backend/shop-orders/src/main/java/com/acme/orders/OrderService.java")), focus = false)
-        assertEquals("OrderService.java ✉4", window.selected())
+        assertEquals("OrderService.java  steps 2–3 ✉2", window.selected())
         assertEquals("Guided SHOP-77  17", window.selectedPath().first())
 
         MarginalisToolWindow.reveal(project, ThreadInFront.Found(Opened.File(SAMPLE)), focus = false)

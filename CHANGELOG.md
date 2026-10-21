@@ -7,6 +7,15 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+### Added
+
+- A walkthrough in the Marginalis tool window now reads in step order, the
+  way Next and Previous walk it. Steps in a row in the same file fold
+  under that file, and steps in a row about the whole project under a
+  Project node. The Guided Layout menu in the tool window header
+  switches to the folder tree as before, or to one node per file, and
+  each project remembers its choice.
+
 ### Fixed
 
 - A thread you left open shows the agent's reply when you come back to

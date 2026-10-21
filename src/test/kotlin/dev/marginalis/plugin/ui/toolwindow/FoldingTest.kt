@@ -319,6 +319,7 @@ class FoldingTest : ToolWindowTestCase() {
     }
 
     fun testCollapseOnAStepFoldsItsOwnGuidedSectionAndThenEverySection() {
+        window.layOutGuided("By folder")
         sample()
         agent.addOnLine(3, "order" to 1, "walkthrough" to "SHOP-42", "body" to "first walk")
         agent.addOnLine(6, "order" to 1, "walkthrough" to "r2", "body" to "second walk")
