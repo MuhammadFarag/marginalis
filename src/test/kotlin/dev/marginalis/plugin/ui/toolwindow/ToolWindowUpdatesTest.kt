@@ -76,6 +76,17 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
         )
     }
 
+    fun testAReplyAfterARewriteRemovedAThreadsLineMovesItToTheOrphanedSection() {
+        sample()
+        val id = agent.addOnLine(20, "body" to "About this line")
+        window.outline()
+        rewrite()
+
+        window.rebuiltBy { agent.reply(id, "Still relevant after the rewrite?") }
+
+        assertEquals(listOf("Orphaned  1", "src  1", "Sample.kt", "L20  About this line"), window.rows())
+    }
+
     // FixMe: Known issue - #55 a thread row keeps its old line number after the user edits above it, until a thread changes or an agent reads the margin
     fun testLineNumbersInTheTreeCatchUpWithEditsOnlyWhenAThreadChanges() {
         sample()
