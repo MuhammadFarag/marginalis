@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-21
+
+Thanks to [@schrek1](https://github.com/schrek1) for the features and fixes in this release.
+
 ### Added
 
 - Make a whole project live with one click. The ⚡ in the Marginalis
