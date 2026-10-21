@@ -111,7 +111,7 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         border = JBUI.Borders.empty(8, 12, 12, 12)
     }
     private val root = JPanel(BorderLayout()).apply { isFocusable = true }
-    private val viewKeeper = ViewKeeper(root, stack, ::stackedCards, ::holdsDraft).also { Disposer.register(this, it) }
+    private val viewKeeper = ViewKeeper(root, stack, ::stackedCards, ::holdsDraft) { !sort.order.newOnTop }.also { Disposer.register(this, it) }
     private val scroll = viewKeeper.scroll.apply { border = JBUI.Borders.empty() }
 
     private val emptyState = JPanel(BorderLayout()).apply {

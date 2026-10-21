@@ -16,6 +16,9 @@ History before 0.1.19 lives in git tags.
     most-recent-activity order. Each project remembers its choice.
   - A new thread you start, and threads that arrive while the list holds
     still, appear on the side the chosen order puts new threads.
+  - Resting at the bottom of an oldest-first list, a new thread arriving
+    there comes into view, as one arriving at the top does in the other
+    orders.
 
 ### Fixed
 
