@@ -179,7 +179,7 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
     }
 
     private fun assertBadge(badge: StripeBadge?) {
-        val expected = MarginalisIcons.toolWindow(badge)
+        val expected = MarginalisIcons.toolWindow(badge, projectLive = false)
         PlatformTestUtil.waitWithEventsDispatching("the stripe never showed $badge", { window.window.shownIcon === expected }, 5)
         assertSame(expected, window.window.shownIcon)
     }
@@ -205,7 +205,7 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
         sample()
         agent.addOnLine(5, "body" to "Which one?")
 
-        assertSame(MarginalisIcons.toolWindow(StripeBadge.AWAITING_YOU), window.window.shownIcon)
+        assertSame(MarginalisIcons.toolWindow(StripeBadge.AWAITING_YOU, projectLive = false), window.window.shownIcon)
     }
 
     fun testTheToolWindowShowsNoAwaitingCount() {

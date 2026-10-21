@@ -33,6 +33,11 @@ class MarginalisStartup : ProjectActivity {
             store.scheduleSave()
         }
         refreshTabOnChange(project, store)
+        store.onLiveChange(store) {
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) refreshAllIcons(project, store)
+            }
+        }
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) ProjectTab.openOnStartup(project)
         }
@@ -46,7 +51,7 @@ class MarginalisStartup : ProjectActivity {
                 if (project.isDisposed) return@invokeLater
                 for (thread in persisted) {
                     rehydrate(project, thread)
-                    store.threads.addSilently(thread)
+                    store.rehydrate(thread)
                 }
                 // Attach assigns solo icons; group shared lines per file.
                 val files = persisted.mapNotNull { it.file }.distinct()
@@ -56,6 +61,10 @@ class MarginalisStartup : ProjectActivity {
                 persisted.lastOrNull()?.let { store.threads.notifyChanged(it) }
             }
         }
+    }
+
+    private fun refreshAllIcons(project: Project, store: MarginalisStore) {
+        store.threads.all().mapNotNull { it.file }.distinct().forEach { MarginalisMarkers.refreshIcons(project, it) }
     }
 
     private fun refreshTabOnChange(project: Project, store: MarginalisStore) {

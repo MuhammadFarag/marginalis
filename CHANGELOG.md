@@ -9,11 +9,15 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
-- *Live by default*, a ⚡ toggle in the Marginalis tool window's toolbar: every open
-  thread of the project is live without switching each one. A thread's
-  own ⚡ still switches it off. The choice is kept per project, in your
-  workspace, not in version control; a checkbox in Settings sets where a
-  project starts.
+- Make a whole project live with one click. The ⚡ in the Marginalis
+  tool window makes every open thread live, so each Submit wakes the
+  listening agent with that thread. Switch off any thread you want to keep for
+  the next round. While the project is live, the Marginalis icon in the
+  side bar carries a ⚡, so you always know. Your choice stays with the
+  project, and Settings sets the default for projects you have not
+  switched.
+- See at a glance which threads are live. Each live thread's mark in the
+  gutter carries a small ⚡, and a thread you switch off loses it.
 
 ### Fixed
 

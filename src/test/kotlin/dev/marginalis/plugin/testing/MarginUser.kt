@@ -73,6 +73,8 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
 
     fun openToolWindow(): MarginToolWindow = MarginToolWindow(project, disposable)
 
+    fun toolWindowStripe(): MarginToolWindow.Window = MarginToolWindow.stripe(project, disposable)
+
     fun openMarginTab(): MarginTab = MarginTab(project, disposable).open()
 
     fun changeProjectTabSettings(edit: ProjectTabSettings.() -> Unit) {
@@ -171,6 +173,14 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
     }
 
     fun resolve(threadId: String) = press(open(threadId), "Resolve")
+
+    fun reopen(threadId: String) = press(open(threadId), "Reopen")
+
+    fun goProjectLive() = openToolWindow().turnProjectLive(true)
+
+    fun stopProjectLive() = openToolWindow().turnProjectLive(false)
+
+    fun isProjectLive(): Boolean = openToolWindow().isProjectLive()
 
     fun submitRound() {
         val action = SubmitRoundAction()
