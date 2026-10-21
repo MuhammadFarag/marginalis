@@ -781,6 +781,10 @@ class ThreadPanel(
         is Addressee.Agent -> agentNames[to.key] ?: to.key
     }
 
+    val composer: JComponent get() = replyArea
+
+    val isEditing: Boolean get() = editingMessageId != null
+
     fun focusReply() {
         if (!composerExpanded) setComposerExpanded(true)
         replyArea.requestFocusInWindow()

@@ -19,6 +19,7 @@ import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.testFramework.PlatformTestUtil
@@ -56,7 +57,9 @@ import javax.swing.JComponent
 import javax.swing.JFrame
 import javax.swing.JLabel
 import javax.swing.JPanel
+import javax.swing.JTextField
 import javax.swing.KeyStroke
+import javax.swing.SwingUtilities
 
 class MarginTab(private val project: Project, private val disposable: Disposable) {
 
@@ -87,6 +90,7 @@ class MarginTab(private val project: Project, private val disposable: Disposable
             EditorHistoryManager.getInstance(project).removeAllFiles()
             Disposer.dispose(editors)
         }
+        Registry.get("editor.text.field.init.on.shown").setValue(false, disposable)
         screen?.apply {
             contentPane.add(editors.mainSplitters)
             setSize(1200, 900)
@@ -206,7 +210,60 @@ class MarginTab(private val project: Project, private val disposable: Disposable
 
     private val top: JComponent get() = (root.layout as BorderLayout).getLayoutComponent(BorderLayout.NORTH) as JComponent
 
-    private val stack: JPanel get() = (UIUtil.findComponentOfType(root, JBScrollPane::class.java)!!.viewport.view as JPanel)
+    private val scroll: JBScrollPane get() = UIUtil.findComponentOfType(root, JBScrollPane::class.java)!!
+
+    private val stack: JPanel get() = scroll.viewport.view as JPanel
+
+    val scrolls: Boolean
+        get() {
+            settle()
+            return stack.height > scroll.viewport.extentSize.height
+        }
+
+    val scrolledTo: Int
+        get() {
+            settle()
+            return scroll.viewport.viewPosition.y
+        }
+
+    val viewHeight: Int
+        get() {
+            settle()
+            return scroll.viewport.extentSize.height
+        }
+
+    fun scrollTo(y: Int) {
+        settle()
+        scroll.verticalScrollBar.value = y
+        settle()
+    }
+
+    fun scrollToBottom() = scrollTo(stack.height)
+
+    fun whileDraggingTheScrollBar(meanwhile: () -> Unit) {
+        val bar = scroll.verticalScrollBar
+        bar.valueIsAdjusting = true
+        try {
+            meanwhile()
+            settle()
+        } finally {
+            bar.valueIsAdjusting = false
+        }
+    }
+
+    fun topOnScreen(component: Component): Int {
+        settle()
+        return SwingUtilities.convertPoint(component, 0, 0, root).y
+    }
+
+    fun topInView(component: Component): Int {
+        settle()
+        return SwingUtilities.convertPoint(component, 0, 0, scroll.viewport).y
+    }
+
+    val toolWindow: Component by lazy {
+        JTextField().also { checkNotNull(screen) { "a tool window needs a display" }.layeredPane.add(it) }
+    }
 
     fun title(): String {
         settle()
@@ -374,7 +431,7 @@ class MarginTab(private val project: Project, private val disposable: Disposable
         return UIUtil.findComponentsOfType(stack, ThreadCard::class.java)
     }
 
-    private fun card(text: String): ThreadCard = cards().firstOrNull { describeCard(it).contains(text) }
+    internal fun card(text: String): ThreadCard = cards().firstOrNull { describeCard(it).contains(text) }
         ?: error("no card shows '$text' in\n${outline()}")
 
     fun click(text: String) {

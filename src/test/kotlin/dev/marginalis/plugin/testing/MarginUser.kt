@@ -301,7 +301,36 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
 
-    fun focusComposer(panel: ThreadPanel) {
+    fun writeIn(panel: ThreadPanel, text: String, caretAt: Int = text.length): EditorTextField {
+        type(panel, text)
+        val composer = composer(panel)
+        composer.editor!!.caretModel.moveToOffset(caretAt)
+        focusOn(composer.editor!!.contentComponent)
+        return composer
+    }
+
+    fun lastFocusedInWindowOf(component: Component): Component? = SwingUtilities.getWindowAncestor(component)?.mostRecentFocusOwner
+
+    private var focusMoved = false
+
+    fun focusOn(component: Component) {
+        check(component.isFocusable) { "$component can't take focus" }
+        if (!focusMoved) {
+            focusMoved = true
+            Disposer.register(disposable) { movePermanentFocusTo(null) }
+        }
+        movePermanentFocusTo(component)
+    }
+
+    @AllowReflection("A test frame is never shown, so AWT never moves focus into it, and no public API moves it there")
+    private fun movePermanentFocusTo(component: Component?) {
+        KeyboardFocusManager::class.java.getDeclaredMethod("setGlobalPermanentFocusOwner", Component::class.java)
+            .apply { isAccessible = true }
+            .invoke(KeyboardFocusManager.getCurrentKeyboardFocusManager(), component)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
+
+    fun fireComposerFocusGained(panel: ThreadPanel) {
         val composer = composer(panel)
         composer.focusGained(FocusEvent(composer, FocusEvent.FOCUS_GAINED))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
