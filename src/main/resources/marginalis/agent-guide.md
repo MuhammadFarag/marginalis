@@ -378,6 +378,8 @@ in the user's browser, code links in the editor — see Code links),
 lists, task lists (`- [ ]` and `- [x]` show as ☐ and ☑), headings
 (rescaled to margin proportions) and tables. Bare web addresses become
 links too; only http and https links open in the browser.
+A single line break renders as typed, so write each paragraph on one
+line and don't hard-wrap prose.
 Leave a blank line before a table: one directly after a line of text
 shows as raw pipes, unlike on GitHub. A top-level table keeps its
 natural width and scrolls sideways when it is wider than the panel; a
