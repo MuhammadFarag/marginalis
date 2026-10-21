@@ -213,7 +213,9 @@ https://github.com/MuhammadFarag/marginalis#if-you-use-claude-code.
 
 The user can switch a thread **live** — several can be live at once —
 only while you are waiting; going live is their call, never yours.
-Switching it off needs no one.
+Switching it off needs no one. A thread that orphans leaves live mode;
+once rescued or reopened it comes back live by itself only when the
+whole project is live, otherwise the user switches it on again.
 While a thread is live, each Submit in it (and an Agree) wakes you at
 once with that thread alone — no Submit round. Switching Live on wakes you
 the same way when the thread already holds messages you haven't seen;

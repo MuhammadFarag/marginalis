@@ -73,6 +73,13 @@ abstract class HttpContractTestCase : MarginalisTestCase() {
         }
     }
 
+    protected fun rewrite(path: String = SAMPLE, lineAt: (Int) -> String = { "// rewritten $it" }) {
+        val document = document(path)
+        WriteCommandAction.runWriteCommandAction(project) {
+            document.setText((1..60).joinToString("\n", transform = lineAt))
+        }
+    }
+
     protected fun insertLinesAbove(line: Int, count: Int, path: String = SAMPLE) {
         val document = document(path)
         WriteCommandAction.runWriteCommandAction(project) {
