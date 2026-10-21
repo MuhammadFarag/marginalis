@@ -13,10 +13,14 @@ History before 0.1.19 lives in git tags.
   it. A reply that arrived while its file, or the Margin tab, was in a
   background tab used to stay hidden until something else changed on
   the thread.
-- The reply you are typing in the Margin tab stays where it is when an
-  agent posts into another thread above it, and keeps your cursor. The
-  same goes for a new project thread you are writing. Reading without
-  a draft, the card at the top of your view stays put too.
+- The reply you are typing in the Margin tab stays where it is on
+  screen, with your text and cursor, when other threads grow, move or
+  are resolved, and when the agent answers in the same thread. A
+  message you are editing stays put too, even while you check a file
+  or work in a tool window. When the whole tab fits on screen, your
+  reply shifts with the threads around it but stays in view. Scrolled
+  down to read, the thread at the top of your view stays put; at the
+  very top, new threads and replies still come into view.
 
 ## [0.2.4] - 2026-10-19
 
