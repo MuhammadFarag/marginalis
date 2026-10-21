@@ -85,6 +85,8 @@
              an IDE restart. -->
         <listener class="dev.marginalis.plugin.MarginalisUnloadListener"
                   topic="com.intellij.ide.plugins.DynamicPluginListener"/>
+        <listener class="dev.marginalis.plugin.ui.LiveBadgeIcon$ThemeChange"
+                  topic="com.intellij.ide.ui.LafManagerListener"/>
     </applicationListeners>
 
     <extensions defaultExtensionNs="com.intellij">

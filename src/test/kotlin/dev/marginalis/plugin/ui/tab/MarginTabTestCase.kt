@@ -3,6 +3,7 @@ package dev.marginalis.plugin.ui.tab
 import dev.marginalis.plugin.testing.Agent
 import dev.marginalis.plugin.testing.MarginTab
 import dev.marginalis.plugin.testing.ProjectTabSettings
+import dev.marginalis.plugin.testing.Relays
 import dev.marginalis.plugin.transport.HttpContractTestCase
 
 abstract class MarginTabTestCase : HttpContractTestCase() {
@@ -25,6 +26,8 @@ abstract class MarginTabTestCase : HttpContractTestCase() {
     }
 
     protected fun Agent.ask(body: String, vararg fields: Pair<String, Any?>): String = add("body" to body, *fields)
+
+    protected fun Agent.relay(id: Long, body: String): String = add("body" to body, "relayed" to Relays.conversationComment(id))
 
     protected fun shown(): List<String> = tab.rows()
 

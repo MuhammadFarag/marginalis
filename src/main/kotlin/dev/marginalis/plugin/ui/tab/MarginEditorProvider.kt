@@ -13,6 +13,9 @@ class MarginEditorProvider : FileEditorProvider, DumbAware {
 
     override fun accept(project: Project, file: VirtualFile): Boolean = file === MarginFile
 
+    // Under the default read action, a stalled write elsewhere makes the platform blame this provider.
+    override fun acceptRequiresReadAction(): Boolean = false
+
     override fun createEditor(project: Project, file: VirtualFile): FileEditor = MarginEditor(project)
 
     override fun getEditorTypeId(): String = "marginalis-project-tab"

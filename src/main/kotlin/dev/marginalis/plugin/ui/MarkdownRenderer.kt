@@ -27,6 +27,8 @@ import dev.marginalis.core.Reference
 import dev.marginalis.core.Resolution
 import dev.marginalis.plugin.store.MarginalisStore
 import org.intellij.markdown.IElementType
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
@@ -51,6 +53,7 @@ import javax.swing.event.PopupMenuEvent
 import javax.swing.event.PopupMenuListener
 import javax.swing.text.DefaultCaret
 import javax.swing.text.html.HTMLEditorKit
+import javax.swing.text.html.StyleSheet
 
 /**
  * GitHub-flavoured, with images as placeholders and raw HTML reduced to
@@ -63,35 +66,44 @@ object MarkdownRenderer {
     private const val FENCE_PREVIEW_CHARS = 40
     private val WEB_PROTOCOLS = setOf("http", "https")
 
-    fun render(project: Project, body: String, wrapWidth: Int): JComponent {
+    fun render(project: Project, typed: String, wrapWidth: Int): JComponent {
+        val body = typed.withPlainLineEndings()
         val box = Box.createVerticalBox()
         var consumedUpTo = 0
+        var afterCodeBlock = false
         // An unclosed fence is still prose to GitHub-flavoured Markdown.
         for (fence in closedFences(body)) {
-            val textBefore = body.substring(consumedUpTo, fence.start)
-            if (textBefore.isNotBlank()) addProse(box, project, textBefore, wrapWidth)
+            addProse(box, project, Prose(body.substring(consumedUpTo, fence.start), afterCodeBlock, beforeBlock = true), wrapWidth)
             box.add(Box.createVerticalStrut(JBUI.scale(4)))
             box.add(codeBlock(project, fence.language, body.substring(fence.codeStart, fence.codeEnd).trimEnd('\n')))
             box.add(Box.createVerticalStrut(JBUI.scale(4)))
             consumedUpTo = fence.end
+            afterCodeBlock = true
         }
-        val remainder = body.substring(consumedUpTo)
-        if (remainder.isNotBlank()) addProse(box, project, remainder, wrapWidth)
+        addProse(box, project, Prose(body.substring(consumedUpTo), afterCodeBlock, beforeBlock = false), wrapWidth)
         return box
     }
 
-    private fun addProse(box: JComponent, project: Project, markdown: String, wrapWidth: Int) {
+    private class Prose(val markdown: String, val afterBlock: Boolean = false, val beforeBlock: Boolean = false)
+
+    private fun addProse(box: JComponent, project: Project, prose: Prose, wrapWidth: Int) {
         var consumedUpTo = 0
-        for (table in topLevelTables(markdown)) {
-            val textBefore = markdown.substring(consumedUpTo, table.first)
-            if (textBefore.isNotBlank()) box.add(htmlPane(project, textBefore, wrapWidth))
+        var afterTable = false
+        for (table in topLevelTables(prose.markdown)) {
+            val textBefore = Prose(prose.markdown.substring(consumedUpTo, table.first), afterTable || prose.afterBlock, beforeBlock = true)
+            addHtmlPane(box, project, textBefore, wrapWidth)
             box.add(Box.createVerticalStrut(JBUI.scale(4)))
-            box.add(tablePane(project, markdown.substring(table), wrapWidth))
+            box.add(tablePane(project, prose.markdown.substring(table), wrapWidth))
             box.add(Box.createVerticalStrut(JBUI.scale(4)))
             consumedUpTo = table.last + 1
+            afterTable = true
         }
-        val remainder = markdown.substring(consumedUpTo)
-        if (remainder.isNotBlank()) box.add(htmlPane(project, remainder, wrapWidth))
+        addHtmlPane(box, project, Prose(prose.markdown.substring(consumedUpTo), afterTable || prose.afterBlock, prose.beforeBlock), wrapWidth)
+    }
+
+    private fun addHtmlPane(box: JComponent, project: Project, prose: Prose, wrapWidth: Int) {
+        val html = toHtml(prose)
+        if (html.isNotBlank()) box.add(htmlPane(project, html, wrapWidth))
     }
 
     private fun topLevelTables(markdown: String): List<IntRange> =
@@ -99,7 +111,8 @@ object MarkdownRenderer {
             .filter { it.type == GFMElementTypes.TABLE }
             .map { it.startOffset until it.endOffset }
 
-    fun previewText(body: String): String {
+    fun previewText(typed: String): String {
+        val body = typed.withPlainLineEndings()
         val flattened = StringBuilder()
         var consumedUpTo = 0
         for (fence in closedFences(body)) {
@@ -141,20 +154,67 @@ object MarkdownRenderer {
         }
     }
 
+    private fun String.withPlainLineEndings(): String = replace("\r\n", "\n")
+
     private fun closedFences(body: String): List<CodeFence> = CodeFences.find(body).filter { it.closed }
 
     // GFM writes strikethrough as <span class="user-del">, which Swing's
     // HTML 3.2 kit cannot draw; <s> it can.
-    private class Flavour : GFMFlavourDescriptor() {
+    private class Flavour(private val lineBreaks: TypedLineBreaks? = null) : GFMFlavourDescriptor() {
         override fun createHtmlGeneratingProviders(linkMap: LinkMap, baseURI: URI?): Map<IElementType, GeneratingProvider> =
             super.createHtmlGeneratingProviders(linkMap, baseURI) +
-                (GFMElementTypes.STRIKETHROUGH to SimpleInlineTagProvider("s", 2, -2))
+                (GFMElementTypes.STRIKETHROUGH to SimpleInlineTagProvider("s", 2, -2)) +
+                listOfNotNull(lineBreaks?.let { MarkdownTokenTypes.EOL to it })
     }
 
     private val GENERATED_TASK_CHECKBOX = Regex("<input type=\"checkbox\" class=\"task-list-item-checkbox\"( checked)? disabled />")
 
-    private fun toHtml(markdown: String): String {
-        val flavour = Flavour()
+    private class TypedLineBreaks(private val prose: Prose) : GeneratingProvider {
+        override fun processNode(visitor: HtmlGenerator.HtmlGeneratingVisitor, text: String, node: ASTNode) {
+            visitor.consumeHtml(
+                when {
+                    node.isSoftBreak() -> "<br />\n"
+                    node.isBlankLineBeyondTheFirstBetweenBlocks() -> "<p>\u00A0</p>\n"
+                    else -> HtmlGenerator.leafText(text, node)
+                },
+            )
+        }
+
+        private fun ASTNode.isSoftBreak(): Boolean = isInsideParagraph() && !followsHardBreak()
+
+        private fun ASTNode.isInsideParagraph(): Boolean =
+            generateSequence(parent) { it.parent }.any { it.type == MarkdownElementTypes.PARAGRAPH }
+
+        private fun ASTNode.followsHardBreak(): Boolean =
+            parent?.children?.let { it.getOrNull(it.indexOf(this) - 1) }?.type == MarkdownTokenTypes.HARD_LINE_BREAK
+
+        private fun ASTNode.isBlankLineBeyondTheFirstBetweenBlocks(): Boolean {
+            val siblings = parent?.takeIf { it.type == MarkdownElementTypes.MARKDOWN_FILE }?.children ?: return false
+            val before = siblings.subList(0, siblings.indexOf(this))
+            val after = siblings.subList(before.size + 1, siblings.size)
+            val blockEndAndFirstBlankLineBehind = before.takeLastWhile { it.isEndOfLine() }.size >= 2
+            val blockBefore = prose.afterBlock || before.any { !it.isEndOfLine() }
+            val blockAfter = prose.beforeBlock || after.any { !it.isEndOfLine() }
+            return blockEndAndFirstBlankLineBehind && blockBefore && blockAfter
+        }
+
+        private fun ASTNode.isEndOfLine(): Boolean = type == MarkdownTokenTypes.EOL
+    }
+
+    private val LEADING_BLOCK_TAGS = Regex("""^(\s*<(p|ul|ol|li|blockquote)(\s[^>]*)?>)+""")
+    private val BLOCK_TAG = Regex("""<(p|ul|ol|blockquote)(\s[^>]*)?>""")
+    private val ITEM_OPENING_PARAGRAPH = Regex("""(?<=<li>)<p>""")
+
+    // Swing CSS has no :first-child.
+    private fun markFirstBlocks(html: String): String =
+        LEADING_BLOCK_TAGS.replace(html) { run -> BLOCK_TAG.replace(run.value, ::markedFirst) }
+            .replace(ITEM_OPENING_PARAGRAPH, "<p class=\"first\">")
+
+    private fun markedFirst(tag: MatchResult): String = "<${tag.groupValues[1]} class=\"first\"${tag.groupValues[2]}>"
+
+    private fun toHtml(prose: Prose): String {
+        val markdown = prose.markdown
+        val flavour = Flavour(TypedLineBreaks(prose))
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
         return HtmlGenerator(markdown, tree, flavour).generateHtml()
             .removePrefix("<body>").removeSuffix("</body>")
@@ -163,10 +223,11 @@ object MarkdownRenderer {
             // Added after sanitizing, so a body still cannot set any attribute.
             .replace("<table>", "<table cellspacing=\"0\">")
             .let(Reference::linkify)
+            .let(::markFirstBlocks)
     }
 
-    private fun htmlPane(project: Project, markdown: String, wrapWidth: Int): JComponent {
-        val pane = editorPane(project, toHtml(markdown), HTMLEditorKitBuilder().withWordWrapViewFactory().build())
+    private fun htmlPane(project: Project, html: String, wrapWidth: Int): JComponent {
+        val pane = editorPane(project, html, HTMLEditorKitBuilder().withWordWrapViewFactory().build())
         // Sized to the target width first so preferred height reflects wrapping.
         pane.setSize(wrapWidth, Int.MAX_VALUE)
         pane.alignmentX = Component.LEFT_ALIGNMENT
@@ -183,7 +244,7 @@ object MarkdownRenderer {
         // Swing sizes a table a little narrower than its cells' text and wraps
         // them anyway; scrolling sideways is what this pane is for.
         kit.styleSheet.addRule("th, td { white-space: nowrap; }")
-        editorPane(project, toHtml(markdown), kit, pane)
+        editorPane(project, toHtml(Prose(markdown)), kit, pane)
         // An unsized pane reports the height of a narrower layout; measure at its own width.
         pane.setSize(pane.preferredSize.width, Int.MAX_VALUE)
         val natural = pane.preferredSize
@@ -210,6 +271,7 @@ object MarkdownRenderer {
         val grid = ColorUtil.toHtmlColor(JBColor.border())
         kit.styleSheet.addRule("th, td { border-width: 1px; border-style: solid; border-color: $grid; padding: 3px 6px; }")
         kit.styleSheet.addRule("th { text-align: left; }")
+        kit.styleSheet.spaceBlocksApart()
         pane.editorKit = kit
         pane.isEditable = false
         pane.isOpaque = false
@@ -236,6 +298,14 @@ object MarkdownRenderer {
             })
         }
         return pane
+    }
+
+    private fun StyleSheet.spaceBlocksApart() {
+        addRule("p { margin-top: 10px; }")
+        // Swing does not collapse margins, so a list keeps none below.
+        addRule("ul, ol { margin-top: 3px; margin-bottom: 0; }")
+        addRule("li { margin-top: 0; }")
+        addRule("p.first, ul.first, ol.first, blockquote.first { margin-top: 0; }")
     }
 
     private fun activate(project: Project, click: HyperlinkEvent) {

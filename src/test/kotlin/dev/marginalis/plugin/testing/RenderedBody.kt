@@ -17,6 +17,7 @@ import javax.swing.text.AttributeSet
 import javax.swing.text.Element
 import javax.swing.text.Position
 import javax.swing.text.View
+import javax.swing.text.html.CSS
 import javax.swing.text.html.HTML
 import javax.swing.text.html.HTMLDocument
 
@@ -37,6 +38,36 @@ class RenderedBody private constructor(private val parts: List<JComponent>) {
     fun lines(): List<String> = prose.flatMap { textOf(it).lines() }.map { it.trim() }.filter { it.isNotEmpty() }
 
     fun text(): String = prose.joinToString("\n") { textOf(it) }
+
+    fun screen(): List<String> = parts.flatMap { part ->
+        when (part) {
+            is JScrollPane -> listOf("[table]")
+            is JEditorPane -> screenLinesOf(part)
+            else -> listOf("[code]")
+        }
+    }
+
+    private fun screenLinesOf(pane: JEditorPane): List<String> {
+        val document = pane.document as HTMLDocument
+        val body = generateSequence<Element>(document.defaultRootElement) { parent ->
+            (0 until parent.elementCount).map(parent::getElement).firstOrNull { it.name == "body" }
+        }.last()
+        return linesBlocks(body).flatMap { block ->
+            document.getText(block.startOffset, block.endOffset - block.startOffset).trimEnd('\n').lines().map { it.trim() }
+        }
+    }
+
+    private fun linesBlocks(element: Element): List<Element> {
+        val children = (0 until element.elementCount).map(element::getElement)
+        return if (children.all { it.isLeaf }) listOf(element) else children.filterNot { it.isLeaf }.flatMap(::linesBlocks)
+    }
+
+    fun marginAboveInPx(words: String, block: String): Int {
+        val (document, offset) = locate(words)
+        val element = generateSequence<Element>(document.getCharacterElement(offset)) { it.parentElement }.first { it.name == block }
+        val marginTop = document.styleSheet.getRule(HTML.getTag(block), element).getAttribute(CSS.Attribute.MARGIN_TOP)
+        return marginTop?.toString()?.removeSuffix("px")?.trim()?.toInt() ?: 0
+    }
 
     private fun textOf(pane: JEditorPane): String = pane.document.getText(0, pane.document.length).trim()
 

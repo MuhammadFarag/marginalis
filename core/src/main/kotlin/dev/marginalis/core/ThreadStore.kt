@@ -3,9 +3,15 @@ package dev.marginalis.core
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 
 class ThreadStore {
     private val threads = ConcurrentHashMap<String, CommentThread>()
+    private val arrivalOrder = ConcurrentHashMap<String, Long>()
+    private val arrivalCount = AtomicLong()
+
+    // Windows' coarse clock gives threads created back to back the same createdAt.
+    private val createdThenArrived = compareBy<CommentThread>({ it.createdAt }, { arrivalOrder[it.id] ?: Long.MAX_VALUE })
     private val listeners = CopyOnWriteArrayList<(CommentThread) -> Unit>()
     private val _deletedRelays = ConcurrentHashMap.newKeySet<Relayed.Key>()
     private val relayLock = Any()
@@ -21,12 +27,17 @@ class ThreadStore {
     }
 
     fun add(thread: CommentThread) {
-        threads[thread.id] = thread
+        put(thread)
         notifyChanged(thread)
     }
 
     /** Rehydration only. */
     fun addSilently(thread: CommentThread) {
+        put(thread)
+    }
+
+    private fun put(thread: CommentThread) {
+        arrivalOrder.computeIfAbsent(thread.id) { arrivalCount.incrementAndGet() }
         threads[thread.id] = thread
     }
 
@@ -46,7 +57,7 @@ class ThreadStore {
         }
     }
 
-    fun all(): List<CommentThread> = threads.values.sortedBy { it.createdAt }
+    fun all(): List<CommentThread> = threads.values.sortedWith(createdThenArrived)
 
     fun query(
         file: String? = null,
@@ -76,6 +87,7 @@ class ThreadStore {
 
     fun remove(id: String): CommentThread? {
         val removed = threads.remove(id)
+        arrivalOrder.remove(id)
         removed?.let { notifyChanged(it) }
         return removed
     }
@@ -88,6 +100,7 @@ class ThreadStore {
     fun clear(): List<CommentThread> {
         val removed = all()
         threads.clear()
+        arrivalOrder.clear()
         _deletedRelays.clear()
         removed.forEach { notifyChanged(it) }
         return removed

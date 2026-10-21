@@ -73,6 +73,8 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
 
     fun openToolWindow(): MarginToolWindow = MarginToolWindow(project, disposable)
 
+    fun toolWindowStripe(): MarginToolWindow.Window = MarginToolWindow.stripe(project, disposable)
+
     fun openMarginTab(): MarginTab = MarginTab(project, disposable).open()
 
     fun changeProjectTabSettings(edit: ProjectTabSettings.() -> Unit) {
@@ -171,6 +173,14 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
     }
 
     fun resolve(threadId: String) = press(open(threadId), "Resolve")
+
+    fun reopen(threadId: String) = press(open(threadId), "Reopen")
+
+    fun goProjectLive() = openToolWindow().turnProjectLive(true)
+
+    fun stopProjectLive() = openToolWindow().turnProjectLive(false)
+
+    fun isProjectLive(): Boolean = openToolWindow().isProjectLive()
 
     fun submitRound() {
         val action = SubmitRoundAction()
@@ -301,7 +311,36 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
 
-    fun focusComposer(panel: ThreadPanel) {
+    fun writeIn(panel: ThreadPanel, text: String, caretAt: Int = text.length): EditorTextField {
+        type(panel, text)
+        val composer = composer(panel)
+        composer.editor!!.caretModel.moveToOffset(caretAt)
+        focusOn(composer.editor!!.contentComponent)
+        return composer
+    }
+
+    fun lastFocusedInWindowOf(component: Component): Component? = SwingUtilities.getWindowAncestor(component)?.mostRecentFocusOwner
+
+    private var focusMoved = false
+
+    fun focusOn(component: Component) {
+        check(component.isFocusable) { "$component can't take focus" }
+        if (!focusMoved) {
+            focusMoved = true
+            Disposer.register(disposable) { movePermanentFocusTo(null) }
+        }
+        movePermanentFocusTo(component)
+    }
+
+    @AllowReflection("A test frame is never shown, so AWT never moves focus into it, and no public API moves it there")
+    private fun movePermanentFocusTo(component: Component?) {
+        KeyboardFocusManager::class.java.getDeclaredMethod("setGlobalPermanentFocusOwner", Component::class.java)
+            .apply { isAccessible = true }
+            .invoke(KeyboardFocusManager.getCurrentKeyboardFocusManager(), component)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
+
+    fun fireComposerFocusGained(panel: ThreadPanel) {
         val composer = composer(panel)
         composer.focusGained(FocusEvent(composer, FocusEvent.FOCUS_GAINED))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
