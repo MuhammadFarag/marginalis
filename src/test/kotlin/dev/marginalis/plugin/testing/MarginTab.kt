@@ -238,7 +238,11 @@ class MarginTab(private val project: Project, private val disposable: Disposable
         settle()
     }
 
-    fun scrollToBottom() = scrollTo(stack.height)
+    fun scrollToBottom() {
+        // The height is read once the stack has laid out what just arrived, or the bottom is the old one.
+        settle()
+        scrollTo(stack.height)
+    }
 
     fun whileDraggingTheScrollBar(meanwhile: () -> Unit) {
         val bar = scroll.verticalScrollBar
