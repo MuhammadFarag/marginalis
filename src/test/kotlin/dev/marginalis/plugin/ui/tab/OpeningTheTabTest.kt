@@ -31,10 +31,11 @@ class OpeningTheTabTest : MarginTabTestCase() {
         val thread = agent.addOnLine(5, "body" to "Still open in the editor")
         user.open(thread)
         tab.close()
+        val address = tab.file.url
         var tabAddressWhileUnloading: Any? = Unit
 
         val failure = tab.unloadPluginForUpdate {
-            tabAddressWhileUnloading = VirtualFileManager.getInstance().findFileByUrl("marginalis://margin")
+            tabAddressWhileUnloading = VirtualFileManager.getInstance().findFileByUrl(address)
         }
 
         assertNull(failure)
@@ -43,11 +44,25 @@ class OpeningTheTabTest : MarginTabTestCase() {
     }
 
     fun testWhileThePluginIsUnloadedTheTabCannotBeRestoredByItsAddress() {
-        var found: Any? = MarginFile
-        tab.reloadPlugin { found = VirtualFileManager.getInstance().findFileByUrl("marginalis://margin") }
+        val address = tab.file.url
+        var found: Any? = tab.file
+        tab.reloadPlugin { found = VirtualFileManager.getInstance().findFileByUrl(address) }
 
         assertNull(found)
         assertTrue(tab.isOpen)
+    }
+
+    fun testAReloadedPluginBringsBackEveryProjectsTab() {
+        withTwin { second, there ->
+            there.pin()
+
+            tab.reloadPlugin()
+            there.openOnStartup()
+
+            assertEquals(listOf("marginalis://margin/${project.locationHash}"), tab.marginAddresses())
+            assertEquals(listOf("marginalis://margin/${second.project.locationHash}"), there.marginAddresses())
+            assertTrue(there.isPinned)
+        }
     }
 
     fun testAClosedTabStaysClosedWhenTheProjectOpensAgain() {

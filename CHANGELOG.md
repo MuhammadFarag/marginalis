@@ -21,6 +21,8 @@ History before 0.1.19 lives in git tags.
   rewrite could leave it open, pinned to whatever code took its old line.
 - Updating or uninstalling Marginalis while the Margin tab is closed no
   longer reports an IDE error or asks you to restart.
+- Opening a second project no longer reports an IDE error from
+  Marginalis. Each project now keeps its own Margin tab.
 
 ## [0.2.5] - 2026-10-21
 
