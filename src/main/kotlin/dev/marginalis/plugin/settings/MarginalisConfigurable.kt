@@ -296,6 +296,15 @@ class MarginalisConfigurable : Configurable {
                     )
                     .bindSelected(state::notifyOnAgentReply)
             }
+            row {
+                checkBox("Live by default")
+                    .comment(
+                        "Live needs an agent listening. While one is, every open thread is live and each Submit " +
+                            "wakes the agent at once, without a Submit round. " +
+                            "A project follows this until you flip ⚡ in its Marginalis tool window.",
+                    )
+                    .bindSelected(state::liveByDefault)
+            }
             row("Time format:") {
                 comboBox(TimeFormat.entries, textListCellRenderer { it?.label })
                     .comment("Message timestamps in thread panels.")
@@ -371,6 +380,7 @@ class MarginalisConfigurable : Configurable {
         val settings = MarginalisSettings.getInstance()
         val bylinesBefore = bylineSettings()
         val tabBefore = settings.projectTabPrefs
+        val liveByDefaultBefore = settings.state.liveByDefault
         panel?.apply()
         settings.rows = edited
         settings.state.userPicture = userPicture
@@ -378,6 +388,7 @@ class MarginalisConfigurable : Configurable {
         resetPeople()
         if (bylineSettings() != bylinesBefore) refreshThreads()
         if (settings.projectTabPrefs != tabBefore) ProjectTab.applyPrefs()
+        if (settings.state.liveByDefault != liveByDefaultBefore) MarginalisStore.liveByDefaultChanged(settingsWasLive = liveByDefaultBefore)
     }
 
     private fun bylineSettings(): List<Any> {

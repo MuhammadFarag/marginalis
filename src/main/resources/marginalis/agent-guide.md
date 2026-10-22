@@ -212,11 +212,14 @@ https://github.com/MuhammadFarag/marginalis#if-you-use-claude-code.
 ### Live threads
 
 The user can switch a thread **live** — several can be live at once —
-but only while you are waiting; going live is their call, never yours.
+only while you are waiting; going live is their call, never yours.
+Switching it off needs no one. A thread that orphans leaves live mode;
+once rescued or reopened it comes back live by itself only when the
+whole project is live, otherwise the user switches it on again.
 While a thread is live, each Submit in it (and an Agree) wakes you at
 once with that thread alone — no Submit round. Switching Live on wakes you
 the same way when the thread already holds messages you haven't seen;
-that wake's `handed_back_at` is the time of the thread's last change.
+that wake's `handed_back_at` is the time it went live.
 Every wake names its `reason`: `"hand_back"` for a Submit round, `"live"`
 for a live submit. A live wake's `awaiting` holds only the live
 thread(s) with something new for you — owed to you, or holding messages
@@ -237,6 +240,18 @@ round is pending too, the round wins and carries the whole
 not seen in a thread where you spoke last — and its `handed_back_at` then
 covers the live submit too, so it can be later than the one in
 `comment_list`'s envelope.
+
+The user can also make the **whole project live** — by hand only while
+an agent is waiting, or by default from Settings; turning it off needs
+no one. Then every open thread is live — including threads opened or
+reopened later — unless they switched that thread off, and each Submit
+in any of them wakes you with that thread, as above. These threads stay
+live while you are away: a Submit you missed answers your next wait at
+once when you pass `since`, and making the project live wakes you the same way
+for a thread already holding messages you haven't seen. A thread no
+agent can be told from — the user started it, `@`-addressed no one,
+and not exactly one agent was waiting — wakes nobody until a Submit in
+it made while one agent alone is waiting, or the next Submit round.
 
 After a live wake, answer the thread and **always wait again** — even
 when `awaiting` comes back empty (the thread was resolved, or you had
@@ -367,6 +382,8 @@ in the user's browser, code links in the editor — see Code links),
 lists, task lists (`- [ ]` and `- [x]` show as ☐ and ☑), headings
 (rescaled to margin proportions) and tables. Bare web addresses become
 links too; only http and https links open in the browser.
+A single line break renders as typed, so write each paragraph on one
+line and don't hard-wrap prose.
 Leave a blank line before a table: one directly after a line of text
 shows as raw pipes, unlike on GitHub. A top-level table keeps its
 natural width and scrolls sideways when it is wider than the panel; a

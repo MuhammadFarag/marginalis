@@ -5,6 +5,7 @@ import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.testFramework.PlatformTestUtil
 import dev.marginalis.plugin.settings.MarginalisSettings
 
 class AnchoringTest : HttpContractTestCase() {
@@ -207,6 +208,70 @@ class AnchoringTest : HttpContractTestCase() {
         assertEquals("open", agent.threads().single { it.id == moved }.string("status"))
     }
 
+    fun testAReplyAfterARewriteLeavesTheThreadOrphanedNotOnItsOldLine() {
+        sample()
+        val id = agent.addOnLine(20)
+        val document = document()
+        WriteCommandAction.runWriteCommandAction(project) {
+            document.setText((1..60).joinToString("\n") { "// rewritten $it" })
+        }
+
+        agent.post("comment_reply", "thread_id" to id, "body" to "Still relevant after the rewrite?")
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        val thread = agent.threads().single()
+        assertEquals("orphaned", thread.string("status"))
+    }
+
+    fun testRightAfterAReplyOnARewrittenFileTheStatusFiltersFindTheThreadOrphaned() {
+        sample()
+        val id = agent.addOnLine(20)
+        rewrite()
+
+        agent.reply(id, "Still relevant after the rewrite?")
+
+        assertEquals(emptyList<String>(), agent.ids("status" to "open"))
+        assertEquals(listOf(id), agent.ids("status" to "orphaned"))
+    }
+
+    fun testAThreadWhoseFileIsRewrittenBeforeItsAddSettlesIsOrphaned() {
+        sample()
+        rewriteAsSoonAsAThreadIsAdded()
+
+        agent.addOnLine(20)
+
+        assertEquals("orphaned", agent.threads().single().string("status"))
+    }
+
+    fun testAThreadReopenedAfterARewriteOrphanedItIsMarkedOnTheLineNowAtItsOldNumber() {
+        sample()
+        val id = agent.addOnLine(20, "body" to "About this line")
+        rewrite()
+        agent.reply(id, "Still relevant after the rewrite?")
+
+        agent.post("comment_reopen", "thread_id" to id)
+
+        assertNotNull(user.gutterIcon(SAMPLE, 20))
+        val reopened = agent.threads().single()
+        assertEquals("open", reopened.string("status"))
+        assertEquals(20, reopened["line"].asInt)
+    }
+
+    fun testAThreadRescuedAfterARewriteOrphanedItIsMarkedOnItsNewLine() {
+        sample()
+        val id = agent.addOnLine(20, "body" to "About this line")
+        rewrite { if (it == 55) lineText(20) else "// rewritten $it" }
+        agent.reply(id, "Still relevant after the rewrite?")
+
+        agent.post("comment_reanchor", "thread_id" to id, "line" to 55, "anchor_text" to lineText(20))
+
+        assertNotNull(user.gutterIcon(SAMPLE, 55))
+        assertNull(user.gutterIcon(SAMPLE, 20))
+        val rescued = agent.threads().single()
+        assertEquals("open", rescued.string("status"))
+        assertEquals(55, rescued["line"].asInt)
+    }
+
     fun testAnOrphanPastTheEndOfARewrittenFileKeepsItsLostText() {
         sample()
         agent.addOnLine(50)
@@ -299,6 +364,16 @@ class AnchoringTest : HttpContractTestCase() {
             assertFalse(FileEditorManager.getInstance(project).isFileOpen(myFixture.findFileInTempDir(SAMPLE)))
         } finally {
             settings.navigationEnabled = true
+        }
+    }
+
+    private fun rewriteAsSoonAsAThreadIsAdded() {
+        var rewritten = false
+        store.threads.addListener {
+            if (!rewritten) {
+                rewritten = true
+                rewrite()
+            }
         }
     }
 }

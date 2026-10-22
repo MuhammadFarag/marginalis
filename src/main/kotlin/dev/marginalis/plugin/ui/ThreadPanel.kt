@@ -691,11 +691,13 @@ class ThreadPanel(
         if (body.isEmpty()) return
         val store = MarginalisStore.getInstance(project)
         val wider = CommentThread(file, line = null, anchorText = null, segment = thread.segment)
-        wider.addMessage(Message(Authors.user, body, to = addressee))
+        val sent = Message(Authors.user, body, to = addressee)
+        wider.addMessage(sent)
         replyArea.text = ""
         store.drafts.remove(thread.id)
         onClose()
         store.threads.add(wider)
+        store.wakeLive(wider, sent.to)
         stayOrNavigateTo(wider)
     }
 
@@ -780,6 +782,10 @@ class ThreadPanel(
         Addressee.User -> Authors.user.displayName
         is Addressee.Agent -> agentNames[to.key] ?: to.key
     }
+
+    val composer: JComponent get() = replyArea
+
+    val isEditing: Boolean get() = editingMessageId != null
 
     fun focusReply() {
         if (!composerExpanded) setComposerExpanded(true)
@@ -875,6 +881,7 @@ class ThreadPanel(
         refreshLive()
         val attached = Disposer.newDisposable(MarginalisStore.getInstance(project), "Marginalis thread panel")
         whileAttached = attached
+        MarginalisStore.getInstance(project).onLiveChange(attached, onWaitersChanged)
         ApplicationManager.getApplication().messageBus.connect(attached).subscribe(
             ApplicationActivationListener.TOPIC,
             object : ApplicationActivationListener {

@@ -33,7 +33,11 @@ class MarginalisStartup : ProjectActivity {
             store.scheduleSave()
         }
         refreshTabOnChange(project, store)
-
+        store.onLiveChange(store) {
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) refreshAllIcons(project, store)
+            }
+        }
         val loaded = MarginalisPersistence.load(project)
         store.handBack.restore(loaded.handedBackAt)
         store.threads.restoreDeletedRelays(loaded.deletedRelays)
@@ -43,7 +47,7 @@ class MarginalisStartup : ProjectActivity {
                 if (project.isDisposed) return@invokeLater
                 for (thread in persisted) {
                     rehydrate(project, thread)
-                    store.threads.addSilently(thread)
+                    store.rehydrate(thread)
                 }
                 // Attach assigns solo icons; group shared lines per file.
                 val files = persisted.mapNotNull { it.file }.distinct()
@@ -57,6 +61,10 @@ class MarginalisStartup : ProjectActivity {
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) ProjectTab.openOnStartup(project)
         }
+    }
+
+    private fun refreshAllIcons(project: Project, store: MarginalisStore) {
+        store.threads.all().mapNotNull { it.file }.distinct().forEach { MarginalisMarkers.refreshIcons(project, it) }
     }
 
     private fun refreshTabOnChange(project: Project, store: MarginalisStore) {
@@ -124,7 +132,9 @@ class MarginalisStartup : ProjectActivity {
 
             thread.line == null -> {}
 
-            thread.status is ThreadStatus.Open && (marker == null || !marker.isValid) -> {
+            store.orphanIfItsCodeIsGone(thread) -> store.threads.notifyChanged(thread)
+
+            thread.status is ThreadStatus.Open && marker == null -> {
                 val base = project.guessProjectDir() ?: return
                 val vFile = thread.file?.let { base.findFileByRelativePath(it) } ?: return
                 val document = FileDocumentManager.getInstance().getDocument(vFile) ?: return
