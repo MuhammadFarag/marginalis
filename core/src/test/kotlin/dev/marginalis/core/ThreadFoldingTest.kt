@@ -5,7 +5,9 @@ import dev.marginalis.core.ThreadFolding.Row
 import dev.marginalis.core.ThreadFolding.View
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ThreadFoldingTest {
 
@@ -20,13 +22,24 @@ class ThreadFoldingTest {
 
     private fun reads(count: Int) = (1..count).map { read("m$it") }
 
-    private fun shape(messages: List<Message>, view: View = View()): List<String> = ThreadFolding.rows(messages, view).map { row ->
-        when (row) {
-            is Row.Open -> row.message.body
-            is Row.Folded -> "(${row.message.body})"
-            is Row.Stack -> "stack(${row.messages.joinToString(",") { it.body }})"
+    private fun shape(messages: List<Message>, view: View = View(), prefs: FoldingPrefs = FoldingPrefs()): List<String> =
+        ThreadFolding.rows(messages, view, prefs).map { row ->
+            when (row) {
+                is Row.Open -> row.message.title
+                is Row.Folded -> "(${row.message.title})"
+                is Row.Stack -> "stack(${row.messages.joinToString(",") { it.title }})"
+            }
         }
-    }
+
+    private val Message.title get() = body.substringBefore('\n')
+
+    private fun long(id: String) = Message(agent, "$id\n" + "line\n".repeat(3), id = id).also { it.markReadByUser() }
+
+    private fun shortAndLong(): List<Message> = listOf(read("m1"), long("L2"), read("m3"), long("L4"), read("m5"), read("m6"))
+
+    private val foldLong = FoldingPrefs(atDefault = LongThreadFolding.FOLD_LONG_READ_MESSAGES)
+    private val foldNothing = FoldingPrefs(atDefault = LongThreadFolding.FOLD_NOTHING)
+    private val firstOpen = FoldingPrefs(keepFirstOpen = true)
 
     @Test
     fun `a read message folds while the last two stay open`() {
@@ -197,5 +210,118 @@ class ThreadFoldingTest {
         assertEquals(Level.DEFAULT, Level.ALL_FOLDED.expanded())
         assertEquals(Level.ALL_EXPANDED, Level.DEFAULT.expanded())
         assertNull(Level.ALL_EXPANDED.expanded())
+    }
+
+    @Test
+    fun `by default every read message folds, short or long, the first included`() {
+        assertEquals(listOf("(m1)", "(L2)", "(m3)", "(L4)", "m5", "m6"), shape(shortAndLong(), prefs = FoldingPrefs()))
+    }
+
+    @Test
+    fun `folding long read messages leaves short read messages open`() {
+        assertEquals(listOf("m1", "(L2)", "m3", "(L4)", "m5", "m6"), shape(shortAndLong(), prefs = foldLong))
+    }
+
+    @Test
+    fun `folding long read messages keeps a long unread message open`() {
+        val messages = listOf(Message(agent, "L1\n" + "line\n".repeat(3), id = "L1"), read("m2"), read("m3"))
+
+        assertEquals(listOf("L1", "m2", "m3"), shape(messages, prefs = foldLong))
+    }
+
+    @Test
+    fun `folding long read messages keeps a long last message open`() {
+        val messages = listOf(read("m1"), long("L2"), long("L3"))
+
+        assertEquals(listOf("m1", "L2", "L3"), shape(messages, prefs = foldLong))
+    }
+
+    @Test
+    fun `folding long read messages stacks a run of more than three long ones`() {
+        val messages = listOf(long("L1"), long("L2"), long("L3"), long("L4"), long("L5"), read("m6"), read("m7"))
+
+        assertEquals(listOf("(L1)", "stack(L2,L3,L4,L5)", "m6", "m7"), shape(messages, prefs = foldLong))
+    }
+
+    @Test
+    fun `folding long read messages keeps the one being edited and one the user opened open`() {
+        assertEquals(listOf("m1", "L2", "m3", "L4", "m5", "m6"), shape(shortAndLong(), View(editing = "L2", opened = setOf("L4")), foldLong))
+    }
+
+    @Test
+    fun `keeping the first message open leaves a long first message open while long ones fold`() {
+        val messages = listOf(long("L1"), read("m2"), long("L3"), read("m4"), read("m5"))
+
+        assertEquals(listOf("L1", "m2", "(L3)", "m4", "m5"), shape(messages, prefs = foldLong.copy(keepFirstOpen = true)))
+    }
+
+    @Test
+    fun `keeping the first message open still folds it when the user folds it while nothing folds`() {
+        assertEquals(listOf("(m1)", "m2", "m3", "m4"), shape(reads(4), View(folded = setOf("m1")), foldNothing.copy(keepFirstOpen = true)))
+    }
+
+    @Test
+    fun `folding nothing leaves every read message open`() {
+        assertEquals(listOf("m1", "m2", "m3", "m4", "m5", "m6"), shape(reads(6), prefs = foldNothing))
+    }
+
+    @Test
+    fun `folding nothing still folds a message the user folded`() {
+        assertEquals(listOf("m1", "(m2)", "m3", "m4"), shape(reads(4), View(folded = setOf("m2")), foldNothing))
+    }
+
+    @Test
+    fun `folding nothing still folds everything when all are folded`() {
+        assertEquals(listOf("(m1)", "stack(m2,m3,m4,m5,m6)"), shape(reads(6), View(level = Level.ALL_FOLDED), foldNothing))
+    }
+
+    @Test
+    fun `keeping the first message open leaves it open among folded read messages`() {
+        assertEquals(listOf("m1", "stack(m2,m3,m4,m5)", "m6", "m7"), shape(reads(7), prefs = firstOpen))
+    }
+
+    @Test
+    fun `keeping the first message open still folds it when all are folded`() {
+        assertEquals(listOf("(m1)", "(m2)", "(m3)"), shape(reads(3), View(level = Level.ALL_FOLDED), firstOpen))
+    }
+
+    @Test
+    fun `keeping the first message open still folds it when the user folds it`() {
+        assertEquals(listOf("(m1)", "(m2)", "m3", "m4"), shape(reads(4), View(folded = setOf("m1")), firstOpen))
+    }
+
+    @Test
+    fun `an unknown stored default view falls back to folding every read message`() {
+        assertEquals(LongThreadFolding.FOLD_EVERY_READ_MESSAGE, LongThreadFolding.fromStored("sideways"))
+        LongThreadFolding.entries.forEach { assertEquals(it, LongThreadFolding.fromStored(it.stored)) }
+    }
+
+    @Test
+    fun `a body of three lines is not long`() {
+        assertFalse(ThreadFolding.isLong("one\ntwo\nthree"))
+    }
+
+    @Test
+    fun `a body of four lines is long`() {
+        assertTrue(ThreadFolding.isLong("one\ntwo\nthree\nfour"))
+    }
+
+    @Test
+    fun `blank lines do not count`() {
+        assertFalse(ThreadFolding.isLong("one\n\n  \ntwo\n\nthree\n"))
+    }
+
+    @Test
+    fun `a line counts once per started eighty characters`() {
+        assertFalse(ThreadFolding.isLong("x".repeat(240)))
+        assertTrue(ThreadFolding.isLong("x".repeat(241)))
+        assertFalse(ThreadFolding.isLong("x".repeat(80) + "\n" + "y".repeat(80) + "\n" + "z".repeat(80)))
+        assertTrue(ThreadFolding.isLong("x".repeat(81) + "\nshort\nshort"))
+    }
+
+    @Test
+    fun `a paragraph of two hundred characters is not long but one of two hundred and fifty is`() {
+        assertFalse(ThreadFolding.isLong("w".repeat(200)))
+        assertTrue(ThreadFolding.isLong("w".repeat(250)))
     }
 }

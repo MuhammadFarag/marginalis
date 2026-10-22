@@ -17,6 +17,13 @@ History before 0.1.19 lives in git tags.
   fits on screen.
 - Fold or expand the whole thread from its header, one step at a time,
   and step back to the usual view the same way.
+- Choose how long threads open in Settings: every read message folded,
+  only the long ones, or nothing at all.
+- Keep a thread's first message open to see how it started. Turn it on
+  in Settings.
+- Agents now open each reply with a one-line summary, so a folded
+  message still tells you where things stand. You can turn this off in
+  Settings.
 
 ## [0.2.6] - 2026-10-21
 

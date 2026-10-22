@@ -80,6 +80,8 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
 
     fun openMarginTab(): MarginTab = MarginTab(project, disposable).open()
 
+    fun changeLongThreadSettings(edit: LongThreadSettings.() -> Unit) = LongThreadSettings.change(edit)
+
     fun changeProjectTabSettings(edit: ProjectTabSettings.() -> Unit) {
         ProjectTabSettings.change(edit)
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
