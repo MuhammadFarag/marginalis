@@ -481,6 +481,12 @@ class MarginTab(private val project: Project, private val disposable: Disposable
         clickHeading(heading(card))
     }
 
+    fun reopen(text: String) {
+        check(card(text).panel != null) { "'$text' is not open in\n${outline()}" }
+        click(text)
+        click(text)
+    }
+
     fun clickConversation(discussion: String) {
         settle()
         val conversation = UIUtil.findComponentsOfType(stack, ConversationCard::class.java).single { conversation ->

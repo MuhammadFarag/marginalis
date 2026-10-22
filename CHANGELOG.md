@@ -9,10 +9,14 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
-- Long threads stay readable. You see the opening message, the last two
-  and anything you haven't read yet; the read middle hides behind one line
-  that shows the full history with a click, and Shorten History in the
-  thread header hides it again.
+- Long threads open folded to what matters. Messages you have read fold
+  to one line with who wrote it and how it starts, while unread messages
+  and the latest two stay open.
+- Fold or open any single message with the arrow beside it.
+- Long runs of folded messages tuck behind one link, so the whole thread
+  fits on screen.
+- Fold or expand the whole thread from its header, one step at a time,
+  and step back to the usual view the same way.
 
 ## [0.2.6] - 2026-10-21
 

@@ -43,6 +43,8 @@ class SettingsPageTest : HttpContractTestCase() {
     private fun bylines(panel: ThreadPanel): List<String> =
         user.shownText(panel).lines().filter { it.matches(Regex("^.+ · \\d{1,2}:\\d{2}.*$")) }.map { it.substringBefore(" · ") }
 
+    private fun openedInFull(threadId: String): ThreadPanel = user.open(threadId).also { user.press(it, "Expand All") }
+
     private fun relayedBy(login: String, body: String = "From GitHub."): String =
         agent.add("file" to SAMPLE, "line" to 5, "anchor_text" to lineText(5), "body" to body, "relayed" to Relays.reviewComment(101, login = login))
 
@@ -129,7 +131,7 @@ class SettingsPageTest : HttpContractTestCase() {
         page.apply()
         user.reply(id, "After.")
 
-        assertEquals(listOf("Claude", before, "Grace"), bylines(user.open(id)))
+        assertEquals(listOf("Claude", before, "Grace"), bylines(openedInFull(id)))
         assertEquals(listOf(before, "Grace"), agent.threads().single().messages().drop(1).map { it.getAsJsonObject("author").string("name") })
     }
 
