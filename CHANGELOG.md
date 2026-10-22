@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-10-21
+
+Thanks to [@schrek1](https://github.com/schrek1) for the fixes in this release.
+
 ### Fixed
 
 - Line breaks you type in a comment now show up after you send it: a
