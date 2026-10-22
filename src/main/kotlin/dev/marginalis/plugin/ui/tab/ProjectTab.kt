@@ -73,7 +73,7 @@ object ProjectTab {
     }
 
     private fun isPinned(project: Project): Boolean =
-        FileEditorManagerEx.getInstanceEx(project).windows.any { it.isFilePinned(MarginFile) }
+        FileEditorManagerEx.getInstanceEx(project).windows.any { it.getComposite(MarginFile)?.isPinned == true }
 
     private fun pin(project: Project) =
         FileEditorManagerEx.getInstanceEx(project).windows

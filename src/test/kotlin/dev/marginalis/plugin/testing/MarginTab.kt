@@ -143,7 +143,7 @@ class MarginTab(private val project: Project, private val disposable: Disposable
 
     val isInFront: Boolean get() = editors.selectedEditor?.file == MarginFile
 
-    val isPinned: Boolean get() = editors.windows.any { it.isFilePinned(MarginFile) }
+    val isPinned: Boolean get() = editors.windows.any { it.getComposite(MarginFile)?.isPinned == true }
 
     fun openTabs(): List<String> = editors.windows.single().allComposites.map { it.file }.map { if (it == MarginFile) "Margin" else it.name }
 
