@@ -294,9 +294,9 @@ standup rather than in a diff.
   project-level no `file` either. In `comment_list` project-level threads
   come first of all, then each file's file-level threads before its line
   threads.
-- Neither drifts: a file-level thread orphans only when its file
-  disappears (reopening on its own when the path comes back), a
-  project-level one never orphans. `comment_reanchor` refuses both, and
+- Neither drifts: a file-level thread is checked when the project
+  opens — it orphans if its file is gone by then and reopens on its own
+  once the path is back — and a project-level one never orphans. `comment_reanchor` refuses both, and
   `navigate` still needs a `file`.
 - Either may carry a `segment` as provenance — the user's selection
   that sparked it, not an anchor.
@@ -381,7 +381,8 @@ lists, task lists (`- [ ]` and `- [x]` show as ☐ and ☑), headings
 (rescaled to margin proportions) and tables. Bare web addresses become
 links too; only http and https links open in the browser.
 A single line break renders as typed, so write each paragraph on one
-line and don't hard-wrap prose.
+line and don't hard-wrap prose. Extra blank lines between blocks show as
+empty lines too, so separate paragraphs with exactly one.
 Leave a blank line before a table: one directly after a line of text
 shows as raw pipes, unlike on GitHub. A top-level table keeps its
 natural width and scrolls sideways when it is wider than the panel; a
@@ -531,7 +532,9 @@ kept, not dropped — and you can rescue them: re-read the file, find
 where the content lives now, `comment_reanchor {thread_id, line,
 anchor_text}`. The thread reopens with a fresh verified anchor. Only
 orphans may move (live anchors answer 409). When a sweep surfaces
-orphans, rescue them before other work; if the content is truly gone,
+orphans, rescue them before other work — not with `comment_reopen`,
+which pins a line thread back on its old line without checking what is
+there now; if the content is truly gone,
 reply saying so and resolve — except an orphaned fyi, which you leave
 for the user. When a whole file was rewritten and its
 threads orphaned together, `comment_reanchor_all {file}` runs the same
@@ -573,7 +576,7 @@ machine-readable `reason` (see Anchoring).
 | `POST comment_add_batch {items: [comment_add payloads], author_name?, author_id?, project?}` | many notes in one call; the envelope's identity and `project` are per-item defaults, `to` and `relayed` are per item only → `{results: [ …success shape… \| {error, reason?, open_projects?} ], created}` in request order, 200 unless the envelope itself is malformed; `created` leaves out items answered `existing: true` |
 | `POST comment_reply {thread_id, body, to?, relayed?, author_name?, author_id?}` | reply in-thread → `{message_id, thread_id, status}`; `to` (an `author_id`, or `user`) addresses the message — omit it to address everyone; `project` is ignored (the thread names it); a blank `body` is a 400; a relayed comment already in the thread adds nothing → `{message_id, thread_id, status, existing: true}`; one already relayed into another thread → 409 `{error, reason: "relayed_elsewhere", thread_id}`, the root of a thread the user deleted → 409 `reason: "deleted_relay"` |
 | `POST comment_resolve {thread_id, author_name?, author_id?}` | outcome landed / moot → `{thread_id, status}` |
-| `POST comment_reopen {thread_id}` | resurface a resolved thread → `{thread_id, status}` |
+| `POST comment_reopen {thread_id}` | resurface a resolved or orphaned thread → `{thread_id, status}`; an orphaned line thread is pinned to whatever now sits on its old line, unverified — rescue orphans with `comment_reanchor` instead |
 | `POST comment_reanchor {thread_id, line, anchor_text?, file?}` | orphan rescue, line threads only (file-level → 400) → `{thread_id, line, status}`; the file is looked up in the thread's own project; `file`, when given, must be the thread's file (cross-file moves → 400); a live thread → 409 `reason: "not_orphaned"` |
 | `POST comment_reanchor_all {file, project?}` | rescue every orphan on one file, searching the whole file by content → `{file, results: [{thread_id, line?, status}], rescued}` |
 | `POST comment_resolve_all {file?, author_name?, author_id?}` | bulk resolve across **every open project** (`project` is ignored; `file` matches that path in each) — every thread not already resolved, fyi and orphaned ones included, so only when the outcomes genuinely all landed — which resolves fyis, the user's to close, so only on the user's explicit request → `{resolved: <count>}` |
