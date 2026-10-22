@@ -393,6 +393,15 @@ Deliberately outside the scope: images show as `[image]`, and raw HTML
 is reduced to the constructs above — any other tag is dropped, keeping
 its text — so stay within them.
 
+<!-- when:summary-line -->
+Open each reply with a one-line conclusion — what you did, decided or
+need — short enough to read as the message's title, then the detail in
+the paragraphs below. The user folds read messages to that first line,
+so it is what they see of your reply later. This is a recommendation the
+user turned on in their settings; a reply that does not follow it still
+works.
+<!-- end:summary-line -->
+
 ## References
 
 `mg:` plus the first 8 characters of a thread's or message's id — e.g.

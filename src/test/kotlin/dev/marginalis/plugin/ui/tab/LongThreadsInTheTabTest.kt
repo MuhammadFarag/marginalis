@@ -38,6 +38,17 @@ class LongThreadsInTheTabTest : TabInFrontTestCase() {
         assertEquals(listOf(6, 7), opened(tab.panel("Point 1.")))
     }
 
+    fun testAnOpenCardTakesUpANewChoiceOnApply() {
+        readElsewhere()
+        tab.reopen("Point 1.")
+
+        user.changeLongThreadSettings { openWith("Fold nothing") }
+        tab.settle()
+
+        assertEquals((1..7).toList(), opened(tab.panel("Point 1.")))
+        assertEquals(emptyList<String>(), stacks(tab.panel("Point 1.")))
+    }
+
     fun testAReferenceIntoTheStackOpensOnlyThatMessage() {
         readElsewhere()
         tab.reopen("Point 1.")

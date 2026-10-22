@@ -1,9 +1,32 @@
 package dev.marginalis.core
 
+enum class LongThreadFolding(val stored: String) {
+    FOLD_EVERY_READ_MESSAGE("FOLD_EVERY_READ_MESSAGE"),
+    FOLD_LONG_READ_MESSAGES("FOLD_LONG_READ_MESSAGES"),
+    FOLD_NOTHING("FOLD_NOTHING");
+
+    fun folds(message: Message): Boolean = when (this) {
+        FOLD_EVERY_READ_MESSAGE -> true
+        FOLD_LONG_READ_MESSAGES -> ThreadFolding.isLong(message.body)
+        FOLD_NOTHING -> false
+    }
+
+    companion object {
+        fun fromStored(stored: String): LongThreadFolding = entries.firstOrNull { it.stored == stored } ?: FOLD_EVERY_READ_MESSAGE
+    }
+}
+
+data class FoldingPrefs(
+    val atDefault: LongThreadFolding = LongThreadFolding.FOLD_EVERY_READ_MESSAGE,
+    val keepFirstOpen: Boolean = false,
+)
+
 object ThreadFolding {
 
     private const val OPEN_AT_THE_END = 2
     private const val STACK_ABOVE = 3
+    private const val LONGER_THAN_LINES = 3
+    private const val LINE_WIDTH = 80
 
     enum class Level {
         ALL_FOLDED, DEFAULT, ALL_EXPANDED;
@@ -28,8 +51,12 @@ object ThreadFolding {
         val revealed: Set<String> = emptySet(),
     )
 
-    fun rows(messages: List<Message>, view: View): List<Row> {
-        val lastOpen = messages.filterNot(Message::agrees).takeLast(OPEN_AT_THE_END).mapTo(mutableSetOf()) { it.id }
+    fun isLong(body: String): Boolean =
+        body.lines().filter(String::isNotBlank).sumOf { (it.length + LINE_WIDTH - 1) / LINE_WIDTH } > LONGER_THAN_LINES
+
+    fun rows(messages: List<Message>, view: View, prefs: FoldingPrefs = FoldingPrefs()): List<Row> {
+        val openByRule = messages.filterNot(Message::agrees).takeLast(OPEN_AT_THE_END).mapTo(mutableSetOf()) { it.id }
+        if (prefs.keepFirstOpen) messages.firstOrNull()?.let { openByRule += it.id }
         val rows = mutableListOf<Row>()
         val run = mutableListOf<Message>()
         fun endRun() {
@@ -38,7 +65,7 @@ object ThreadFolding {
         }
         messages.forEachIndexed { index, message ->
             when {
-                !folds(message, view, lastOpen) -> {
+                !folds(message, view, prefs, openByRule) -> {
                     endRun()
                     rows += Row.Open(message)
                 }
@@ -53,13 +80,13 @@ object ThreadFolding {
         return rows
     }
 
-    private fun folds(message: Message, view: View, lastOpen: Set<String>): Boolean = when {
+    private fun folds(message: Message, view: View, prefs: FoldingPrefs, openByRule: Set<String>): Boolean = when {
         message.agrees || message.id == view.editing || message.id in view.opened -> false
         message.id in view.folded -> true
         else -> when (view.level) {
             Level.ALL_FOLDED -> true
             Level.ALL_EXPANDED -> false
-            Level.DEFAULT -> message.readByUser && message.id !in view.keptOpen && message.id !in lastOpen
+            Level.DEFAULT -> message.readByUser && message.id !in view.keptOpen && message.id !in openByRule && prefs.atDefault.folds(message)
         }
     }
 

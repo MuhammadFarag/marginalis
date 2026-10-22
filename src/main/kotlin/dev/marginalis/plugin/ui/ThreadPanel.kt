@@ -47,6 +47,7 @@ import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Face
 import dev.marginalis.core.FaceKey
 import dev.marginalis.core.Faces
+import dev.marginalis.core.FoldingPrefs
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
@@ -225,6 +226,8 @@ class ThreadPanel(
     private var editingMessageId: String? = null
     private var level = ThreadFolding.Level.DEFAULT
     private val keptOpen = mutableSetOf<String>()
+    private val readWhileOpen = mutableSetOf<String>()
+    private var foldedBy: FoldingPrefs? = null
     private var messagesRendered: Set<String>? = null
     private val openedHere = mutableSetOf<String>()
     private val foldedHere = mutableSetOf<String>()
@@ -996,12 +999,19 @@ class ThreadPanel(
         var previousOpen: Message? = null
         var githubBlock: JPanel? = null
         keepArrivalsOpen()
+        val foldingPrefs = MarginalisSettings.getInstance().foldingPrefs
+        releaseKeptOpenOnNewFoldingPrefs(foldingPrefs)
         val rows = ThreadFolding.rows(
             thread.messages,
             ThreadFolding.View(level, keptOpen, editingMessageId, openedHere, foldedHere, revealedHere),
+            foldingPrefs,
         )
         openMessages = rows.filterIsInstance<ThreadFolding.Row.Open>().map { it.message }
-        if (level == ThreadFolding.Level.DEFAULT) openMessages.filterNot { it.id in openedHere }.mapTo(keptOpen) { it.id }
+        if (level == ThreadFolding.Level.DEFAULT) {
+            val keptInView = openMessages.filterNot { it.id in openedHere }
+            keptInView.mapTo(keptOpen) { it.id }
+            keptInView.filterNot { it.readByUser }.mapTo(readWhileOpen) { it.id }
+        }
         val tagged = newTags(thread)
         showsNewTags = openMessages.any { it.id in tagged }
         for (row in rows) {
@@ -1142,8 +1152,17 @@ class ThreadPanel(
     }
 
     private fun keepArrivalsOpen() {
-        messagesRendered?.let { rendered -> thread.messages.filterNot { it.id in rendered }.mapTo(keptOpen) { it.id } }
+        messagesRendered?.let { rendered ->
+            val arrivals = thread.messages.filterNot { it.id in rendered }.map { it.id }
+            keptOpen += arrivals
+            readWhileOpen += arrivals
+        }
         messagesRendered = thread.messages.mapTo(mutableSetOf()) { it.id }
+    }
+
+    private fun releaseKeptOpenOnNewFoldingPrefs(prefs: FoldingPrefs) {
+        if (foldedBy != null && prefs != foldedBy) keptOpen.retainAll(readWhileOpen)
+        foldedBy = prefs
     }
 
     private fun revealStack(messages: List<Message>) {
