@@ -175,7 +175,7 @@ class SelectOpenedThreadTest : ToolWindowTestCase() {
         val panel = user.open(first)
         moveCaretTo(9)
 
-        user.focusComposer(panel)
+        user.fireComposerFocusGained(panel)
         window.selectOpenedThread()
 
         assertEquals("✉ L9  second", window.selected())
@@ -270,7 +270,7 @@ class SelectOpenedThreadTest : ToolWindowTestCase() {
         window.selectOpenedThread()
         assertEquals("Project  2", window.selected())
 
-        user.focusComposer(tab.panel("second plan"))
+        user.fireComposerFocusGained(tab.panel("second plan"))
         window.selectOpenedThread()
         assertEquals("Project  2", window.selected())
     }
@@ -352,7 +352,7 @@ class SelectOpenedThreadTest : ToolWindowTestCase() {
         val panel = diff.panels().single()
         diff.putCaretOnRow(24)
 
-        user.focusComposer(panel)
+        user.fireComposerFocusGained(panel)
         window.selectOpenedThread()
 
         assertEquals("✉ L22  Not this", window.selected())

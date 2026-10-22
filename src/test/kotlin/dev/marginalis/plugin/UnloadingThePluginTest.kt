@@ -29,10 +29,11 @@ class UnloadingThePluginTest : MarginTabTestCase() {
         assertNotSame(base, badge())
         var badgeWhileUnloading: Any? = null
         var tabAddressWhileUnloading: Any? = Unit
+        val address = tab.file.url
 
         val failure = tab.unloadPluginForUpdate {
             badgeWhileUnloading = badge()
-            tabAddressWhileUnloading = VirtualFileManager.getInstance().findFileByUrl("marginalis://margin")
+            tabAddressWhileUnloading = VirtualFileManager.getInstance().findFileByUrl(address)
         }
 
         assertNull(failure)
@@ -42,6 +43,24 @@ class UnloadingThePluginTest : MarginTabTestCase() {
         assertEquals(emptyList<Any>(), user.gutterIconsOnLine(SAMPLE, 5))
         assertEquals(emptyList<Any>(), user.gutterIconsOnLine(SAMPLE, 1))
         assertEquals(emptyList<Any>(), user.panels())
+    }
+
+    fun testUpdatingThePluginTakesEveryProjectsTabOutOfTheIde() {
+        withTwin { _, there ->
+            val files = listOf(tab.file, there.file)
+            var foundWhileUnloading: List<Any?> = emptyList()
+
+            val failure = tab.unloadPluginForUpdate {
+                foundWhileUnloading = files.map { VirtualFileManager.getInstance().findFileByUrl(it.url) }
+            }
+            there.settle()
+
+            assertNull(failure)
+            assertEquals(listOf(null, null), foundWhileUnloading)
+            assertEquals(emptyList<String>(), tab.marginAddresses())
+            assertEquals(emptyList<String>(), there.marginAddresses())
+            assertTrue(files.none { it.isValid })
+        }
     }
 
     fun testUnloadingAnotherPluginLeavesTheMarginAsItWas() {

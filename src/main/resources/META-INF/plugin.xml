@@ -85,7 +85,16 @@
              an IDE restart. -->
         <listener class="dev.marginalis.plugin.MarginalisUnloadListener"
                   topic="com.intellij.ide.plugins.DynamicPluginListener"/>
+        <listener class="dev.marginalis.plugin.ui.LiveBadgeIcon$ThemeChange"
+                  topic="com.intellij.ide.ui.LafManagerListener"/>
+        <listener class="dev.marginalis.plugin.ui.tab.MarginFile$ProjectClosed"
+                  topic="com.intellij.openapi.project.ProjectCloseListener"/>
     </applicationListeners>
+
+    <projectListeners>
+        <listener class="dev.marginalis.plugin.ui.tab.MarginFile$ListedOnceInRecentFiles"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- Agent transport: JSON endpoints on the IDE's built-in HTTP server. -->

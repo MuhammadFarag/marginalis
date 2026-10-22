@@ -15,7 +15,7 @@ class ToolWindowActionsTest : ToolWindowTestCase() {
         assertEquals(
             listOf(
                 "Comment on Project", "First Step", "Previous Occurrence", "Next Occurrence", "Last Step", "Expand", "Collapse",
-                "Filter", "Select Opened Thread", "Guided Layout", "Submit round", "Stop agents", "Resolve All", "Delete All",
+                "Filter", "Select Opened Thread", "Guided Layout", "Submit round", "Make every open thread live", "Stop agents", "Resolve All", "Delete All",
             ),
             window.toolbar(),
         )
@@ -193,7 +193,7 @@ class ToolWindowActionsTest : ToolWindowTestCase() {
 
         window.press("Comment on Project")
 
-        assertEquals(MarginFile, FileEditorManager.getInstance(project).selectedEditor?.file)
+        assertEquals(MarginFile.of(project), FileEditorManager.getInstance(project).selectedEditor?.file)
         assertNotNull(ProjectTabState.getInstance(project).draft)
         assertEquals(emptyList<String>(), agent.ids())
     }

@@ -140,10 +140,10 @@ class SelectInMarginalisTest : ToolWindowTestCase() {
     fun testFromTheMarginTabItIsOfferedOnlyOnceThereAreProjectThreads() {
         sample()
         agent.addOnLine(5, "body" to "in a file")
-        assertFalse(target.canSelect(FileSelectInContext(project, MarginFile)))
+        assertFalse(target.canSelect(FileSelectInContext(project, MarginFile.of(project))))
 
         agent.add("body" to "about the project")
-        assertTrue(target.canSelect(FileSelectInContext(project, MarginFile)))
+        assertTrue(target.canSelect(FileSelectInContext(project, MarginFile.of(project))))
     }
 
     fun testFromADiffInItsOwnWindowItSelectsTheThreadOnThatDiffsCaretRow() {
