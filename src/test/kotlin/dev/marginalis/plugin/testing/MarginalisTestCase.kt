@@ -26,7 +26,7 @@ abstract class MarginalisTestCase : BasePlatformTestCase() {
     private fun awaitFirstRunTab() =
         PlatformTestUtil.waitWithEventsDispatching(
             "the first-run Margin tab never opened",
-            { FileEditorManager.getInstance(project).isFileOpen(MarginFile) },
+            { FileEditorManager.getInstance(project).openFiles.any { it is MarginFile } },
             10,
         )
 }

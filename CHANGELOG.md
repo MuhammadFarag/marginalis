@@ -15,12 +15,57 @@ History before 0.1.19 lives in git tags.
   so ✉ points at what is new. A thread you read but did not answer
   stays in "Awaiting You" and keeps its badge on the file's editor tab.
 
+## [0.2.6] - 2026-10-21
+
+Thanks to [@schrek1](https://github.com/schrek1) for the fixes in this release.
+
+### Fixed
+
+- Line breaks you type in a comment now show up after you send it: a
+  single Enter inside a paragraph is a new line, and a second blank line
+  between paragraphs stays an empty line instead of collapsing.
+- Paragraphs and lists in a message get a small gap between them, so a
+  long reply no longer reads as one dense block.
+- A stalled IDE no longer blames Marginalis. While the IDE waited on
+  other work, it reported "Cannot check provider" for the Margin tab.
+- A thread whose code a rewrite removed now shows as orphaned right away,
+  everywhere, and stops being live. Before, a reply that arrived after the
+  rewrite could leave it open, pinned to whatever code took its old line.
+- Updating or uninstalling Marginalis while the Margin tab is closed no
+  longer reports an IDE error or asks you to restart.
+- Opening a second project no longer reports an IDE error from
+  Marginalis. Each project now keeps its own Margin tab.
+
+## [0.2.5] - 2026-10-21
+
+Thanks to [@schrek1](https://github.com/schrek1) for the features and fixes in this release.
+
+### Added
+
+- Make a whole project live with one click. The ⚡ in the Marginalis
+  tool window makes every open thread live, so each Submit wakes the
+  listening agent with that thread. Switch off any thread you want to keep for
+  the next round. While the project is live, the Marginalis icon in the
+  side bar carries a ⚡, so you always know. Your choice stays with the
+  project, and Settings sets the default for projects you have not
+  switched.
+- See at a glance which threads are live. Each live thread's mark in the
+  gutter carries a small ⚡, and a thread you switch off loses it.
+
 ### Fixed
 
 - A thread you left open shows the agent's reply when you come back to
   it. A reply that arrived while its file, or the Margin tab, was in a
   background tab used to stay hidden until something else changed on
   the thread.
+- The reply you are typing in the Margin tab stays where it is on
+  screen, with your text and cursor, when other threads grow, move or
+  are resolved, and when the agent answers in the same thread. A
+  message you are editing stays put too, even while you check a file
+  or work in a tool window. When the whole tab fits on screen, your
+  reply shifts with the threads around it but stays in view. Scrolled
+  down to read, the thread at the top of your view stays put; at the
+  very top, new threads and replies still come into view.
 
 ## [0.2.4] - 2026-10-19
 

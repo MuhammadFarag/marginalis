@@ -9,11 +9,11 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -108,7 +108,9 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         border = JBUI.Borders.empty(8, 12, 12, 12)
     }
-    private val scroll = JBScrollPane(stack).apply { border = JBUI.Borders.empty() }
+    private val root = JPanel(BorderLayout()).apply { isFocusable = true }
+    private val viewKeeper = ViewKeeper(root, stack, ::stackedCards, ::holdsDraft).also { Disposer.register(this, it) }
+    private val scroll = viewKeeper.scroll.apply { border = JBUI.Borders.empty() }
 
     private val emptyState = JPanel(BorderLayout()).apply {
         isOpaque = false
@@ -157,7 +159,6 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         add(resolvedCards, BorderLayout.CENTER)
     }
 
-    private val root = JPanel(BorderLayout()).apply { isFocusable = true }
     private val toolbar = ActionManager.getInstance()
         .createActionToolbar("MarginalisProjectTab", DefaultActionGroup(AgentPresenceGroup(), SubmitRoundAction(), StopAgentsGroup()), true)
         .also {
@@ -298,6 +299,12 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         focusFirstSentThread()
     }
 
+    private fun stackedCards(): List<StackedCard> = buildList {
+        draftShown?.let { add(StackedCard(it.threadId, it.panel, it.panel)) }
+        cards.forEach { (key, card) -> add(StackedCard(key, card, card.panel)) }
+        conversations.forEach { (key, card) -> add(StackedCard(key, card, panel = null)) }
+    }
+
     private fun focusFirstSentThread() {
         val sent = focusOnceShown ?: return
         focusOnceShown = null
@@ -403,7 +410,7 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         } else {
             expansion.toggle(id)
         }
-        refresh()
+        viewKeeper.keepingClickedInPlace(id, ::refresh)
         val opened = card.panel
         if (opened != null) opened.markRead() else newTags.endLook(id)
     }
@@ -417,7 +424,7 @@ class ProjectTabPanel(private val project: Project) : Disposable {
 
     private fun toggleConversation(key: String) {
         expansion.toggle(key)
-        refresh()
+        viewKeeper.keepingClickedInPlace(key, ::refresh)
     }
 
     private fun forgetCardsNotIn(entries: List<Entry>, resolved: List<CommentThread>) {

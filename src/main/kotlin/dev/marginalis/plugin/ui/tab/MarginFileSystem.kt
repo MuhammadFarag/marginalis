@@ -10,7 +10,7 @@ class MarginFileSystem : DeprecatedVirtualFileSystem(), NonPhysicalFileSystem {
 
     override fun getProtocol(): String = PROTOCOL
 
-    override fun findFileByPath(path: String): VirtualFile? = MarginFile.takeIf { path == MarginFile.PATH && it.isValid }
+    override fun findFileByPath(path: String): VirtualFile? = MarginFile.atPath(path)
 
     override fun refresh(asynchronous: Boolean) {}
 
