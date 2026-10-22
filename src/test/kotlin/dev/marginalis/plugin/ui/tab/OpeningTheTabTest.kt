@@ -26,19 +26,20 @@ class OpeningTheTabTest : MarginTabTestCase() {
         assertTrue(tab.isInFront)
     }
 
-    // FixMe: Known issue - #58 updating the plugin while the Margin tab is closed fails in the unload: the open thread panels and the Margin tab outlive the plugin
-    fun testUpdatingThePluginWhileTheTabIsClosedReportsAnErrorAndLeavesThreadPanelsOpen() {
+    fun testUpdatingThePluginWhileTheTabIsClosedTakesThreadPanelsAndTheTabOutOfTheIde() {
         sample()
         val thread = agent.addOnLine(5, "body" to "Still open in the editor")
         user.open(thread)
         tab.close()
+        var tabAddressWhileUnloading: Any? = Unit
 
-        val failure = tab.unloadPluginForUpdate()
+        val failure = tab.unloadPluginForUpdate {
+            tabAddressWhileUnloading = VirtualFileManager.getInstance().findFileByUrl("marginalis://margin")
+        }
 
-        assertInstanceOf(failure, IllegalArgumentException::class.java)
-        assertTrue(failure!!.message, failure.message!!.contains("file is not open"))
-        assertEquals(1, user.panels().size)
-        assertSame(MarginFile, VirtualFileManager.getInstance().findFileByUrl("marginalis://margin"))
+        assertNull(failure)
+        assertEquals(emptyList<Any>(), user.panels())
+        assertNull(tabAddressWhileUnloading)
     }
 
     fun testWhileThePluginIsUnloadedTheTabCannotBeRestoredByItsAddress() {
