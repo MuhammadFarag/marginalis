@@ -132,7 +132,9 @@ class MarginalisStartup : ProjectActivity {
 
             thread.line == null -> {}
 
-            thread.status is ThreadStatus.Open && (marker == null || !marker.isValid) -> {
+            store.orphanIfItsCodeIsGone(thread) -> store.threads.notifyChanged(thread)
+
+            thread.status is ThreadStatus.Open && marker == null -> {
                 val base = project.guessProjectDir() ?: return
                 val vFile = thread.file?.let { base.findFileByRelativePath(it) } ?: return
                 val document = FileDocumentManager.getInstance().getDocument(vFile) ?: return

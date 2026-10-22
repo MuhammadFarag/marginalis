@@ -55,6 +55,7 @@ class MarginalisStore(private val project: Project) : Disposable {
 
     init {
         threads.addListener { changed ->
+            orphanIfItsCodeIsGone(changed)
             val current = threads.byId(changed.id)
             when {
                 current == null -> forgetLive(changed)
@@ -177,16 +178,22 @@ class MarginalisStore(private val project: Project) : Disposable {
     fun isDraft(thread: CommentThread): Boolean = threads.byId(thread.id) == null && thread.messages.isEmpty()
 
     fun syncLine(thread: CommentThread): Int? {
-        val marker = markers[thread.id]
-        if (marker != null) {
-            if (marker.isValid) {
-                thread.line = marker.document.getLineNumber(marker.startOffset)
-            } else if (thread.status is ThreadStatus.Open) {
-                thread.markOrphaned()
-                endLive(thread)
-            }
-        }
+        orphanIfItsCodeIsGone(thread)
+        markers[thread.id]?.let { thread.line = it.document.getLineNumber(it.startOffset) }
         return thread.line
+    }
+
+    @Synchronized
+    fun orphanIfItsCodeIsGone(thread: CommentThread): Boolean {
+        val marker = markers[thread.id]
+        if (marker == null || marker.isValid) return false
+        val orphans = thread.status is ThreadStatus.Open
+        if (orphans) {
+            thread.markOrphaned()
+            endLive(thread)
+        }
+        markers.remove(thread.id, marker)
+        return orphans
     }
 
     fun syncLines() {

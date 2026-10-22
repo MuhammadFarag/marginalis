@@ -20,6 +20,10 @@ History before 0.1.19 lives in git tags.
     there comes into view, as one arriving at the top does in the other
     orders.
 
+## [0.2.6] - 2026-10-21
+
+Thanks to [@schrek1](https://github.com/schrek1) for the fixes in this release.
+
 ### Fixed
 
 - Line breaks you type in a comment now show up after you send it: a
@@ -29,6 +33,13 @@ History before 0.1.19 lives in git tags.
   long reply no longer reads as one dense block.
 - A stalled IDE no longer blames Marginalis. While the IDE waited on
   other work, it reported "Cannot check provider" for the Margin tab.
+- A thread whose code a rewrite removed now shows as orphaned right away,
+  everywhere, and stops being live. Before, a reply that arrived after the
+  rewrite could leave it open, pinned to whatever code took its old line.
+- Updating or uninstalling Marginalis while the Margin tab is closed no
+  longer reports an IDE error or asks you to restart.
+- Opening a second project no longer reports an IDE error from
+  Marginalis. Each project now keeps its own Margin tab.
 
 ## [0.2.5] - 2026-10-21
 

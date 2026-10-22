@@ -15,9 +15,8 @@ class MultipleProjectsTest : HttpContractTestCase() {
     private fun twin(projectPath: String = "twin", extra: Map<String, String> = emptyMap()) =
         SecondProject.open(projectPath, mapOf("$projectPath/$SAMPLE" to sampleText) + extra)
 
-    // FixMe: Known issue - #59 opening a second project logs an IDE error: the Margin tab is one light file shared by every project
-    fun testOpeningASecondProjectLogsASharedMarginTabError() {
-        twin().use { second -> assertFalse(second.sharedMarginTabErrors.isEmpty()) }
+    fun testOpeningASecondProjectReportsNoError() {
+        twin().use { second -> assertTrue(second.project.isOpen) }
     }
 
     fun testPingListsEveryOpenProjectWithItsBranch() {

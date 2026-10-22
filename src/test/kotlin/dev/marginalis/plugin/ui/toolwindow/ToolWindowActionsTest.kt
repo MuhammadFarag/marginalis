@@ -193,7 +193,7 @@ class ToolWindowActionsTest : ToolWindowTestCase() {
 
         window.press("Comment on Project")
 
-        assertEquals(MarginFile, FileEditorManager.getInstance(project).selectedEditor?.file)
+        assertEquals(MarginFile.of(project), FileEditorManager.getInstance(project).selectedEditor?.file)
         assertNotNull(ProjectTabState.getInstance(project).draft)
         assertEquals(emptyList<String>(), agent.ids())
     }

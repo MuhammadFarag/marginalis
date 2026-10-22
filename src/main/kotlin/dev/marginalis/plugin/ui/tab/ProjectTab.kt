@@ -24,17 +24,17 @@ object ProjectTab {
     }
 
     fun isInFront(project: Project): Boolean =
-        FileEditorManager.getInstance(project).selectedEditor?.file == MarginFile
+        FileEditorManager.getInstance(project).selectedEditor?.file is MarginFile
 
     fun refreshPresentation(project: Project) {
         val editors = FileEditorManager.getInstance(project)
-        if (editors.isFileOpen(MarginFile)) editors.updateFilePresentation(MarginFile)
+        openTabs(project).forEach(editors::updateFilePresentation)
     }
 
     fun applyPrefs() {
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue
-            FileEditorManager.getInstance(project).getAllEditors(MarginFile)
+            FileEditorManager.getInstance(project).allEditors
                 .filterIsInstance<MarginEditor>()
                 .forEach(MarginEditor::applyPrefs)
         }
@@ -45,12 +45,14 @@ object ProjectTab {
             if (project.isDisposed) continue
             val editors = FileEditorManager.getInstance(project)
             val properties = PropertiesComponent.getInstance(project)
-            properties.setValue(REOPEN_AFTER_RELOAD, editors.isFileOpen(MarginFile))
+            val tabs = openTabs(project)
+            properties.setValue(REOPEN_AFTER_RELOAD, tabs.isNotEmpty())
             properties.setValue(PINNED_BEFORE_RELOAD, isPinned(project))
-            editors.closeFile(MarginFile)
-            EditorHistoryManager.getInstance(project).removeFile(MarginFile)
+            tabs.forEach(editors::closeFile)
+            val history = EditorHistoryManager.getInstance(project)
+            history.fileList.filterIsInstance<MarginFile>().forEach(history::removeFile)
         }
-        MarginFile.isValid = false
+        MarginFile.withdraw()
     }
 
     fun openOnStartup(project: Project) {
@@ -67,23 +69,29 @@ object ProjectTab {
     private fun openBehindSelection(project: Project, pin: Boolean) {
         val editors = FileEditorManager.getInstance(project)
         val selected = editors.selectedFiles.firstOrNull()
-        editors.openFile(MarginFile, false, true)
-        if (pin) pin(project)
+        val tab = MarginFile.of(project)
+        editors.openFile(tab, false, true)
+        if (pin) pin(project, tab)
         selected?.let { editors.openFile(it, false, true) }
     }
 
-    private fun isPinned(project: Project): Boolean =
-        FileEditorManagerEx.getInstanceEx(project).windows.any { it.isFilePinned(MarginFile) }
+    private fun openTabs(project: Project): List<MarginFile> =
+        FileEditorManager.getInstance(project).openFiles.filterIsInstance<MarginFile>()
 
-    private fun pin(project: Project) =
+    private fun isPinned(project: Project): Boolean {
+        val tabs = openTabs(project)
+        return FileEditorManagerEx.getInstanceEx(project).windows.any { window -> tabs.any { window.getComposite(it)?.isPinned == true } }
+    }
+
+    private fun pin(project: Project, tab: MarginFile) =
         FileEditorManagerEx.getInstanceEx(project).windows
-            .filter { it.isFileOpen(MarginFile) }
-            .forEach { it.setFilePinned(MarginFile, true) }
+            .filter { it.isFileOpen(tab) }
+            .forEach { it.setFilePinned(tab, true) }
 
     private fun deliver(project: Project, request: TabRequest) {
         val state = ProjectTabState.getInstance(project)
         state.request(request)
-        val shown = FileEditorManager.getInstance(project).openFile(MarginFile, true, true).filterIsInstance<MarginEditor>()
+        val shown = FileEditorManager.getInstance(project).openFile(MarginFile.of(project), true, true).filterIsInstance<MarginEditor>()
         val pending = state.takeRequest() ?: return
         shown.forEach { it.handle(pending) }
     }

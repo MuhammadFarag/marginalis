@@ -32,13 +32,17 @@ class Agent(private val project: Project, val name: String = "Test agent", val i
 
     fun post(endpoint: String, vararg fields: Pair<String, Any?>): Response = post(endpoint, fields.toMap())
 
-    fun post(endpoint: String, fields: Map<String, Any?>): Response {
+    fun post(endpoint: String, fields: Map<String, Any?>): Response = await(postAsync(endpoint, fields))
+
+    fun postAsync(endpoint: String, vararg fields: Pair<String, Any?>): CompletableFuture<Response> = postAsync(endpoint, fields.toMap())
+
+    private fun postAsync(endpoint: String, fields: Map<String, Any?>): CompletableFuture<Response> {
         val body = gson.toJson((identity() + fields).filterValues { it != null })
         val request = HttpRequest.newBuilder(uri(endpoint))
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
-        return await(send(request))
+        return send(request)
     }
 
     fun postRaw(endpoint: String, body: String): Response {
