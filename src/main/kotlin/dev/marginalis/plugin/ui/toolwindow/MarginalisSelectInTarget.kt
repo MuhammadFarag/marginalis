@@ -19,7 +19,7 @@ class MarginalisSelectInTarget : SelectInTarget, DumbAware {
     override fun canSelect(context: SelectInContext): Boolean {
         if (context is ThreadSelectInContext) return true
         val threads = MarginalisStore.getInstance(context.project).threads.all()
-        if (context.virtualFile == MarginFile) return Opened.ProjectThreads.isListedIn(threads)
+        if (context.virtualFile is MarginFile) return Opened.ProjectThreads.isListedIn(threads)
         val path = ThreadInFront.pathShowing(context.project, context.virtualFile) ?: return false
         return Opened.File(path).isListedIn(threads)
     }

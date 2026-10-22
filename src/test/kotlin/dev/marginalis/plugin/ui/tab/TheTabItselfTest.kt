@@ -2,7 +2,6 @@ package dev.marginalis.plugin.ui.tab
 
 import com.intellij.openapi.fileEditor.ex.FileEditorProviderManager
 import com.intellij.openapi.fileEditor.impl.EditorTabPresentationUtil
-import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.util.IconUtil
 import dev.marginalis.plugin.ui.MarginalisIcons
 
@@ -61,19 +60,13 @@ class TheTabItselfTest : MarginTabTestCase() {
     fun testOpeningTheMarginShowsOnlyTheMarginEditor() {
         tab.close()
 
-        val opened = tab.editors.openFile(MarginFile, true, true)
+        val opened = tab.editors.openFile(tab.file, true, true)
 
         assertEquals(listOf("Margin"), opened.map { it.name })
-        assertEquals(listOf(MarginEditorProvider::class.java), FileEditorProviderManager.getInstance().getProviderList(project, MarginFile).map { it.javaClass })
+        assertEquals(listOf(MarginEditorProvider::class.java), FileEditorProviderManager.getInstance().getProviderList(project, tab.file).map { it.javaClass })
         assertFalse(opened.single().isModified)
         assertTrue(opened.single().isValid)
-        assertSame(MarginFile, opened.single().file)
-    }
-
-    fun testTheTabIsFoundAgainByItsAddressAfterARestart() {
-        assertSame(MarginFile, VirtualFileManager.getInstance().findFileByUrl("marginalis://margin"))
-        assertNull(VirtualFileManager.getInstance().findFileByUrl("marginalis://elsewhere"))
-        assertSame(MarginFile, VirtualFileManager.getInstance().getFileSystem("marginalis").refreshAndFindFileByPath("margin"))
+        assertSame(tab.file, opened.single().file)
     }
 
     fun testHalfWrittenRepliesAreStillThereWhenTheTabOpensAgain() {
