@@ -47,7 +47,6 @@ import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Face
 import dev.marginalis.core.FaceKey
 import dev.marginalis.core.Faces
-import dev.marginalis.core.HistoryShortener
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
@@ -61,6 +60,7 @@ import dev.marginalis.core.Reference
 import dev.marginalis.core.Relayed
 import dev.marginalis.core.SendOption
 import dev.marginalis.core.Severity
+import dev.marginalis.core.ThreadFolding
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.WebLink
 import dev.marginalis.plugin.avatars.AvatarsListener
@@ -223,10 +223,12 @@ class ThreadPanel(
         }
     }
     private var editingMessageId: String? = null
-    // Reading a message must not hide it under the reader; it hides the next time the thread opens.
-    private val shownHere = mutableSetOf<String>()
+    private var level = ThreadFolding.Level.DEFAULT
+    private val keptOpen = mutableSetOf<String>()
+    private var messagesRendered: Set<String>? = null
+    private val openedHere = mutableSetOf<String>()
     private val foldedHere = mutableSetOf<String>()
-    private var historyHidden = false
+    private val revealedHere = mutableSetOf<String>()
     private var headerToolbar: ActionToolbar? = null
 
     init {
@@ -390,7 +392,8 @@ class ThreadPanel(
             nextStep,
             lastStep,
             Separator.getInstance(),
-            historyAction(),
+            foldAction(),
+            expandAction(),
             liveAction(),
             selectInToolWindowAction(),
             copyReferenceAction(),
@@ -424,18 +427,34 @@ class ThreadPanel(
         override fun actionPerformed(e: AnActionEvent) = toggleResolved()
     }
 
-    private fun historyAction(): AnAction = object : AnAction() {
-        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+    private fun foldAction(): AnAction = levelAction("Fold All", AllIcons.Actions.Collapseall, ThreadFolding.Level::folded)
 
-        override fun update(e: AnActionEvent) {
-            e.presentation.isEnabledAndVisible = historyHidden || HistoryShortener
-                .rows(thread.messages, fullHistory = false, keep = { it.id == editingMessageId })
-                .any { it is HistoryShortener.Row.Hidden }
-            e.presentation.text = if (historyHidden) "Show Full History" else "Shorten History"
-            e.presentation.icon = if (historyHidden) AllIcons.Actions.Expandall else AllIcons.Actions.Collapseall
+    private fun expandAction(): AnAction = levelAction("Expand All", AllIcons.Actions.Expandall, ThreadFolding.Level::expanded)
+
+    private fun levelAction(name: String, icon: Icon, step: (ThreadFolding.Level) -> ThreadFolding.Level?): AnAction =
+        object : AnAction(name, null, icon) {
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+            override fun update(e: AnActionEvent) {
+                val next = step(level)
+                e.presentation.isVisible = !isDraft() && thread.messages.isNotEmpty()
+                e.presentation.isEnabled = next != null
+                e.presentation.text = if (next == ThreadFolding.Level.DEFAULT) "Back to Default View" else name
+            }
+
+            override fun actionPerformed(e: AnActionEvent) {
+                step(level)?.let(::showAt)
+            }
         }
 
-        override fun actionPerformed(e: AnActionEvent) = if (historyHidden) showFullHistory() else shortenHistory()
+    private fun showAt(next: ThreadFolding.Level) {
+        level = next
+        openedHere.clear()
+        foldedHere.clear()
+        revealedHere.clear()
+        refresh()
+        headerToolbar?.updateActionsAsync()
+        markReadIfSeenLater()
     }
 
     private fun liveAction(): AnAction = object : ToggleAction() {
@@ -543,12 +562,10 @@ class ThreadPanel(
     }
 
     fun reveal(message: Message) {
-        val unfolded = foldedHere.remove(message.id)
-        val hidden = message.id !in messageComponents
-        if (hidden) shownHere += message.id
-        if (unfolded || hidden) {
+        if (openMessages.none { it.id == message.id }) {
+            foldedHere -= message.id
+            openedHere += message.id
             refresh()
-            headerToolbar?.updateActionsAsync()
         }
         validate()
         messageComponents[message.id]?.let { it.scrollRectToVisible(Rectangle(it.size)) }
@@ -978,29 +995,28 @@ class ThreadPanel(
         var previous: Message? = null
         var previousOpen: Message? = null
         var githubBlock: JPanel? = null
-        val rows = HistoryShortener.rows(
+        keepArrivalsOpen()
+        val rows = ThreadFolding.rows(
             thread.messages,
-            fullHistory = FullHistoryThreads.getInstance(project).showsFullHistory(thread.id),
-            keep = { it.id == editingMessageId || it.id in shownHere },
+            ThreadFolding.View(level, keptOpen, editingMessageId, openedHere, foldedHere, revealedHere),
         )
-        val shownMessages = rows.filterIsInstance<HistoryShortener.Row.Shown>().map { it.message }
-        shownMessages.mapTo(shownHere) { it.id }
-        openMessages = shownMessages.filterNot(::isFolded)
-        historyHidden = rows.any { it is HistoryShortener.Row.Hidden }
+        openMessages = rows.filterIsInstance<ThreadFolding.Row.Open>().map { it.message }
+        if (level == ThreadFolding.Level.DEFAULT) openMessages.filterNot { it.id in openedHere }.mapTo(keptOpen) { it.id }
         val tagged = newTags(thread)
         showsNewTags = openMessages.any { it.id in tagged }
         for (row in rows) {
-            if (row is HistoryShortener.Row.Hidden) {
-                if (messagesBox.componentCount > 0) messagesBox.add(Box.createVerticalStrut(JBUI.scale(8)))
-                val count = row.messages.size
-                messagesBox.add(linkRow("Show $count more ${if (count == 1) "message" else "messages"}") { showFullHistory() })
-                githubBlock = null
-                previous = null
-                previousOpen = null
-                continue
+            val (message, folded) = when (row) {
+                is ThreadFolding.Row.Open -> row.message to false
+                is ThreadFolding.Row.Folded -> row.message to true
+                is ThreadFolding.Row.Stack -> {
+                    if (messagesBox.componentCount > 0) messagesBox.add(Box.createVerticalStrut(JBUI.scale(8)))
+                    messagesBox.add(linkRow("Show ${row.messages.size} more messages") { revealStack(row.messages) })
+                    githubBlock = null
+                    previous = null
+                    previousOpen = null
+                    continue
+                }
             }
-            val message = (row as HistoryShortener.Row.Shown).message
-            val folded = isFolded(message)
             val grouped = !folded && message.continues(previousOpen)
             val relayed = message.relayed
             if (relayed == null || relayed.discussion != previous?.relayed?.discussion) {
@@ -1039,15 +1055,15 @@ class ThreadPanel(
         return foldToggles.entries.firstOrNull { it.value in focused }?.key
     }
 
-    private fun isFolded(message: Message): Boolean = message.id in foldedHere
-
     private fun foldMessage(id: String) {
+        openedHere -= id
         foldedHere += id
         refresh()
     }
 
     private fun openMessage(id: String) {
         foldedHere -= id
+        openedHere += id
         refresh()
         markReadIfSeenLater()
     }
@@ -1125,17 +1141,14 @@ class ThreadPanel(
         maximumSize = Dimension(Int.MAX_VALUE, preferredSize.height)
     }
 
-    private fun showFullHistory() {
-        FullHistoryThreads.getInstance(project).showFullHistory(thread.id)
-        refresh()
-        headerToolbar?.updateActionsAsync()
+    private fun keepArrivalsOpen() {
+        messagesRendered?.let { rendered -> thread.messages.filterNot { it.id in rendered }.mapTo(keptOpen) { it.id } }
+        messagesRendered = thread.messages.mapTo(mutableSetOf()) { it.id }
     }
 
-    private fun shortenHistory() {
-        FullHistoryThreads.getInstance(project).shorten(thread.id)
-        shownHere.clear()
+    private fun revealStack(messages: List<Message>) {
+        messages.mapTo(revealedHere) { it.id }
         refresh()
-        headerToolbar?.updateActionsAsync()
     }
 
     private fun githubBlock(first: Relayed): JPanel = JPanel().apply {
