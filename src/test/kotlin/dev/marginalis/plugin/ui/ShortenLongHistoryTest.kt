@@ -102,6 +102,41 @@ class ShortenLongHistoryTest : HttpContractTestCase() {
         assertEquals(FULL, historyOffer(panel))
     }
 
+    fun testFollowingALinkToAHiddenMessageBringsOutOnlyThatMessage() {
+        userReads()
+
+        val panel = afterFollowingALinkTo(message = 3)
+
+        assertEquals(listOf(BODIES[0], BODIES[3], BODIES[5], BODIES[6]), shown(panel))
+        assertEquals(listOf("Show 2 more messages", "Show 1 more message"), historyLinks(panel))
+    }
+
+    fun testFollowingALinkToAHiddenMessageKeepsTheHistoryShort() {
+        userReads()
+        afterFollowingALinkTo(message = 3)
+
+        val reopened = user.open(thread)
+
+        assertEquals(SHORTENED, shown(reopened))
+    }
+
+    fun testAfterFollowingALinkTheRestOfTheHistoryIsStillOnOffer() {
+        userReads()
+
+        val panel = afterFollowingALinkTo(message = 3)
+
+        assertEquals(FULL, historyOffer(panel))
+    }
+
+    private fun afterFollowingALinkTo(message: Int): ThreadPanel {
+        val panel = user.open(thread)
+        val reference = "mg:${store.threads.byId(thread)!!.messages[message].id.take(8)}"
+        val citing = agent.addOnLine(9, "body" to "As $reference says.")
+        ThreadInlayManager.open(project, user.editor(), user.thread(citing))
+        user.followLink(user.panels().single { "As mg:" in user.shownText(it) }, reference)
+        return panel
+    }
+
     private fun fullHistoryOnTheNextVisit(): ThreadPanel {
         userReads()
         user.clickLink(user.open(thread), "Show 4 more messages")

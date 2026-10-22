@@ -339,6 +339,65 @@ class KeepingYourPlaceTest : TabInFrontTestCase() {
         assertEquals(-50, tab.topInView(tab.card("Xray")))
     }
 
+    fun testTheThreadAtTheTopOfTheViewStaysPutWhenAMessageAboveFolds() {
+        agent.longAsk("Yankee question")
+        agent.longAsk("Xray question")
+        agent.longAsk("Whiskey question")
+        tab.scrollTo(topInTab("Xray") + 50)
+
+        user.fold(tab.panel("Whiskey"), "Whiskey question")
+        tab.settle()
+
+        assertEquals(-50, tab.topInView(tab.card("Xray")))
+    }
+
+    fun testTheThreadAtTheTopOfTheViewStaysPutWhenAMessageAboveOpens() {
+        agent.longAsk("Yankee question")
+        agent.longAsk("Xray question")
+        agent.longAsk("Whiskey question")
+        user.fold(tab.panel("Whiskey"), "Whiskey question")
+        tab.settle()
+        tab.scrollTo(topInTab("Xray") + 50)
+
+        user.expand(tab.panel("Whiskey"), "Whiskey question")
+        tab.settle()
+
+        assertEquals(-50, tab.topInView(tab.card("Xray")))
+    }
+
+    fun testFoldingAMessageKeepsYourFocusOnItsToggle() {
+        agent.ask("Whiskey question")
+        user.focusOn(user.foldToggle(tab.panel("Whiskey"), "Whiskey question"))
+
+        user.fold(tab.panel("Whiskey"), "Whiskey question")
+
+        assertSame(user.foldToggle(tab.panel("Whiskey"), "Whiskey question"), user.lastFocusedInWindowOf(tab.panel("Whiskey")))
+    }
+
+    fun testOpeningAMessageKeepsYourFocusOnItsToggle() {
+        agent.ask("Whiskey question")
+        user.fold(tab.panel("Whiskey"), "Whiskey question")
+        user.focusOn(user.foldToggle(tab.panel("Whiskey"), "Whiskey question"))
+
+        user.expand(tab.panel("Whiskey"), "Whiskey question")
+
+        assertSame(user.foldToggle(tab.panel("Whiskey"), "Whiskey question"), user.lastFocusedInWindowOf(tab.panel("Whiskey")))
+    }
+
+    fun testOpeningAnUnreadMessageKeepsYourFocusOnItsToggle() {
+        tab.windowActive = false
+        val id = agent.ask("Whiskey question")
+        agent.reply(id, "Whiskey details")
+        user.fold(tab.panel("Whiskey"), "Whiskey details")
+        tab.windowActive = true
+        user.focusOn(user.foldToggle(tab.panel("Whiskey"), "Whiskey details"))
+
+        user.expand(tab.panel("Whiskey"), "Whiskey details")
+
+        assertTrue(user.thread(id).messages.last().readByUser)
+        assertSame(user.foldToggle(tab.panel("Whiskey"), "Whiskey details"), user.lastFocusedInWindowOf(tab.panel("Whiskey")))
+    }
+
     fun testTheThreadYouReadGrowsDownwardsPushingTheNextOneDown() {
         agent.ask("Bravo question")
         val alpha = agent.longAsk("Alpha question")
