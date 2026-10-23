@@ -17,11 +17,12 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The runner image is pinned: a move of `ubuntu-latest` to a new Ubuntu is then made on purpose.
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Agent guide covers every endpoint
         # The served guide is the agent contract's source of truth; a new
         # endpoint that isn't documented there is drift by definition. The
@@ -33,14 +34,14 @@ jobs:
           [ -n "$endpoints" ] || { echo "found no endpoints to check — parser broken?"; exit 1; }
           missing=0
           for e in $endpoints; do
-            grep -qE "^\| \`(GET|POST) $e[ ?\`]" "$guide" || { echo "MISSING from the guide's API table: $e"; missing=1; }
+            grep -qE "^\| \`(GET|POST) ${e}[ ?\`]" "$guide" || { echo "MISSING from the guide's API table: $e"; missing=1; }
           done
           exit $missing
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Install a virtual display
         # Margin tab tests that need an active IDE window skip themselves
         # without a display.
@@ -64,7 +65,7 @@ jobs:
         # `build` alone runs checks but does not produce the distributable
         # zip — `buildPlugin` does.
         run: xvfb-run -a ./gradlew build buildPlugin --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-reports
@@ -73,24 +74,24 @@ jobs:
             build/test-results/test/
             core/build/test-results/test/
             .intellijPlatform/layoutIndex/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: marginalis-plugin
           path: build/distributions/*.zip
           if-no-files-found: error
 
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Run IntelliJ Plugin Verifier
         run: ./gradlew verifyPlugin --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: plugin-verifier-reports
