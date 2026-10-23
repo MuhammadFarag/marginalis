@@ -65,6 +65,10 @@ dependencies {
         // as a real plugin dependency instead of bundling our own copy of an
         // IDE package, per the Marketplace verifier.
         bundledPlugin("org.intellij.plugins.markdown")
+        // The review diff's file list (ReviewDiffFileList.java): compiled against, so the Plugin
+        // Verifier checks those calls on every IDE; the IDE provides both modules at runtime.
+        bundledModule("intellij.platform.collaborationTools")
+        bundledModule("intellij.platform.vcs.impl")
         // Default: compile against the oldest supported target (the honest
         // floor; CI uses this). Environments that can't reach the JetBrains
         // CDN — like the tenant sandbox — set `marginalis.localIde` in their
