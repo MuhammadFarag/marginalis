@@ -86,7 +86,7 @@ class SelectOpenedThreadTest : ToolWindowTestCase() {
         window.selectOpenedThread()
 
         assertEquals("Guided  1", window.selectedPath().first())
-        assertEquals("✉ (1/1)  L5  a step", window.selected())
+        assertEquals("✉ (1/1)  Sample.kt L5  a step", window.selected())
     }
 
     fun testATitleBarClickLeavesFocusWhereItWas() {
@@ -430,7 +430,7 @@ class SelectOpenedThreadTest : ToolWindowTestCase() {
         user.press(user.open(step), "Select in Marginalis")
 
         assertEquals("Guided  1", window.selectedPath().first())
-        assertEquals("✉ (1/1)  L5  a step", window.selected())
+        assertEquals("✉ (1/1)  Sample.kt L5  a step", window.selected())
     }
 
     fun testTheHeaderButtonSelectsAPlainThreadInOpenWhateverTheCaretsLine() {
