@@ -7,6 +7,13 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Margin tab shows only when there is something in it. A project
+  without project threads opens without it, and an agent's new project
+  thread opens a closed tab behind the file you are reading. It no
+  longer pins itself on a project's first open.
+
 ## [0.2.7] - 2026-10-22
 
 Thanks to [@schrek1](https://github.com/schrek1) for starting the long-thread work in this release.
