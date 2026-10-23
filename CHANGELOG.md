@@ -20,6 +20,28 @@ History before 0.1.19 lives in git tags.
     there comes into view, as one arriving at the top does in the other
     orders.
 
+## [0.2.7] - 2026-10-22
+
+Thanks to [@schrek1](https://github.com/schrek1) for starting the long-thread work in this release.
+
+### Added
+
+- Long threads open folded to what matters. Messages you have read fold
+  to one line with who wrote it and how it starts, while unread messages
+  and the latest two stay open.
+- Fold or open any single message with the arrow beside it.
+- Long runs of folded messages tuck behind one link, so the whole thread
+  fits on screen.
+- Fold or expand the whole thread from its header, one step at a time,
+  and step back to the usual view the same way.
+- Choose how long threads open in Settings: every read message folded,
+  only the long ones, or nothing at all.
+- Keep a thread's first message open to see how it started. Turn it on
+  in Settings.
+- Agents now open each reply with a one-line summary, so a folded
+  message still tells you where things stand. You can turn this off in
+  Settings.
+
 ## [0.2.6] - 2026-10-21
 
 Thanks to [@schrek1](https://github.com/schrek1) for the fixes in this release.

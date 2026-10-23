@@ -215,7 +215,10 @@ class ProjectTabPanel(private val project: Project) : Disposable {
             if (disposed || cards[threadId] !== card) return@invokeLater
             card.scrollRectToVisible(Rectangle(0, 0, card.width, card.height))
             card.flash()
-            message?.let { card.panel?.reveal(it) }
+            message?.let {
+                card.panel?.reveal(it)
+                card.panel?.markRead()
+            }
         }
     }
 
