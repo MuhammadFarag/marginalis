@@ -1,6 +1,7 @@
 package dev.marginalis.plugin.ui.tab
 
 import dev.marginalis.plugin.testing.Agent
+import dev.marginalis.plugin.testing.LongThreadSettings
 import dev.marginalis.plugin.testing.MarginTab
 import dev.marginalis.plugin.testing.ProjectTabSettings
 import dev.marginalis.plugin.testing.Relays
@@ -19,6 +20,7 @@ abstract class MarginTabTestCase : HttpContractTestCase() {
     override fun tearDown() {
         try {
             ProjectTabSettings.restoreDefaults()
+            LongThreadSettings.restoreDefaults()
         } catch (e: Throwable) {
             addSuppressedException(e)
         } finally {

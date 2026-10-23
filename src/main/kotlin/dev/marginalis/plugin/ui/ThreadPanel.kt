@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.ide.SelectInContext
 import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -43,20 +44,24 @@ import dev.marginalis.core.Addressee
 import dev.marginalis.core.AtMention
 import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Face
 import dev.marginalis.core.FaceKey
 import dev.marginalis.core.Faces
+import dev.marginalis.core.FoldingPrefs
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
 import dev.marginalis.core.LiveThread
 import dev.marginalis.core.Mark
 import dev.marginalis.core.Message
+import dev.marginalis.core.OpeningLine
 import dev.marginalis.core.Opened
 import dev.marginalis.core.People
 import dev.marginalis.core.Reference
 import dev.marginalis.core.Relayed
 import dev.marginalis.core.SendOption
 import dev.marginalis.core.Severity
+import dev.marginalis.core.ThreadFolding
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.WebLink
 import dev.marginalis.plugin.avatars.AvatarsListener
@@ -71,6 +76,7 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Graphics
 import java.awt.Graphics2D
+import java.awt.KeyboardFocusManager
 import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.awt.datatransfer.StringSelection
@@ -93,6 +99,7 @@ import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
 import javax.swing.Timer
 import kotlin.math.roundToInt
 
@@ -112,6 +119,7 @@ class ThreadPanel(
 
     private val messagesBox = Box.createVerticalBox()
     private val messageComponents = mutableMapOf<String, JComponent>()
+    private val foldToggles = mutableMapOf<String, JComponent>()
     private val statusLabel = JBLabel()
     private val liveLabel = JBLabel().apply {
         font = JBUI.Fonts.smallFont()
@@ -154,7 +162,7 @@ class ThreadPanel(
         border = JBUI.Borders.emptyLeft(12)
     }
     private var agreeableId: String? = null
-    private var renderedMessages: List<Message> = emptyList()
+    private var openMessages: List<Message> = emptyList()
     private var rendered: Rendering? = null
     var showsNewTags = false
         private set
@@ -216,6 +224,15 @@ class ThreadPanel(
         }
     }
     private var editingMessageId: String? = null
+    private var level = ThreadFolding.Level.DEFAULT
+    private val keptOpen = mutableSetOf<String>()
+    private val readWhileOpen = mutableSetOf<String>()
+    private var foldedBy: FoldingPrefs? = null
+    private var messagesRendered: Set<String>? = null
+    private val openedHere = mutableSetOf<String>()
+    private val foldedHere = mutableSetOf<String>()
+    private val revealedHere = mutableSetOf<String>()
+    private var headerToolbar: ActionToolbar? = null
 
     init {
         val accent = when (thread.severity) {
@@ -378,6 +395,8 @@ class ThreadPanel(
             nextStep,
             lastStep,
             Separator.getInstance(),
+            foldAction(),
+            expandAction(),
             liveAction(),
             selectInToolWindowAction(),
             copyReferenceAction(),
@@ -386,6 +405,7 @@ class ThreadPanel(
             closeAction(),
         )
         val toolbar = ActionManager.getInstance().createActionToolbar("MarginalisThreadPanel", group, true)
+        headerToolbar = toolbar
         toolbar.targetComponent = this
         toolbar.component.isOpaque = false
         return toolbar.component
@@ -408,6 +428,36 @@ class ThreadPanel(
         }
 
         override fun actionPerformed(e: AnActionEvent) = toggleResolved()
+    }
+
+    private fun foldAction(): AnAction = levelAction("Fold All", AllIcons.Actions.Collapseall, ThreadFolding.Level::folded)
+
+    private fun expandAction(): AnAction = levelAction("Expand All", AllIcons.Actions.Expandall, ThreadFolding.Level::expanded)
+
+    private fun levelAction(name: String, icon: Icon, step: (ThreadFolding.Level) -> ThreadFolding.Level?): AnAction =
+        object : AnAction(name, null, icon) {
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+            override fun update(e: AnActionEvent) {
+                val next = step(level)
+                e.presentation.isVisible = !isDraft() && thread.messages.isNotEmpty()
+                e.presentation.isEnabled = next != null
+                e.presentation.text = if (next == ThreadFolding.Level.DEFAULT) "Back to Default View" else name
+            }
+
+            override fun actionPerformed(e: AnActionEvent) {
+                step(level)?.let(::showAt)
+            }
+        }
+
+    private fun showAt(next: ThreadFolding.Level) {
+        level = next
+        openedHere.clear()
+        foldedHere.clear()
+        revealedHere.clear()
+        refresh()
+        headerToolbar?.updateActionsAsync()
+        markReadIfSeenLater()
     }
 
     private fun liveAction(): AnAction = object : ToggleAction() {
@@ -515,6 +565,11 @@ class ThreadPanel(
     }
 
     fun reveal(message: Message) {
+        if (openMessages.none { it.id == message.id }) {
+            foldedHere -= message.id
+            openedHere += message.id
+            refresh()
+        }
         validate()
         messageComponents[message.id]?.let { it.scrollRectToVisible(Rectangle(it.size)) }
         markReadIfSeen()
@@ -674,12 +729,12 @@ class ThreadPanel(
 
     fun markReadIfSeen() {
         if (!mayMarkRead(false) || !isShowing || visibleRect.isEmpty || !ApplicationManager.getApplication().isActive) return
-        if (thread.markReadByUser(renderedMessages)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+        if (thread.markReadByUser(openMessages)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
     }
 
     fun markRead() {
         if (!mayMarkRead(true) || isDraft() || !ApplicationManager.getApplication().isActive) return
-        if (thread.markReadByUser(renderedMessages)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
+        if (thread.markReadByUser(openMessages)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
     }
 
     private fun markReadIfSeenLater() {
@@ -933,18 +988,46 @@ class ThreadPanel(
             },
         )
 
+        val messageWithFocusedToggle = messageWithFocusedToggle()
         messagesBox.removeAll()
         messageComponents.clear()
+        foldToggles.clear()
         val timeFormat = messageTimeFormatter()
         val people = MarginalisSettings.getInstance().people
         val faces = Authors.facesOf(people)
         var previous: Message? = null
+        var previousOpen: Message? = null
         var githubBlock: JPanel? = null
-        renderedMessages = thread.messages
+        keepArrivalsOpen()
+        val foldingPrefs = MarginalisSettings.getInstance().foldingPrefs
+        releaseKeptOpenOnNewFoldingPrefs(foldingPrefs)
+        val rows = ThreadFolding.rows(
+            thread.messages,
+            ThreadFolding.View(level, keptOpen, editingMessageId, openedHere, foldedHere, revealedHere),
+            foldingPrefs,
+        )
+        openMessages = rows.filterIsInstance<ThreadFolding.Row.Open>().map { it.message }
+        if (level == ThreadFolding.Level.DEFAULT) {
+            val keptInView = openMessages.filterNot { it.id in openedHere }
+            keptInView.mapTo(keptOpen) { it.id }
+            keptInView.filterNot { it.readByUser }.mapTo(readWhileOpen) { it.id }
+        }
         val tagged = newTags(thread)
-        showsNewTags = renderedMessages.any { it.id in tagged }
-        for (message in renderedMessages) {
-            val grouped = message.continues(previous)
+        showsNewTags = openMessages.any { it.id in tagged }
+        for (row in rows) {
+            val (message, folded) = when (row) {
+                is ThreadFolding.Row.Open -> row.message to false
+                is ThreadFolding.Row.Folded -> row.message to true
+                is ThreadFolding.Row.Stack -> {
+                    if (messagesBox.componentCount > 0) messagesBox.add(Box.createVerticalStrut(JBUI.scale(8)))
+                    messagesBox.add(linkRow("Show ${row.messages.size} more messages") { revealStack(row.messages) })
+                    githubBlock = null
+                    previous = null
+                    previousOpen = null
+                    continue
+                }
+            }
+            val grouped = !folded && message.continues(previousOpen)
             val relayed = message.relayed
             if (relayed == null || relayed.discussion != previous?.relayed?.discussion) {
                 githubBlock = null
@@ -957,15 +1040,134 @@ class ThreadPanel(
             if (relayed != null && githubBlock == null) {
                 githubBlock = githubBlock(relayed).also { messagesBox.add(it) }
             }
-            val component = messageComponent(
-                message, timeFormat, people, faces, showMeta = message.showsAvatar(previous), isNew = message.id in tagged,
-            )
+            val component = if (folded) {
+                foldedRow(message, timeFormat, people, faces)
+            } else {
+                messageComponent(
+                    message, timeFormat, people, faces, showMeta = message.showsAvatar(previousOpen), isNew = message.id in tagged,
+                )
+            }
             messageComponents[message.id] = component
             (githubBlock ?: messagesBox).add(component)
             previous = message
+            previousOpen = message.takeUnless { folded }
         }
+        messageWithFocusedToggle?.let { foldToggles[it]?.requestFocusInWindow() }
         revalidate()
         repaint()
+    }
+
+    private fun messageWithFocusedToggle(): String? {
+        val focused = setOfNotNull(
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().permanentFocusOwner,
+            SwingUtilities.getWindowAncestor(this)?.mostRecentFocusOwner,
+        )
+        return foldToggles.entries.firstOrNull { it.value in focused }?.key
+    }
+
+    private fun foldMessage(id: String) {
+        openedHere -= id
+        foldedHere += id
+        refresh()
+    }
+
+    private fun openMessage(id: String) {
+        foldedHere -= id
+        openedHere += id
+        refresh()
+        markReadIfSeenLater()
+    }
+
+    private fun foldToggle(message: Message, folded: Boolean): JComponent {
+        val name = if (folded) "Expand Message" else "Fold Message"
+        return ActionLink("") {
+            if (folded) openMessage(message.id) else foldMessage(message.id)
+        }.apply {
+            icon = if (folded) AllIcons.General.ArrowRight else AllIcons.General.ArrowDown
+            toolTipText = name
+            accessibleContext.accessibleName = name
+            border = JBUI.Borders.emptyRight(4)
+        }
+    }
+
+    private fun foldedRow(message: Message, timeFormat: DateTimeFormatter, people: People, faces: Faces): JComponent {
+        val face = faces.of(message)
+        val authorColor = AuthorColors.of(face.key)
+        val toggle = foldToggle(message, folded = true).also { foldToggles[message.id] = it }
+        val who = author(message, face, toggle, byline(message, face, people)).apply {
+            border = JBUI.Borders.emptyRight(8)
+        }
+        return FoldedMessageRow(who, OpeningLine.of(message.body), timeFormat.format(message.createdAt)) { openMessage(message.id) }.apply {
+            border = JBUI.Borders.compound(
+                JBUI.Borders.customLine(authorColor, 0, 2, 0, 0),
+                JBUI.Borders.emptyLeft(7),
+            )
+        }
+    }
+
+    private fun author(message: Message, face: Face, toggle: JComponent?, meta: String): JPanel = JPanel().apply {
+        val relayed = message.relayed
+        val authorColor = AuthorColors.of(face.key)
+        isOpaque = false
+        layout = BoxLayout(this, BoxLayout.X_AXIS)
+        toggle?.let(::add)
+        add(avatarLabel(face))
+        add(Box.createHorizontalStrut(gapAfterAvatar()))
+        add(
+            JBLabel(meta).apply {
+                font = JBUI.Fonts.smallFont().asBold()
+                foreground = authorColor
+                if (relayed != null) toolTipText = "@${relayed.login} on GitHub"
+            },
+        )
+        val chip = when {
+            relayed != null && face.key == FaceKey.User -> "on GitHub"
+            relayed?.bot == true -> "bot"
+            else -> null
+        }
+        chip?.let {
+            add(Box.createHorizontalStrut(JBUI.scale(6)))
+            add(Chip(it, QUIET_PILL, authorColor))
+        }
+        message.to?.let { to ->
+            add(Box.createHorizontalStrut(JBUI.scale(6)))
+            add(Chip("@${addresseeName(to)}", QUIET_PILL, AuthorColors.of(to)))
+        }
+    }
+
+    private fun byline(message: Message, face: Face, people: People): String {
+        val author = people.displayNameOf(message.author)
+        return if (message.relayed == null) author else "${face.name} · via $author"
+    }
+
+    private fun avatarLabel(face: Face): JComponent = JBLabel(AvatarIcon(face, UIUtil::getPanelBackground)).apply {
+        alignmentY = AvatarGeometries.current().tileCentreShare.toFloat()
+    }
+
+    private fun linkRow(text: String, onClick: () -> Unit): JComponent = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+        isOpaque = false
+        border = JBUI.Borders.emptyLeft(9)
+        add(ActionLink(text) { onClick() })
+        maximumSize = Dimension(Int.MAX_VALUE, preferredSize.height)
+    }
+
+    private fun keepArrivalsOpen() {
+        messagesRendered?.let { rendered ->
+            val arrivals = thread.messages.filterNot { it.id in rendered }.map { it.id }
+            keptOpen += arrivals
+            readWhileOpen += arrivals
+        }
+        messagesRendered = thread.messages.mapTo(mutableSetOf()) { it.id }
+    }
+
+    private fun releaseKeptOpenOnNewFoldingPrefs(prefs: FoldingPrefs) {
+        if (foldedBy != null && prefs != foldedBy) keptOpen.retainAll(readWhileOpen)
+        foldedBy = prefs
+    }
+
+    private fun revealStack(messages: List<Message>) {
+        messages.mapTo(revealedHere) { it.id }
+        refresh()
     }
 
     private fun githubBlock(first: Relayed): JPanel = JPanel().apply {
@@ -1020,10 +1222,8 @@ class ThreadPanel(
         if (message.agrees) return agreementLine(message, timeFormat)
         val relayed = message.relayed
         val face = faces.of(message)
-        val relayedByUser = relayed != null && face.key == FaceKey.User
         val authorColor = AuthorColors.of(face.key)
-        val author = people.displayNameOf(message.author)
-        val byline = if (relayed == null) author else "${face.name} · via $author"
+        val byline = byline(message, face, people)
         val panel = JPanel(BorderLayout()).apply {
             isOpaque = isNew
             background = NEW_TINT
@@ -1033,39 +1233,12 @@ class ThreadPanel(
             )
         }
         val metaRow = JPanel(BorderLayout()).apply { isOpaque = false }
+        val toggle = if (editingMessageId == message.id) null else foldToggle(message, folded = false).also { foldToggles[message.id] = it }
         if (showMeta) {
-            val meta = JBLabel("$byline · ${timeFormat.format(message.createdAt)}").apply {
-                font = JBUI.Fonts.smallFont().asBold()
-                foreground = authorColor
-                if (relayed != null) toolTipText = "@${relayed.login} on GitHub"
-            }
-            val who = JPanel().apply {
-                isOpaque = false
-                layout = BoxLayout(this, BoxLayout.X_AXIS)
-                add(
-                    JBLabel(AvatarIcon(face, UIUtil::getPanelBackground)).apply {
-                        alignmentY = AvatarGeometries.current().tileCentreShare.toFloat()
-                    },
-                )
-                add(Box.createHorizontalStrut(gapAfterAvatar()))
-                add(meta)
-                val chip = when {
-                    relayedByUser -> "on GitHub"
-                    relayed?.bot == true -> "bot"
-                    else -> null
-                }
-                chip?.let {
-                    add(Box.createHorizontalStrut(JBUI.scale(6)))
-                    add(Chip(it, QUIET_PILL, authorColor))
-                }
-                message.to?.let { to ->
-                    add(Box.createHorizontalStrut(JBUI.scale(6)))
-                    add(Chip("@${addresseeName(to)}", QUIET_PILL, AuthorColors.of(to)))
-                }
-            }
-            metaRow.add(who, BorderLayout.WEST)
+            metaRow.add(author(message, face, toggle, "$byline · ${timeFormat.format(message.createdAt)}"), BorderLayout.WEST)
         } else {
             panel.toolTipText = "$byline · ${timeFormat.format(message.createdAt)}"
+            toggle?.let { metaRow.add(it, BorderLayout.WEST) }
         }
 
         val trailing = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply { isOpaque = false }
