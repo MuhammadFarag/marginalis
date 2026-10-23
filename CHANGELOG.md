@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-10-22
+
+Thanks to [@schrek1](https://github.com/schrek1) for starting the long-thread work in this release.
+
 ### Added
 
 - Long threads open folded to what matters. Messages you have read fold
