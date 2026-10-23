@@ -2,6 +2,8 @@ package dev.marginalis.plugin.ui
 
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.LogicalPosition
+import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -34,8 +36,14 @@ object WalkthroughNavigator {
 
     fun navigateWithin(editor: Editor, project: Project, thread: CommentThread): Boolean {
         if (editor.isDisposed) return false
-        val place = placeOf(project, thread)?.takeIf { editor.shows(it.file) } ?: return false
-        place.navigateInRecordingHistory(editor)
+        val shown = editor.getUserData(ThreadInlayManager.SHOWN_THREADS)
+        if (shown != null) {
+            val line = shown.lineOf(thread)?.takeIf { shown.file == thread.file } ?: return false
+            recordingHistory(project) { editor.moveTo(line) }
+        } else {
+            val place = placeOf(project, thread)?.takeIf { editor.shows(it.file) } ?: return false
+            recordingHistory(project) { place.navigateIn(editor) }
+        }
         editor.contentComponent.requestFocusInWindow()
         ThreadInlayManager.open(project, editor, thread)
         return true
@@ -50,10 +58,15 @@ object WalkthroughNavigator {
 
     private fun Editor.shows(file: VirtualFile): Boolean = FileDocumentManager.getInstance().getFile(document) == file
 
-    private fun OpenFileDescriptor.navigateInRecordingHistory(editor: Editor) {
+    private fun Editor.moveTo(line: Int) {
+        caretModel.moveToLogicalPosition(LogicalPosition(line, 0))
+        scrollingModel.scrollToCaret(ScrollType.CENTER)
+    }
+
+    private fun recordingHistory(project: Project, move: () -> Unit) {
         CommandProcessor.getInstance().executeCommand(project, {
             IdeDocumentHistory.getInstance(project).includeCurrentCommandAsNavigation()
-            navigateIn(editor)
+            move()
         }, null, null)
     }
 }

@@ -12,6 +12,7 @@ import com.intellij.diff.tools.util.side.OnesideTextDiffViewer
 import com.intellij.diff.tools.util.side.TwosideTextDiffViewer
 import com.intellij.diff.util.Side
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.markup.HighlighterLayer
@@ -29,10 +30,12 @@ import dev.marginalis.plugin.ui.CoalescedEdtRunner
 import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
 import dev.marginalis.plugin.ui.ShownThreads
 import dev.marginalis.plugin.ui.ThreadInlayManager
+import dev.marginalis.plugin.ui.WalkthroughNavigator
 
 /**
  * Tags every diff editor about a project file with the threads it shows, and paints gutter icons where the
- * diff holds a revision's copy of the text, which the markers on the file's own document never reach.
+ * diff holds a revision's copy of the text, which the markers on the file's own document never reach. A walkthrough
+ * step that switched a review diff to this file ([ReviewDiffSteps]) opens here once the file's diff has its text.
  */
 class ReviewDiffMarkers : DiffExtension() {
 
@@ -41,6 +44,10 @@ class ReviewDiffMarkers : DiffExtension() {
         val sides = ReviewSides.of(viewer) ?: return
         val path = sides.content.highlightFile?.let { ProjectPaths.of(project, it) } ?: return
         DiffPainter(project, sides, path).install()
+        ReviewDiffSteps.takePending(context, path)?.let { step ->
+            val editor = sides.editor ?: return WalkthroughNavigator.navigateTo(project, step.thread)
+            StepOpener(project, sides.viewer, editor, step.thread).install()
+        }
     }
 
     companion object {
@@ -74,6 +81,31 @@ class ReviewDiffMarkers : DiffExtension() {
                     else ReviewSides(viewer, viewer.content, null, viewer.editor) { it }
 
                 else -> null
+            }
+        }
+    }
+
+    /** Opens a walkthrough step once the diff it switched to has its text, falling back to the step's file tab. */
+    private class StepOpener(
+        private val project: Project,
+        private val viewer: DiffViewerBase,
+        private val editor: EditorEx,
+        private val thread: CommentThread,
+    ) : DiffViewerListener() {
+
+        private var opened = false
+
+        fun install() = viewer.addListener(this)
+
+        // The viewer is iterating its listeners right now: removing ourselves, or leaving the diff for a file tab,
+        // changes that list mid-iteration and throws ConcurrentModificationException.
+        override fun onAfterRediff() {
+            if (opened) return
+            opened = true
+            ApplicationManager.getApplication().invokeLater {
+                if (viewer.isDisposed || editor.isDisposed) return@invokeLater
+                viewer.removeListener(this)
+                if (!WalkthroughNavigator.navigateWithin(editor, project, thread)) WalkthroughNavigator.navigateTo(project, thread)
             }
         }
     }

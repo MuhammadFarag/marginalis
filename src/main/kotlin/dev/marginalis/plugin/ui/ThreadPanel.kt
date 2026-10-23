@@ -69,6 +69,7 @@ import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.settings.TimeFormat
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.diff.ReviewDiffSteps
 import dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindow
 import java.awt.BorderLayout
 import java.awt.Color
@@ -758,9 +759,9 @@ class ThreadPanel(
 
     private fun stayOrNavigateTo(target: CommentThread) {
         val here = editor
-        if (here == null || !WalkthroughNavigator.navigateWithin(here, project, target)) {
-            WalkthroughNavigator.navigateTo(project, target)
-        }
+        val stayed = here != null &&
+            (WalkthroughNavigator.navigateWithin(here, project, target) || ReviewDiffSteps.switchTo(project, here, target))
+        if (!stayed) WalkthroughNavigator.navigateTo(project, target)
     }
 
     private fun pickAddressee(atOffset: Int) {

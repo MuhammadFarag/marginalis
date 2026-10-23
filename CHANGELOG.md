@@ -7,6 +7,15 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+### Changed
+
+- Walking a walkthrough inside a pull or merge request review, Next,
+  Previous and Resolve stay in the review: a step in another file of the
+  review switches the review to that file, scrolls to the step and opens
+  its thread there, instead of opening the file in its own tab. A step in
+  the file the review already shows stays in the review too, even when
+  the review branch is not checked out.
+
 ## [0.2.7] - 2026-10-22
 
 Thanks to [@schrek1](https://github.com/schrek1) for starting the long-thread work in this release.
