@@ -11,6 +11,8 @@ History before 0.1.19 lives in git tags.
 
 - The reply composer's send menu reads "Submit & send round" again,
   instead of losing the ampersand to an underlined letter.
+- The buttons in a thread's header no longer wait for a busy IDE, so
+  they stop holding up the editor while the IDE is under load.
 
 ## [0.2.7] - 2026-10-22
 
