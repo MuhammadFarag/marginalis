@@ -20,6 +20,9 @@ History before 0.1.19 lives in git tags.
   they stop holding up the editor while the IDE is under load.
 - Editing one of your messages no longer discards a reply you had
   started. Your unsent reply is back when you save or cancel the edit.
+- On a line with several threads, choosing an open thread in the
+  chooser folds it again, just as clicking the icon of a single thread
+  does.
 
 ## [0.2.7] - 2026-10-22
 
