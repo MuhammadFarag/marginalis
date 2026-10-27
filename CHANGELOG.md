@@ -23,6 +23,8 @@ History before 0.1.19 lives in git tags.
 - On a line with several threads, choosing an open thread in the
   chooser folds it again, just as clicking the icon of a single thread
   does.
+- A code block with lines wider than the thread scrolls sideways in its
+  own pane, so its end is no longer cut off at the panel's edge.
 
 ## [0.2.7] - 2026-10-22
 
