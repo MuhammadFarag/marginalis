@@ -15,6 +15,13 @@ History before 0.1.19 lives in git tags.
 - Select several threads in the tool window to mark, resolve or delete
   them together.
 
+### Changed
+
+- Agreeing with an agent no longer leaves the thread on the agent's
+  move. The thread shows 👍 until the agent says what it does with it:
+  ⏳ while it works on the agreed change, or no sign at all when there
+  is nothing left to do and the thread is yours to resolve.
+
 ### Fixed
 
 - A walkthrough keeps its place when the next step's file will not
