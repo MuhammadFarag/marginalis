@@ -13,6 +13,8 @@ History before 0.1.19 lives in git tags.
   instead of losing the ampersand to an underlined letter.
 - The buttons in a thread's header no longer wait for a busy IDE, so
   they stop holding up the editor while the IDE is under load.
+- Escape in a reply box now closes just the reply box: the thread stays
+  open with your draft kept, and a second Escape folds the thread.
 
 ## [0.2.7] - 2026-10-22
 
