@@ -216,7 +216,7 @@ class ThreadPanel(
                     }
                     if (e.keyCode == KeyEvent.VK_ESCAPE) {
                         e.consume()
-                        escape()
+                        closeInnermost()
                     }
                 }
             })
@@ -285,15 +285,14 @@ class ThreadPanel(
         })
         // The composer handles its own Esc: its editor consumes key events.
         registerKeyboardAction(
-            { escape() },
+            { closeInnermost() },
             KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
             WHEN_ANCESTOR_OF_FOCUSED_COMPONENT,
         )
         refresh()
     }
 
-    /** Closes the innermost open thing: the reply box first, then the thread. A new comment is only its reply box. */
-    private fun escape() {
+    private fun closeInnermost() {
         if (!composerExpanded || isDraft()) return closeAndRefocus()
         if (editingMessageId != null) cancelEdit() else setComposerExpanded(false)
         // The composer just left the hierarchy; the panel is the focus home for the next Esc.
@@ -301,10 +300,14 @@ class ThreadPanel(
     }
 
     private fun cancelEdit() {
-        editingMessageId = null
-        replyArea.text = ""
-        setComposerExpanded(false)
+        leaveEdit()
         refresh()
+    }
+
+    private fun leaveEdit() {
+        replyArea.text = MarginalisStore.getInstance(project).drafts[thread.id]?.text ?: ""
+        editingMessageId = null
+        setComposerExpanded(false)
     }
 
     override fun uiDataSnapshot(sink: DataSink) {
@@ -701,7 +704,6 @@ class ThreadPanel(
 
         val editing = editingMessageId?.let { id -> thread.messages.find { it.id == id } }
         if (editing != null) {
-            editingMessageId = null
             // An agent may have read the original mid-edit; once read, it is record.
             val applied = !editing.seenByAnyAgent
             if (applied) {
@@ -709,8 +711,7 @@ class ThreadPanel(
                 // A Message can't bump its thread; without touch() a cursor sweep misses the revision.
                 thread.touch()
             }
-            replyArea.text = ""
-            setComposerExpanded(false)
+            leaveEdit()
             MarginalisStore.getInstance(project).threads.notifyChanged(thread)
             return editing.takeIf { applied }
         }
