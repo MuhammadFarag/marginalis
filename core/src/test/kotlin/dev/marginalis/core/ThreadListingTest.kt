@@ -100,13 +100,35 @@ class ThreadListingTest {
     }
 
     @Test
-    fun `titles are told apart within one list only`() {
-        val openStep = step(1, "w")
-        val resolvedStep = step(2, "v").resolved()
+    fun `namesakes are told apart across every section`() {
+        val openStep = step(1, "w", createdAt = Instant.ofEpochSecond(100))
+        val resolvedStep = step(2, "v", createdAt = Instant.ofEpochSecond(200)).resolved()
         val listing = ThreadListing.of(listOf(openStep, resolvedStep), startTime = clock)
 
-        assertEquals(listOf("Walkthrough"), listing.guided.map { it.title })
-        assertEquals(listOf("Walkthrough"), listing.resolved.walkthroughs.map { it.title })
+        assertEquals(listOf("Walkthrough · t100"), listing.guided.map { it.title })
+        assertEquals(listOf("Walkthrough · t200"), listing.resolved.walkthroughs.map { it.title })
+    }
+
+    @Test
+    fun `a walkthrough keeps its told-apart title while its namesake is filtered out`() {
+        val shown = step(1, "shown", "tour", createdAt = Instant.ofEpochSecond(100))
+        val hidden = step(1, "hidden", "tour", createdAt = Instant.ofEpochSecond(300))
+        val all = listOf(shown, hidden)
+        val listing = ThreadListing.of(shown = listOf(shown), all = all, startTime = clock)
+
+        assertEquals(listOf("tour · t100"), listing.guided.map { it.title })
+        assertEquals("tour · t100", ThreadListing.titleOf(all, shown, clock))
+    }
+
+    @Test
+    fun `a walkthrough split across sections has one title`() {
+        val open = step(2, "w", "tour", createdAt = Instant.ofEpochSecond(100))
+        val done = step(1, "w", "tour", createdAt = Instant.ofEpochSecond(90)).resolved()
+        val namesake = step(1, "other", "tour", createdAt = Instant.ofEpochSecond(300)).resolved()
+        val listing = ThreadListing.of(listOf(open, done, namesake), startTime = clock)
+
+        assertEquals(listOf("tour · t90"), listing.guided.map { it.title })
+        assertEquals(listOf("tour · t90", "tour · t300"), listing.resolved.walkthroughs.map { it.title })
     }
 
     @Test
@@ -139,6 +161,6 @@ class ThreadListingTest {
 
         assertEquals("tour · t300", ThreadListing.titleOf(all, second, clock))
         assertEquals("solo", ThreadListing.titleOf(all, alone, clock))
-        assertEquals("tour", ThreadListing.titleOf(all, resolvedTwin, clock))
+        assertEquals("tour · t300", ThreadListing.titleOf(all, resolvedTwin, clock))
     }
 }

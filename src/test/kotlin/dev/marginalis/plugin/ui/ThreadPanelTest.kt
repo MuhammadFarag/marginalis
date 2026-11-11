@@ -103,6 +103,30 @@ class ThreadPanelTest : HttpContractTestCase() {
         assertTrue(user.shownText(user.open(step)).lines().contains("<html>open · <b>&amp;${"x".repeat(36)}...</b> (1/1)</html>"))
     }
 
+    fun testAResolvedStepSaysWhoResolvedItAndNamesItsWalkthrough() {
+        sample()
+        val steps = (1..3).map { agent.addOnLine(10 + it, "order" to it, "walkthrough" to "tour") }
+        agent.post("comment_resolve", "thread_id" to steps[1])
+
+        assertTrue(user.shownText(user.open(steps[1])).lines().contains("<html>resolved by Claude · <b>tour</b> (2/3)</html>"))
+    }
+
+    fun testAnOrphanedStepNamesItsWalkthrough() {
+        sample()
+        val steps = (1..2).map { agent.addOnLine(10 + it, "order" to it, "walkthrough" to "tour") }
+        user.thread(steps[0]).markOrphaned()
+
+        assertTrue(user.shownText(user.open(steps[0])).lines().contains("<html>orphaned (anchor deleted) · <b>tour</b> (1/2)</html>"))
+    }
+
+    fun testAStepOfAFinishedWalkthroughNamesItWithoutAPosition() {
+        sample()
+        val step = agent.addOnLine(11, "order" to 1, "walkthrough" to "tour")
+        agent.post("comment_resolve", "thread_id" to step)
+
+        assertTrue(user.shownText(user.open(step)).lines().contains("<html>resolved by Claude · <b>tour</b></html>"))
+    }
+
     fun testANitCommentsEdgeStaysGrey() {
         sample()
         val nit = agent.addOnLine(5, "severity" to "nit")

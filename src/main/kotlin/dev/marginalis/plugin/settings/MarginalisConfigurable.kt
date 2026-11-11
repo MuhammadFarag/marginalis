@@ -401,6 +401,7 @@ class MarginalisConfigurable : Configurable {
         val settings = MarginalisSettings.getInstance()
         val bylinesBefore = bylineSettings()
         val foldingBefore = settings.foldingPrefs
+        val timeFormatBefore = settings.timeFormat
         val tabBefore = settings.projectTabPrefs
         val liveByDefaultBefore = settings.state.liveByDefault
         panel?.apply()
@@ -408,7 +409,7 @@ class MarginalisConfigurable : Configurable {
         settings.state.userPicture = userPicture
         Pictures.deleteUnreferenced(edited, userPicture)
         resetPeople()
-        if (bylineSettings() != bylinesBefore || settings.foldingPrefs != foldingBefore) refreshThreads()
+        if (bylineSettings() != bylinesBefore || settings.foldingPrefs != foldingBefore || settings.timeFormat != timeFormatBefore) refreshThreads()
         if (settings.projectTabPrefs != tabBefore) ProjectTab.applyPrefs()
         if (settings.state.liveByDefault != liveByDefaultBefore) MarginalisStore.liveByDefaultChanged(settingsWasLive = liveByDefaultBefore)
     }
