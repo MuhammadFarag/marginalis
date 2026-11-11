@@ -285,8 +285,8 @@ class MarginalisConfigurable : Configurable {
                 }
             }
             row {
-                checkBox("Jump to the next step after resolving")
-                    .comment("While walking a guided walkthrough, resolving a step opens the next one.")
+                checkBox("Jump to the next thread after resolving")
+                    .comment("Resolving a step opens the next step of its walkthrough; resolving a comment opens the next open comment.")
                     .bindSelected(state::walkthroughAutoAdvance)
             }
             row {

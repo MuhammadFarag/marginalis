@@ -70,7 +70,7 @@ class FoldingTest : ToolWindowTestCase() {
         window.rebuiltBy { user.read(step) }
 
         assertFalse(window.isExpanded("lib"))
-        assertTrue(window.isExpanded("guide", under = "Open"))
+        assertTrue(window.isExpanded("guide", under = "Walkthrough"))
     }
 
     fun testTheResolvedSectionUnfoldedByHandStaysOpenWhenAThreadChanges() {
@@ -318,7 +318,7 @@ class FoldingTest : ToolWindowTestCase() {
         assertEquals(listOf("Open  1"), window.rows())
     }
 
-    fun testCollapseOnAStepFoldsItsOwnGuidedSectionAndThenEverySection() {
+    fun testCollapseOnAStepFoldsItsOwnWalkthroughSectionAndThenEverySection() {
         sample()
         agent.addOnLine(3, "order" to 1, "walkthrough" to "SHOP-42", "body" to "first walk")
         agent.addOnLine(6, "order" to 1, "walkthrough" to "r2", "body" to "second walk")
@@ -327,11 +327,55 @@ class FoldingTest : ToolWindowTestCase() {
 
         assertEquals("Collapse Section", collapseText())
         window.press("Collapse")
-        assertEquals("Guided SHOP-42  1", window.selected())
-        assertEquals(listOf("Guided SHOP-42  1", "Guided r2  1", "src  1"), window.rows().take(3))
+        assertEquals("SHOP-42  1", window.selected())
+        assertEquals(listOf("SHOP-42  1", "r2  1", "src  1"), window.rows().take(3))
 
         window.press("Collapse")
-        assertEquals(listOf("Guided SHOP-42  1", "Guided r2  1", "Open  2"), window.rows())
+        assertEquals(listOf("SHOP-42  1", "r2  1"), window.rows())
+    }
+
+    fun testAWalkthroughUnfoldedInResolvedKeepsItsFoldsAndSelectionApartFromTheCommentsBesideIt() {
+        sample()
+        val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
+        val second = agent.addOnLine(6, "order" to 2, "walkthrough" to "tour", "body" to "two")
+        val settled = agent.addOnLine(9, "body" to "settled")
+        agent.post("comment_resolve", "thread_id" to first)
+        agent.post("comment_resolve", "thread_id" to settled)
+        window.toggleFolding("Resolved")
+        window.toggleFolding("tour", under = "Resolved")
+        window.toggleFolding("src", under = "Resolved")
+        window.toggleFolding("Sample.kt", under = "Resolved")
+        window.select("L3  one")
+
+        window.rebuiltBy { agent.reply(second, "more") }
+
+        assertEquals("(1/2)  L3  one", window.selected())
+        assertEquals(
+            """
+            Resolved  2
+              tour  1
+                src  1
+                  Sample.kt
+                    (1/2)  L3  one
+              src  1
+            """.trimIndent(),
+            section("Resolved"),
+        )
+    }
+
+    fun testCollapseOnAWalkthroughInResolvedFoldsThatWalkthrough() {
+        sample()
+        val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
+        agent.post("comment_resolve", "thread_id" to first)
+        window.toggleFolding("Resolved")
+        window.toggleFolding("tour", under = "Resolved")
+        window.select("tour", under = "Resolved")
+
+        assertEquals("Collapse Walkthrough", collapseText())
+        window.press("Collapse")
+
+        assertEquals(listOf("Resolved  1", "tour  1"), window.rows())
+        assertEquals("Collapse Section", collapseText())
     }
 
     fun testCollapseAllSectionsFoldsTheOrphanedSectionToo() {
@@ -386,12 +430,13 @@ class FoldingTest : ToolWindowTestCase() {
         assertFalse(window.isExpanded("lib"))
     }
 
-    fun testNextStepOpensTheFoldsOnTheWayToTheStepOnly() {
+    fun testFirstStepOpensTheFoldsOnTheWayToTheCommentOnly() {
         nested()
         window.toggleFolding("c  1")
         window.toggleFolding("lib")
+        window.click("L2  side")
 
-        window.press("Next Step")
+        window.press("First Step")
 
         assertEquals("✉ L2  deep", window.selected())
         assertFalse(window.isExpanded("lib"))

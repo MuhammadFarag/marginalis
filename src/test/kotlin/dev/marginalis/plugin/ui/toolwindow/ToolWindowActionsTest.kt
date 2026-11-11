@@ -45,10 +45,11 @@ class ToolWindowActionsTest : ToolWindowTestCase() {
         assertEquals(listOf("Open  1", "src  1", "Sample.kt ✈1", "✈ L6  a question"), window.rows())
 
         window.filterBy("Awaiting You")
-        assertEquals(listOf("Guided  1", "src  1", "Sample.kt ✉1", "✉ (1/1)  L12  a guided step", "Open  3  ·  1 blocker"), window.rows().take(5))
+        assertEquals(listOf("Walkthrough  1", "src  1", "Sample.kt ✉1", "✉ (1/1)  L12  a guided step", "Open  2  ·  1 blocker"), window.rows().take(5))
+        assertEquals(listOf("✉ L3  blocking", "✉ L9  a finding"), window.rows().drop(7))
 
         window.filterBy("Guidance")
-        assertEquals(listOf("Guided  1", "src  1", "Sample.kt ✉1", "✉ (1/1)  L12  a guided step", "Open  1", "src  1", "Sample.kt ✉1", "✉ L12  a guided step"), window.rows())
+        assertEquals(listOf("Walkthrough  1", "src  1", "Sample.kt ✉1", "✉ (1/1)  L12  a guided step"), window.rows())
 
         window.filterBy("Findings")
         assertEquals("✉ L9  a finding", window.rows().last())
@@ -64,7 +65,7 @@ class ToolWindowActionsTest : ToolWindowTestCase() {
         assertEquals(4, window.rows().size)
 
         window.filterBy("All")
-        assertEquals("Open  5  ·  1 blocker", window.rows()[4])
+        assertEquals("Open  4  ·  1 blocker", window.rows()[4])
     }
 
     fun testEachFilterHasItsOwnEmptyMessage() {

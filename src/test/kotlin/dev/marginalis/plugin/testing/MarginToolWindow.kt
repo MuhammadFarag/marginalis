@@ -157,6 +157,11 @@ class MarginToolWindow(private val project: Project, private val disposable: Dis
         return leading + words.getCharSequence(false).toString() + counts
     }
 
+    fun markShown(text: String): Icon {
+        val words = UIUtil.findComponentOfType(render(rowOf(text)), SimpleColoredComponent::class.java)!!
+        return (words.icon as RowIcon).getIcon(0)!!
+    }
+
     fun participantsShown(text: String): String? {
         val cell = render(rowOf(text))
         return UIUtil.findComponentsOfType(cell, JLabel::class.java)
