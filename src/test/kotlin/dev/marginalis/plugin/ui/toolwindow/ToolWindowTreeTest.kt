@@ -1,21 +1,57 @@
 package dev.marginalis.plugin.ui.toolwindow
 
+import dev.marginalis.core.CommentThread
+import dev.marginalis.core.Mark
+import dev.marginalis.core.MarkSubject
+import dev.marginalis.core.Message
+import dev.marginalis.plugin.settings.MarginalisSettings
+import dev.marginalis.plugin.settings.TimeFormat
+import dev.marginalis.plugin.store.Authors
+import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.testing.Agent
+import dev.marginalis.plugin.ui.MarginalisIcons
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 class ToolWindowTreeTest : ToolWindowTestCase() {
+
+    fun testAStepsRowWearsTheSignpostWithoutAStripe() {
+        sample()
+        agent.addOnLine(5, "order" to 1, "walkthrough" to "tour", "body" to "Signpost step")
+
+        val mark = window.markShown("Signpost step")
+
+        assertSame(MarginalisIcons.mark(Mark(MarkSubject.LINE, null, step = true)), mark)
+        assertEquals(16, mark.iconWidth)
+    }
+
+    fun testAStepsHeaderNamesItsWalkthroughAsItsSectionDoesWhenTwoShareAName() {
+        sample()
+        agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "earlier")
+        val later = agent.addOnLine(5, "order" to 1, "walkthrough" to "tour", "body" to "later")
+
+        val header = user.shownText(user.open(later)).lines().single { it.startsWith("<html>open · ") }
+        val title = header.substringAfter("<b>").substringBefore("</b>")
+
+        assertTrue(title, title.startsWith("tour · "))
+        assertTrue(header, header.endsWith("</b> (1/1)</html>"))
+        assertTrue(sections().toString(), sections().any { it.startsWith("$title  ") })
+        assertTrue(section(title), section(title).contains("later"))
+    }
 
     fun testAnEmptyMarginShowsNoRowsAndSaysSo() {
         assertEquals(0, window.tree.rowCount)
         assertEquals("No margin threads yet", window.emptyText())
     }
 
-    // FixMe: Known issue - #51 the Guided section is a folder tree ordered by each folder's smallest step, not the order the walkthrough is read
-    fun testAWalkthroughThatHopsBetweenFilesIsGuidedFolderByFolder() {
+    // FixMe: Known issue - #51 a walkthrough's section is a folder tree ordered by each folder's smallest step, not the order the walkthrough is read
+    fun testAWalkthroughThatHopsBetweenFilesIsListedFolderByFolder() {
         interleaved()
 
         assertEquals(
             """
-            Guided SHOP-77  17
+            SHOP-77  17
               acme/backend  17
                 shop-orders/src  13
                   main  8
@@ -53,53 +89,22 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
                     Order.java ✉1
                       ✉ (8/18)  L10  Step 8
             """.trimIndent(),
-            section("Guided"),
+            section("SHOP-77"),
         )
     }
 
-    fun testOpenThreadsAreListedAgainByPathWithoutStepNumbers() {
+    fun testOpenListsTheOrdinaryCommentsAloneAndNoStep() {
         interleaved()
+        sample()
+        agent.addOnLine(5, "body" to "loose")
 
-        assertEquals(listOf("Guided SHOP-77  17", "Open  17", "Resolved  1"), sections())
+        assertEquals(listOf("SHOP-77  17", "Open  1", "Resolved  1"), sections())
         assertEquals(
             """
-            Open  17
-              acme/backend  17
-                shop-common/src/main/java/com/acme/backend/common  4
-                  discount  3
-                    LoyaltyDiscountPolicy.java ✉3
-                      ✉ L8  Step 4
-                      ✉ L22  Step 5
-                      ✉ L40  Step 14
-                  order  1
-                    Order.java ✉1
-                      ✉ L10  Step 8
-                shop-orders/src  13
-                  main  8
-                    java/com/acme/orders  7
-                      api  2
-                        OrderController.java ✉2
-                          ✉ L30  Step 10
-                          ✉ L45  Step 18
-                      OrderRepository.java ✉1
-                        ✉ L15  Step 7
-                      OrderService.java ✉4
-                        ✉ L20  Step 2
-                        ✉ L28  Step 3
-                        ✉ L41  Step 6
-                        ✉ L55  Step 9
-                    resources/db/changelog  1
-                      add-loyalty-discount.sql ✉1
-                        ✉ L3  Step 11
-                  test/java/com/acme/orders  5
-                    discount  2
-                      LoyaltyDiscountPolicyTest.java ✉2
-                        ✉ L12  Step 15
-                        ✉ L30  Step 16
-                    OrderServiceTest.java ✉3
-                      ✉ L14  Step 12
-                      ✉ L36  Step 13
-                      ✉ L58  Step 17
+            Open  1
+              src  1
+                Sample.kt ✉1
+                  ✉ L5  loose
             """.trimIndent(),
             section("Open"),
         )
@@ -116,20 +121,22 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         assertEquals(
             """
             Resolved  1
-              acme/backend/shop-orders/src/main/java/com/acme/orders/api  1
+              SHOP-77  1
             """.trimIndent(),
             section("Resolved"),
         )
 
-        window.toggleFolding("acme/backend/shop-orders/src/main/java/com/acme/orders/api")
+        window.toggleFolding("SHOP-77", under = "Resolved")
+        window.toggleFolding("acme/backend/shop-orders/src/main/java/com/acme/orders/api", under = "Resolved")
         window.toggleFolding("OrderController.java", under = "Resolved")
 
         assertEquals(
             """
             Resolved  1
-              acme/backend/shop-orders/src/main/java/com/acme/orders/api  1
-                OrderController.java
-                  L12  Step 1
+              SHOP-77  1
+                acme/backend/shop-orders/src/main/java/com/acme/orders/api  1
+                  OrderController.java
+                    (1/18)  L12  Step 1
             """.trimIndent(),
             section("Resolved"),
         )
@@ -138,8 +145,8 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
     fun testADeepWalkthroughCountsItsOpenStepsAndNumbersThemOutOfTheWholeWalk() {
         val steps = deep()
 
-        assertEquals(listOf("Guided SHOP-42  24", "Open  24", "Resolved  9"), sections())
-        val guided = section("Guided")
+        assertEquals(listOf("SHOP-42  24", "Resolved  9"), sections())
+        val guided = section("SHOP-42")
         assertEquals("acme  24", guided.lines()[1].trim())
         assertEquals("backend  23", guided.lines()[2].trim())
         assertTrue(guided, guided.contains("(8/33)  L5  Step 8"))
@@ -159,23 +166,23 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
 
         assertEquals(
             """
-            Guided tour  2
+            tour  2
               src  2
                 Sample.kt ✉2
                   ✉ (2/3)  L6  two
                   ✉ (3/3)  L9  three
             """.trimIndent(),
-            section("Guided"),
+            section("tour"),
         )
     }
 
-    fun testAWalkthroughWithoutALabelIsSimplyGuided() {
+    fun testAWalkthroughWithoutALabelIsTitledWalkthrough() {
         sample()
         agent.addOnLine(3, "order" to 1, "body" to "one")
         agent.addOnLine(6, "order" to 2, "body" to "two")
 
-        assertEquals(listOf("Guided  2", "Open  2"), sections())
-        assertTrue(section("Guided"), section("Guided").contains("(1/2)  L3  one"))
+        assertEquals(listOf("Walkthrough  2"), sections())
+        assertTrue(section("Walkthrough"), section("Walkthrough").contains("(1/2)  L3  one"))
     }
 
     fun testTwoWalkthroughsEachGetASectionAndTheirStepsShowJustTheirNumber() {
@@ -184,9 +191,9 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         agent.addOnLine(6, "order" to 2, "walkthrough" to "SHOP-42", "body" to "first walk, two")
         agent.addOnLine(9, "order" to 1, "walkthrough" to "r2", "body" to "second walk")
 
-        assertEquals(listOf("Guided SHOP-42  2", "Guided r2  1", "Open  3"), sections())
-        assertTrue(section("Guided SHOP-42"), section("Guided SHOP-42").contains("(1/2)  L3  first walk, one"))
-        assertTrue(section("Guided r2"), section("Guided r2").contains("(1/1)  L9  second walk"))
+        assertEquals(listOf("SHOP-42  2", "r2  1"), sections())
+        assertTrue(section("SHOP-42"), section("SHOP-42").contains("(1/2)  L3  first walk, one"))
+        assertTrue(section("r2"), section("r2").contains("(1/1)  L9  second walk"))
     }
 
     fun testProjectFileAndLineThreadsEachSayWhereTheyAre() {
@@ -219,7 +226,7 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
 
         assertEquals(
             """
-            Guided tour  3
+            tour  3
               Project  2
                 ✉ (2/3)  project  the big picture
                 ✉ (3/3)  project  wrap up
@@ -227,7 +234,7 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
                 Sample.kt ✉1
                   ✉ (1/3)  L3  code
             """.trimIndent(),
-            section("Guided"),
+            section("tour"),
         )
     }
 
@@ -259,7 +266,7 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         agent.addOnLine(12, "order" to 1, "severity" to "blocker", "body" to "a blocking step")
         agent.post("comment_resolve", "thread_id" to solved)
 
-        assertEquals(listOf("Guided  1  ·  1 blocker", "Open  3  ·  3 blockers", "Resolved  1"), sections())
+        assertEquals(listOf("Walkthrough  1  ·  1 blocker", "Open  2  ·  2 blockers", "Resolved  1"), sections())
     }
 
     fun testANitsPreviewIsGreyedAndOthersAreNot() {
@@ -333,14 +340,113 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         assertNull(window.participantsShown("Open"))
     }
 
-    fun testAnUnlabelledWalkthroughBesideALabelledOneGetsItsOwnGuidedSection() {
+    fun testAnUnlabelledWalkthroughBesideALabelledOneGetsItsOwnSection() {
         sample()
         agent.addOnLine(3, "order" to 1, "body" to "plain one")
         agent.addOnLine(6, "order" to 2, "body" to "plain two")
         agent.addOnLine(9, "order" to 1, "walkthrough" to "r2", "body" to "labelled")
 
-        assertEquals(listOf("Guided  2", "Guided r2  1", "Open  3"), sections())
-        assertTrue(section("Guided  2"), section("Guided  2").contains("(2/2)  L6  plain two"))
-        assertTrue(section("Guided r2"), section("Guided r2").contains("(1/1)  L9  labelled"))
+        assertEquals(listOf("Walkthrough  2", "r2  1"), sections())
+        assertTrue(section("Walkthrough  2"), section("Walkthrough  2").contains("(2/2)  L6  plain two"))
+        assertTrue(section("r2"), section("r2").contains("(1/1)  L9  labelled"))
+    }
+
+    fun testAResolvedStepMovesUnderItsWalkthroughInResolvedAndReopeningReturnsItToItsSection() {
+        sample()
+        val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
+        agent.addOnLine(6, "order" to 2, "walkthrough" to "tour", "body" to "two")
+        agent.addOnLine(9, "body" to "loose")
+        agent.post("comment_resolve", "thread_id" to first)
+
+        window.toggleFolding("Resolved")
+        window.toggleFolding("tour", under = "Resolved")
+        window.toggleFolding("src", under = "Resolved")
+        window.toggleFolding("Sample.kt", under = "Resolved")
+
+        assertEquals(
+            """
+            tour  1
+              src  1
+                Sample.kt ✉1
+                  ✉ (2/2)  L6  two
+            Open  1
+              src  1
+                Sample.kt ✉1
+                  ✉ L9  loose
+            Resolved  1
+              tour  1
+                src  1
+                  Sample.kt
+                    (1/2)  L3  one
+            """.trimIndent(),
+            window.outline(),
+        )
+
+        window.rebuiltBy { agent.post("comment_reopen", "thread_id" to first) }
+
+        assertEquals(listOf("tour  2", "Open  1"), sections())
+        assertTrue(section("tour"), section("tour").contains("(1/2)  L3  one"))
+    }
+
+    fun testAnOrphanedStepShowsUnderItsWalkthroughAheadOfTheOrphanedComments() {
+        sample()
+        agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
+        agent.addOnLine(20, "order" to 2, "walkthrough" to "tour", "body" to "lost step")
+        agent.addOnLine(30, "body" to "lost comment")
+        eraseLine(30)
+        eraseLine(20)
+
+        assertEquals(
+            """
+            Orphaned  2
+              tour  1
+                src  1
+                  Sample.kt
+                    (2/2)  L20  lost step
+              src  1
+                Sample.kt
+                  L30  lost comment
+            """.trimIndent(),
+            section("Orphaned"),
+        )
+        assertEquals(listOf("tour  1", "Orphaned  2"), sections())
+    }
+
+    fun testTwoUnlabelledWalkthroughsAreTwoSectionsToldApartByWhenTheyStarted() {
+        projectStep(walkthroughId = "morning", body = "morning walk", createdAt = today(9, 15))
+        projectStep(walkthroughId = "afternoon", body = "afternoon walk", createdAt = today(14, 40))
+        val settings = MarginalisSettings.getInstance()
+        val before = settings.state.timeFormat
+        try {
+            settings.state.timeFormat = TimeFormat.TWENTY_FOUR_HOUR.stored
+
+            assertEquals(listOf("Walkthrough · 09:15  1", "Walkthrough · 14:40  1"), sections())
+            assertTrue(section("Walkthrough · 09:15"), section("Walkthrough · 09:15").contains("morning walk"))
+            assertTrue(section("Walkthrough · 14:40"), section("Walkthrough · 14:40").contains("afternoon walk"))
+        } finally {
+            settings.state.timeFormat = before
+        }
+    }
+
+    fun testTwoWalkthroughsPostedOneAfterTheOtherWithoutALabelAreListedApart() {
+        sample()
+        agent.post("comment_add_batch", "items" to listOf(1, 2).map { mapOf("file" to SAMPLE, "line" to it * 3, "anchor_text" to lineText(it * 3), "order" to it, "body" to "first walk $it") })
+        agent.post("comment_add_batch", "items" to listOf(1, 2, 3).map { mapOf("file" to SAMPLE, "line" to it * 10, "anchor_text" to lineText(it * 10), "order" to it, "body" to "second walk $it") })
+
+        val guided = sections()
+        assertEquals(2, guided.size)
+        assertTrue(guided.toString(), guided.all { it.startsWith("Walkthrough · ") })
+        assertEquals(guided.toString(), 2, guided.map { it.substringBeforeLast("  ") }.toSet().size)
+        assertTrue(window.outline(), window.outline().contains("(2/2)  L6  first walk 2"))
+        assertTrue(window.outline(), window.outline().contains("(3/3)  L30  second walk 3"))
+    }
+
+    private fun today(hour: Int, minute: Int): Instant =
+        LocalDateTime.now().withHour(hour).withMinute(minute).withSecond(0).atZone(ZoneId.systemDefault()).toInstant()
+
+    private fun projectStep(walkthroughId: String, body: String, createdAt: Instant) {
+        val step = CommentThread(null, null, null, createdAt = createdAt, order = 1, walkthroughId = walkthroughId)
+        step.addMessage(Message(Authors.user, body))
+        MarginalisStore.getInstance(project).threads.add(step)
     }
 }

@@ -35,24 +35,31 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.components.BorderLayoutPanel
+import dev.marginalis.core.Arrows
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Faces
 import dev.marginalis.core.Intent
+import dev.marginalis.core.ListedSection
 import dev.marginalis.core.Opened
 import dev.marginalis.core.PathTrie
 import dev.marginalis.core.Severity
+import dev.marginalis.core.StepMark
 import dev.marginalis.core.StripeBadge
+import dev.marginalis.core.ThreadListing
 import dev.marginalis.core.ThreadOrder
 import dev.marginalis.core.ThreadStatus
 import dev.marginalis.core.Turn
 import dev.marginalis.core.TurnSignal
 import dev.marginalis.core.TurnTally
 import dev.marginalis.core.Walkthrough
+import dev.marginalis.core.WalkthroughGroup
 import dev.marginalis.plugin.avatars.AvatarsListener
+import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.AgentPresenceGroup
 import dev.marginalis.plugin.ui.FileLevelThreads
+import dev.marginalis.plugin.ui.LastStep
 import dev.marginalis.plugin.ui.MarginalisIcons
 import dev.marginalis.plugin.ui.MarkdownRenderer
 import dev.marginalis.plugin.ui.ParticipantStackIcon
@@ -145,7 +152,7 @@ private class CommentOnProjectAction :
 }
 
 private class FirstStepAction(private val panel: MarginalisToolWindowPanel) :
-    AnAction("First Step", "Go to the first step in this section", AllIcons.Actions.Play_first) {
+    AnAction("First Step", "Go to the first step of this walkthrough, or the first comment in this section", AllIcons.Actions.Play_first) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
@@ -156,7 +163,7 @@ private class FirstStepAction(private val panel: MarginalisToolWindowPanel) :
 }
 
 private class LastStepAction(private val panel: MarginalisToolWindowPanel) :
-    AnAction("Last Step", "Go to the last step in this section", AllIcons.Actions.Play_last) {
+    AnAction("Last Step", "Go to the last step of this walkthrough, or the last comment in this section", AllIcons.Actions.Play_last) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
@@ -290,8 +297,16 @@ private class ClearAllAction : AnAction("Delete All", "Delete all threads, inclu
 private sealed class NodeData {
     abstract val keyAcrossRebuilds: String
 
-    class Section(val title: String, val count: Int, val blockers: Int = 0, val walksByStepNumber: Boolean = false) : NodeData() {
-        override val keyAcrossRebuilds get() = "section:$title"
+    class Section(
+        val title: String,
+        val count: Int,
+        val blockers: Int = 0,
+        val isGuided: Boolean = false,
+        override val keyAcrossRebuilds: String = "section:$title",
+    ) : NodeData()
+
+    class WalkthroughNode(val title: String, val count: Int, walkthroughId: String?) : NodeData() {
+        override val keyAcrossRebuilds = walkthroughKey(walkthroughId)
     }
 
     class ProjectNode(val count: Int) : NodeData() {
@@ -314,6 +329,8 @@ private sealed class NodeData {
         override val keyAcrossRebuilds get() = Opened.MarginThread(thread.id).keyAcrossRebuilds
     }
 }
+
+private fun walkthroughKey(walkthroughId: String?) = "walkthrough:$walkthroughId"
 
 private val Opened.keyAcrossRebuilds: String
     get() = when (this) {
@@ -415,7 +432,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     private fun nodeOf(target: Opened): DefaultMutableTreeNode? {
         val root = tree.model.root as? DefaultMutableTreeNode ?: return null
         return sections(root)
-            .sortedByDescending { (it.userObject as NodeData.Section).walksByStepNumber }
+            .sortedByDescending { (it.userObject as NodeData.Section).isGuided }
             .firstNotNullOfOrNull { section -> findUnder(section, target.keyAcrossRebuilds) }
     }
 
@@ -529,64 +546,59 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         for (thread in threads) store.threads.delete(thread.id)
     }
 
-    /** Cursor index is -1 when no thread node is selected. */
-    private fun steps(): Pair<List<DefaultMutableTreeNode>, Int> {
-        val none = emptyList<DefaultMutableTreeNode>() to -1
-        val root = tree.model.root as? DefaultMutableTreeNode ?: return none
+    private fun arrows(): Arrows {
         val selected = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
-        val section = selected?.path?.getOrNull(1) as? DefaultMutableTreeNode
-            ?: root.children().asSequence().filterIsInstance<DefaultMutableTreeNode>().firstOrNull()
-            ?: return none
-        val nodes = section.preorderEnumeration().asSequence()
-            .filterIsInstance<DefaultMutableTreeNode>()
-            .filter { it.userObject is NodeData.ThreadNode }
-            .toList()
-        val walk = if ((section.userObject as NodeData.Section).walksByStepNumber) {
-            nodes.sortedWith(compareBy(Walkthrough.byStepNumber) { (it.userObject as NodeData.ThreadNode).thread })
-        } else {
-            nodes
+        val selectedThread = (selected?.userObject as? NodeData.ThreadNode)?.thread
+        if (selected != null && selectedThread != null && selectedThread.order == null) {
+            val comments = threadsUnder(sectionOf(selected)).filter { it.order == null }
+            return Arrows.along(comments, comments.indexOfFirst { it.id == selectedThread.id })
         }
-        val index = if (selected?.userObject is NodeData.ThreadNode) walk.indexOf(selected) else -1
-        return walk to index
+        val threads = MarginalisStore.getInstance(project).threads.all()
+        val selectedStep = selectedThread?.let(StepMark::of)
+        return if (selectedStep != null) Walkthrough.arrowsOn(threads, selectedStep)
+        else Walkthrough.arrowsFrom(threads, LastStep.getInstance(project).mark)
     }
 
-    private fun goTo(node: DefaultMutableTreeNode) {
-        show(node)
-        (node.userObject as? NodeData.ThreadNode)?.thread?.let { navigateTo(it) }
+    private fun sectionOf(node: DefaultMutableTreeNode) = node.path[1] as DefaultMutableTreeNode
+
+    private fun goTo(thread: CommentThread) {
+        val target = Opened.MarginThread(thread.id)
+        val selected = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
+        val node =
+            if (thread.order == null) selected?.let { findUnder(sectionOf(it), target.keyAcrossRebuilds) }
+            else nodeOf(target)
+        if (node != null) show(node) else tree.clearSelection()
+        navigateTo(thread)
     }
 
-    override fun hasNextOccurence(): Boolean = steps().let { (walk, i) -> i < walk.size - 1 && walk.isNotEmpty() }
-
-    override fun hasPreviousOccurence(): Boolean = steps().second > 0
-
-    override fun goNextOccurence(): OccurenceNavigator.OccurenceInfo? {
-        val (walk, i) = steps()
-        val target = walk.getOrNull(i + 1) ?: return null
+    private fun goAlong(arrows: Arrows, target: CommentThread?): OccurenceNavigator.OccurenceInfo? {
+        target ?: return null
         goTo(target)
-        return OccurenceNavigator.OccurenceInfo.position(i + 2, walk.size)
+        return OccurenceNavigator.OccurenceInfo.position(arrows.walk.indexOf(target) + 1, arrows.walk.size)
     }
 
-    override fun goPreviousOccurence(): OccurenceNavigator.OccurenceInfo? {
-        val (walk, i) = steps()
-        val target = walk.getOrNull(i - 1) ?: return null
-        goTo(target)
-        return OccurenceNavigator.OccurenceInfo.position(i, walk.size)
-    }
+    override fun hasNextOccurence(): Boolean = arrows().next != null
+
+    override fun hasPreviousOccurence(): Boolean = arrows().previous != null
+
+    override fun goNextOccurence(): OccurenceNavigator.OccurenceInfo? = arrows().let { goAlong(it, it.next) }
+
+    override fun goPreviousOccurence(): OccurenceNavigator.OccurenceInfo? = arrows().let { goAlong(it, it.previous) }
 
     override fun getNextOccurenceActionName(): String = "Next Step"
 
     override fun getPreviousOccurenceActionName(): String = "Previous Step"
 
-    fun canGoFirst(): Boolean = steps().let { (walk, i) -> walk.isNotEmpty() && i != 0 }
+    fun canGoFirst(): Boolean = arrows().first != null
 
-    fun canGoLast(): Boolean = steps().let { (walk, i) -> walk.isNotEmpty() && i != walk.size - 1 }
+    fun canGoLast(): Boolean = arrows().last != null
 
     fun goFirst() {
-        steps().first.firstOrNull()?.let { goTo(it) }
+        arrows().first?.let(::goTo)
     }
 
     fun goLast() {
-        steps().first.lastOrNull()?.let { goTo(it) }
+        arrows().last?.let(::goTo)
     }
 
     fun rebuild() {
@@ -598,19 +610,20 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         tree.emptyText.text = filter.empty
         renderer.faces = Authors.faces
 
-        val root = treeOf(allThreads.filter(filter.matches))
-        forgetFoldsMissingFrom(if (filter == TreeFilter.ALL) root else treeOf(allThreads))
+        val root = treeOf(allThreads.filter(filter.matches), allThreads)
+        forgetFoldsMissingFrom(if (filter == TreeFilter.ALL) root else treeOf(allThreads, allThreads))
         tree.model = DefaultTreeModel(root)
         restoreFolds(root)
         selection?.let { restoreSelection(it, keepInView = selectionInView) }
     }
 
-    private fun treeOf(threads: List<CommentThread>): DefaultMutableTreeNode {
+    private fun treeOf(threads: List<CommentThread>, everyThread: List<CommentThread>): DefaultMutableTreeNode {
         val root = DefaultMutableTreeNode()
-        addGuidedSection(root, threads)
-        addTreeSection(root, "Open", threads.filter { it.status is ThreadStatus.Open })
-        addTreeSection(root, "Orphaned", threads.filter { it.status is ThreadStatus.Orphaned })
-        addTreeSection(root, "Resolved", threads.filter { it.status is ThreadStatus.Resolved })
+        val listing = ThreadListing.of(threads, everyThread, WalkthroughNavigator.startTime())
+        listing.guided.forEach { addGuidedSection(root, it) }
+        addTreeSection(root, "Open", ListedSection(emptyList(), listing.open))
+        addTreeSection(root, "Orphaned", listing.orphaned)
+        addTreeSection(root, "Resolved", listing.resolved)
         return root
     }
 
@@ -622,7 +635,12 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     private fun keyPath(node: DefaultMutableTreeNode): List<String> =
         node.path.drop(1).map { (it as DefaultMutableTreeNode).keyAcrossRebuilds }
 
-    private val DefaultMutableTreeNode.branchKey get() = (path[1] as DefaultMutableTreeNode).keyAcrossRebuilds to keyAcrossRebuilds
+    private val DefaultMutableTreeNode.branchKey get() = foldScope to keyAcrossRebuilds
+
+    private val DefaultMutableTreeNode.foldScope: String
+        get() = path.drop(1).take(2).map { it as DefaultMutableTreeNode }
+            .filter { it.userObject is NodeData.Section || it.userObject is NodeData.WalkthroughNode }
+            .joinToString("/") { it.keyAcrossRebuilds }
 
     private fun DefaultMutableTreeNode.branches(): List<DefaultMutableTreeNode> =
         preorderEnumeration().asSequence().filterIsInstance<DefaultMutableTreeNode>().filter { !it.isLeaf }.toList()
@@ -641,9 +659,9 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     }
 
     private fun foldKeysWorthKeeping(branch: DefaultMutableTreeNode): List<Pair<String, String>> {
-        val section = branch.branchKey.first
+        val foldScope = branch.branchKey.first
         val folder = branch.userObject as? NodeData.DirNode ?: return listOf(branch.branchKey)
-        return folder.keysOfItsFolders.map { section to it }
+        return folder.keysOfItsFolders.map { foldScope to it }
     }
 
     private fun restoreFolds(root: DefaultMutableTreeNode) {
@@ -664,7 +682,8 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     private fun levelsOutFromSelection(): List<DefaultMutableTreeNode> {
         val selected = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return emptyList()
         return selected.path.reversed().filterIsInstance<DefaultMutableTreeNode>().filter {
-            it.userObject is NodeData.DirNode || it.userObject is NodeData.ProjectNode || it.userObject is NodeData.Section
+            it.userObject is NodeData.DirNode || it.userObject is NodeData.ProjectNode || it.userObject is NodeData.Section ||
+                it.userObject is NodeData.WalkthroughNode
         }
     }
 
@@ -682,6 +701,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         null -> "All Sections"
         is NodeData.Section -> "Section"
         is NodeData.ProjectNode -> "Project"
+        is NodeData.WalkthroughNode -> "Walkthrough"
         else -> "Folder"
     }
 
@@ -719,36 +739,41 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         return findUnder(section, threadKey)
     }
 
-    private fun addGuidedSection(root: DefaultMutableTreeNode, allThreads: List<CommentThread>) {
-        val openStops = allThreads.filter { it.status is ThreadStatus.Open && it.order != null }
-        if (openStops.isEmpty()) return
-        val walkthroughs = openStops.groupBy { it.walkthrough ?: "" }.toSortedMap()
-        for ((label, walkthroughThreads) in walkthroughs) {
-            val title = if (label.isEmpty()) "Guided" else "Guided $label"
-            val section = DefaultMutableTreeNode(
-                NodeData.Section(
-                    title,
-                    walkthroughThreads.size,
-                    walkthroughThreads.count { it.severity == Severity.BLOCKER },
-                    walksByStepNumber = true,
-                ),
-            )
-            val total = WalkthroughNavigator.stableTotal(project, walkthroughThreads.first())
-                ?: walkthroughThreads.size
-            val prefixFor = { thread: CommentThread -> "(${thread.order}/$total)" }
-            addProjectNode(section, walkthroughThreads.filter { it.isProjectLevel }, prefixFor)
-            val trie = PathTrie().apply { walkthroughThreads.forEach(::insert) }
-            emitTrie(trie, section, prefixFor)
-            root.add(section)
-        }
+    private fun addGuidedSection(root: DefaultMutableTreeNode, walkthrough: WalkthroughGroup) {
+        val section = DefaultMutableTreeNode(
+            NodeData.Section(
+                walkthrough.title,
+                walkthrough.steps.size,
+                walkthrough.steps.count { it.severity == Severity.BLOCKER },
+                isGuided = true,
+                keyAcrossRebuilds = walkthroughKey(walkthrough.walkthroughId),
+            ),
+        )
+        addSteps(section, walkthrough)
+        root.add(section)
     }
 
-    private fun addTreeSection(root: DefaultMutableTreeNode, title: String, threads: List<CommentThread>) {
+    private fun addSteps(parent: DefaultMutableTreeNode, walkthrough: WalkthroughGroup) {
+        val prefixFor = { thread: CommentThread -> "(${thread.order}/${walkthrough.total})" }
+        addProjectNode(parent, walkthrough.steps.filter { it.isProjectLevel }, prefixFor)
+        val trie = PathTrie().apply { walkthrough.steps.forEach(::insert) }
+        emitTrie(trie, parent, prefixFor)
+    }
+
+    private fun addTreeSection(root: DefaultMutableTreeNode, title: String, listed: ListedSection) {
+        val threads = listed.walkthroughs.flatMap { it.steps } + listed.comments
         if (threads.isEmpty()) return
         val blockers = threads.count { it.status !is ThreadStatus.Resolved && it.severity == Severity.BLOCKER }
         val section = DefaultMutableTreeNode(NodeData.Section(title, threads.size, blockers))
-        addProjectNode(section, threads.filter { it.isProjectLevel })
-        val trie = PathTrie().apply { threads.forEach(::insert) }
+        for (walkthrough in listed.walkthroughs) {
+            val group = DefaultMutableTreeNode(
+                NodeData.WalkthroughNode(walkthrough.title, walkthrough.steps.size, walkthrough.walkthroughId),
+            )
+            addSteps(group, walkthrough)
+            section.add(group)
+        }
+        addProjectNode(section, listed.comments.filter { it.isProjectLevel })
+        val trie = PathTrie().apply { listed.comments.forEach(::insert) }
         emitTrie(trie, section)
         root.add(section)
     }
@@ -917,6 +942,10 @@ private class RowWords : ColoredTreeCellRenderer() {
                 if (data.blockers > 0) {
                     append("  ·  ${data.blockers} blocker${if (data.blockers > 1) "s" else ""}", SimpleTextAttributes.ERROR_ATTRIBUTES)
                 }
+            }
+            is NodeData.WalkthroughNode -> {
+                append(data.title, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                append("  ${data.count}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             }
             is NodeData.ProjectNode -> {
                 icon = MarginalisIcons.ProjectMark

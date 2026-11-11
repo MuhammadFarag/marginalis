@@ -11,10 +11,13 @@ import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.vfs.VirtualFile
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Message
+import dev.marginalis.core.ThreadListing
 import dev.marginalis.core.WalkPosition
 import dev.marginalis.core.Walkthrough
+import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.tab.ProjectTab
+import java.time.Instant
 
 object WalkthroughNavigator {
 
@@ -24,8 +27,16 @@ object WalkthroughNavigator {
     fun stableTotal(project: Project, thread: CommentThread): Int? =
         Walkthrough.stableTotal(MarginalisStore.getInstance(project).threads.all(), thread)
 
+    fun startTime(): (Instant) -> String = MarginalisSettings.getInstance().timeFormat.formatter()::format
+
+    fun title(project: Project, thread: CommentThread): String =
+        ThreadListing.titleOf(MarginalisStore.getInstance(project).threads.all(), thread, startTime())
+
     fun navigateTo(project: Project, thread: CommentThread, revealing: Message? = null) {
-        if (thread.file == null) return ProjectTab.reveal(project, thread, revealing)
+        if (thread.file == null) {
+            LastStep.getInstance(project).landedOn(thread)
+            return ProjectTab.reveal(project, thread, revealing)
+        }
         val place = placeOf(project, thread) ?: return
         place.navigate(true)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return

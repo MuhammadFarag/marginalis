@@ -33,6 +33,7 @@ import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.MarginalisStore
 import dev.marginalis.plugin.ui.AgentPresenceGroup
 import dev.marginalis.plugin.ui.CoalescedEdtRunner
+import dev.marginalis.plugin.ui.LastStep
 import dev.marginalis.plugin.ui.MarginalisPalette
 import dev.marginalis.plugin.ui.StopAgentsGroup
 import dev.marginalis.plugin.ui.SubmitRoundAction
@@ -415,7 +416,12 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         }
         viewKeeper.keepingClickedInPlace(id, ::refresh)
         val opened = card.panel
-        if (opened != null) opened.markRead() else newTags.endLook(id)
+        if (opened != null) {
+            opened.markRead()
+            LastStep.getInstance(project).landedOn(card.thread)
+        } else {
+            newTags.endLook(id)
+        }
     }
 
     private fun heldOpenByDraft(threadId: String): Boolean =

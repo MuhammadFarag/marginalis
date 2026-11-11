@@ -75,7 +75,7 @@ class SettingsPageTest : HttpContractTestCase() {
         assertEquals("Ada", page.text("Display name:"))
         assertEquals("ada-l", page.text("GitHub login:"))
         assertTrue(page.isTicked("Show GitHub avatars when no picture is set"))
-        assertTrue(page.isTicked("Jump to the next step after resolving"))
+        assertTrue(page.isTicked("Jump to the next thread after resolving"))
         assertTrue(page.isTicked("Notify when the agent posts elsewhere"))
         assertEquals("Auto (system)", page.chosen(TimeFormat.AUTO))
         assertFalse(page.isModified)
@@ -354,14 +354,14 @@ class SettingsPageTest : HttpContractTestCase() {
         agent.addOnLine(25, "order" to 3, "walkthrough" to "tour", "body" to "Step three")
         val page = page()
 
-        page.tick("Jump to the next step after resolving", false)
+        page.tick("Jump to the next thread after resolving", false)
         page.apply()
         user.press(user.open(first), "Resolve")
 
         assertEquals(emptyList<ThreadPanel>(), user.panels())
         assertEquals(5, user.editor().caretModel.logicalPosition.line + 1)
 
-        page.tick("Jump to the next step after resolving", true)
+        page.tick("Jump to the next thread after resolving", true)
         page.apply()
         user.press(user.open(second), "Resolve")
 

@@ -30,6 +30,7 @@ import com.intellij.testFramework.replaceService
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.RowIcon
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.IconUtil
 import com.intellij.util.ui.UIUtil
@@ -460,6 +461,9 @@ class MarginTab(private val project: Project, private val disposable: Disposable
         val expanded = if (card.panel != null) " [expanded]" else ""
         return "$turn$title$trailing$preview$expanded"
     }
+
+    fun markShown(text: String): Icon =
+        (UIUtil.findComponentsOfType(heading(card(text)), JLabel::class.java).first { it.icon != null }.icon as RowIcon).getIcon(0)!!
 
     private fun turnOf(card: ThreadCard, icon: Icon?): Turn? {
         val mark = MarginalisIcons.markOf(listOf(card.thread))

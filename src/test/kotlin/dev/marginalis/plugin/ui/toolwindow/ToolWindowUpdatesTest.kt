@@ -137,7 +137,7 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
         sample("a/b/Deep.kt")
         sample("a/Shallow.kt")
         agent.addOnLine(5, "body" to "deep", file = "a/b/Deep.kt")
-        window.press("Next Step")
+        window.click("L5  deep")
         assertEquals(listOf("Open  1", "a/b  1", "Deep.kt ✉1", "✉ L5  deep"), window.selectedPath())
 
         window.rebuiltBy { agent.addOnLine(3, "body" to "shallow", file = "a/Shallow.kt") }
@@ -150,23 +150,27 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
         val steps = interleaved()
         agent.post("comment_resolve", "thread_id" to steps.getValue(8))
         agent.post("comment_resolve", "thread_id" to steps.getValue(18))
-        window.click("Resolved")
-        window.press("Next Step")
-        window.toggleFolding("shop-orders/src/main/java/com/acme/orders/api", under = "Resolved")
-        assertTrue(window.isExpanded("shop-orders/src/main/java/com/acme/orders/api", under = "Resolved"))
+        window.toggleFolding("Resolved")
+        listOf("SHOP-77", "acme/backend", "shop-orders/src/main/java/com/acme/orders/api", "OrderController.java")
+            .forEach { window.toggleFolding(it, under = "Resolved") }
+        window.click("(1/18)", under = "Resolved")
+        window.toggleFolding("shop-common/src/main/java/com/acme/backend/common/order", under = "Resolved")
+        assertTrue(window.isExpanded("shop-common/src/main/java/com/acme/backend/common/order", under = "Resolved"))
 
         window.rebuiltBy { agent.reply(steps.getValue(9), "more") }
 
-        assertEquals("L10  Step 8", window.selected())
+        assertEquals("(1/18)  L12  Step 1", window.selected())
         assertEquals(
             """
             Resolved  3
-              acme/backend  3
-                shop-common/src/main/java/com/acme/backend/common/order  1
-                  Order.java
-                    L10  Step 8
-                shop-orders/src/main/java/com/acme/orders/api  2
-                  OrderController.java
+              SHOP-77  3
+                acme/backend  3
+                  shop-orders/src/main/java/com/acme/orders/api  2
+                    OrderController.java
+                      (1/18)  L12  Step 1
+                      (18/18)  L45  Step 18
+                  shop-common/src/main/java/com/acme/backend/common/order  1
+                    Order.java
             """.trimIndent(),
             section("Resolved"),
         )

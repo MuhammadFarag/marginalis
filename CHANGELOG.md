@@ -7,6 +7,32 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+### Changed
+
+- Walkthroughs now stand apart from ordinary comments. The Open list
+  holds comments only, and each walkthrough keeps its steps together.
+- Resolved and orphaned steps sit under their walkthrough, so a finished
+  walkthrough reads as one group you can look back on.
+- Previous and Next on a comment move between comments and pass steps
+  by. A comment's header reads "comment 3/12".
+- You can tell a step from a comment at a glance. A step wears a
+  signpost in the gutter, and each walkthrough has its own colour, shown
+  as a line beside the mark and on the edge of the thread.
+- A step's header names its walkthrough, as in "Tour (2/12)". The tool
+  window uses the same name, and an unnamed walkthrough is called
+  "Walkthrough".
+- Resolving a comment with "Jump to the next thread after resolving" on
+  opens the next open comment.
+
+### Fixed
+
+- Two walkthroughs with the same name, or none, no longer merge into
+  one. When their titles match, each shows when it started.
+- The tool window's step arrows keep your place. Resolving or filtering
+  away the step you are on no longer sends Next back to the first step.
+- With a filter on, the tool window's step arrows visit every open step,
+  the same as the arrows in a thread's header.
+
 ## [0.2.8] - 2026-11-11
 
 Thanks to [@schrek1](https://github.com/schrek1) for the fixes in this release.

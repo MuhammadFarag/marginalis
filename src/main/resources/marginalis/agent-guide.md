@@ -436,7 +436,10 @@ warning instead of guessing.
 An ordered walk — "look here 1st, 2nd, …" — for reviewing your change,
 explaining how code hangs together, or onboarding. Create steps with
 `order` on `comment_add` (1, 2, …); an optional `walkthrough` label
-("A", "B") keeps concurrent walkthroughs separate. Rules:
+keeps concurrent walkthroughs separate. Give every walkthrough a short
+name in `walkthrough` ("How the split works"): the user sees it as the
+walkthrough's title in the tool window and in each step's header. An
+unnamed walkthrough still works and is shown as "Walkthrough". Rules:
 
 - A finished walk is one call: `comment_add_batch` takes the steps as
   items and answers per item, so a single stale anchor costs you that
@@ -452,6 +455,16 @@ explaining how code hangs together, or onboarding. Create steps with
 - The user walks with next/previous controls and resolves steps as they
   go. A step resolved without a reply is seen-and-approved; a reply is a
   change request — land the change first, then resolve it.
+- Steps are listed and walked apart from ordinary threads: the user's
+  previous/next on an ordinary thread never visits a step, and a
+  resolved or orphaned step is shown under its walkthrough. Each
+  walkthrough keeps its own identity, so reusing a label — or none —
+  for a later walkthrough does not merge the two.
+- Steps with new numbers continue the open walkthrough under the same
+  label (no label and `""` count as one); a number that walkthrough
+  already has — even resolved — or a walkthrough with nothing left open
+  starts a new one. Re-posting a corrected step 3 therefore opens a
+  second walkthrough; reply on the existing step instead.
 
 ## Relaying from GitHub
 
