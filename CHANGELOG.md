@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-11-11
+
+Thanks to [@schrek1](https://github.com/schrek1) for the fixes in this release.
+
 ### Changed
 
 - Escape in a reply box now closes just the reply box: the thread stays
