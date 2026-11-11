@@ -333,6 +333,7 @@ class MarginalisRestService : RestService() {
             val message = Message(agentAuthor(json), body, to = to, relayed = relayed)
             created.addMessage(message)
             MarginalisStore.getInstance(project).threads.add(created)
+            if (order != null && walkthroughId != null) walkthroughs.joined(walkthroughLabel, order, walkthroughId)
             maybeNotify(project, created, message)
             thread = created
         }

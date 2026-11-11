@@ -25,63 +25,59 @@ class ThreadListing(
             all: List<CommentThread> = shown,
             startTime: (Instant) -> String = Instant::toString,
         ): ThreadListing {
-            val wholeWalkthroughs = all.filter { it.order != null }.groupBy { it.walkthroughId }
+            val wholeWalkthroughs = walkthroughsIn(all + shown)
+            val titles = titlesOf(wholeWalkthroughs, startTime)
             val open = shown.filter { it.status is ThreadStatus.Open }
             return ThreadListing(
-                guided = groupsOf(open.filter { it.order != null }, wholeWalkthroughs, startTime),
+                guided = groupsOf(open.filter { it.order != null }, wholeWalkthroughs, titles),
                 open = open.filter { it.order == null },
-                orphaned = sectionOf(shown.filter { it.status is ThreadStatus.Orphaned }, wholeWalkthroughs, startTime),
-                resolved = sectionOf(shown.filter { it.status is ThreadStatus.Resolved }, wholeWalkthroughs, startTime),
+                orphaned = sectionOf(shown.filter { it.status is ThreadStatus.Orphaned }, wholeWalkthroughs, titles),
+                resolved = sectionOf(shown.filter { it.status is ThreadStatus.Resolved }, wholeWalkthroughs, titles),
             )
         }
 
         fun titleOf(threads: List<CommentThread>, thread: CommentThread, startTime: (Instant) -> String): String {
-            val listing = of(threads, threads, startTime)
-            val section = when (thread.status) {
-                is ThreadStatus.Open -> listing.guided
-                is ThreadStatus.Resolved -> listing.resolved.walkthroughs
-                is ThreadStatus.Orphaned -> listing.orphaned.walkthroughs
-            }
-            return section.firstOrNull { group -> group.steps.any { it.id == thread.id } }?.title ?: Walkthrough.title(thread.walkthrough)
+            val title = thread.order?.let { titlesOf(walkthroughsIn(threads), startTime)[thread.walkthroughId] }
+            return title ?: Walkthrough.title(thread.walkthrough)
+        }
+
+        private fun walkthroughsIn(threads: List<CommentThread>): Map<String?, List<CommentThread>> =
+            threads.filter { it.order != null }.distinctBy { it.id }.groupBy { it.walkthroughId }
+
+        private fun titlesOf(walkthroughs: Map<String?, List<CommentThread>>, startTime: (Instant) -> String): Map<String?, String> {
+            val ordered = walkthroughs.map { (id, steps) -> Triple(id, steps.first().walkthrough, steps.minOf { it.createdAt }) }
+                .sortedWith(compareBy({ (_, label, _) -> label.orEmpty() }, { (_, _, startedAt) -> startedAt }))
+            val titles = toldApart(ordered.map { (_, label, _) -> Walkthrough.title(label) }) { index, plain ->
+                "$plain · ${startTime(ordered[index].third)}"
+            }.let { stamped -> toldApart(stamped) { index, title -> "$title (${stamped.take(index + 1).count { it == title }})" } }
+            return ordered.mapIndexed { index, (id, _, _) -> id to titles[index] }.toMap()
         }
 
         private fun sectionOf(
             threads: List<CommentThread>,
             wholeWalkthroughs: Map<String?, List<CommentThread>>,
-            startTime: (Instant) -> String,
+            titles: Map<String?, String>,
         ): ListedSection {
             val (steps, comments) = threads.partition { it.order != null }
-            return ListedSection(groupsOf(steps, wholeWalkthroughs, startTime), comments)
+            return ListedSection(groupsOf(steps, wholeWalkthroughs, titles), comments)
         }
 
         private fun groupsOf(
             steps: List<CommentThread>,
             wholeWalkthroughs: Map<String?, List<CommentThread>>,
-            startTime: (Instant) -> String,
-        ): List<WalkthroughGroup> {
-            val walkthroughs = steps.groupBy { it.walkthroughId }.map { (id, shownSteps) ->
-                val whole = wholeWalkthroughs[id].orEmpty() + shownSteps
-                Gathered(id, shownSteps.first().walkthrough, whole.minOf { it.createdAt }, whole.maxOf { it.order!! }, shownSteps)
+            titles: Map<String?, String>,
+        ): List<WalkthroughGroup> =
+            steps.groupBy { it.walkthroughId }.map { (id, shownSteps) ->
+                val whole = wholeWalkthroughs.getValue(id)
+                WalkthroughGroup(
+                    id, shownSteps.first().walkthrough, whole.minOf { it.createdAt }, whole.maxOf { it.order!! },
+                    shownSteps.sortedWith(Walkthrough.byStepNumber), titles.getValue(id),
+                )
             }.sortedWith(compareBy({ it.label.orEmpty() }, { it.startedAt }))
-            val titles = toldApart(walkthroughs.map { Walkthrough.title(it.label) }) { index, plain ->
-                "$plain · ${startTime(walkthroughs[index].startedAt)}"
-            }.let { stamped -> toldApart(stamped) { index, title -> "$title (${stamped.take(index + 1).count { it == title }})" } }
-            return walkthroughs.mapIndexed { index, it ->
-                WalkthroughGroup(it.id, it.label, it.startedAt, it.total, it.steps.sortedWith(Walkthrough.byStepNumber), titles[index])
-            }
-        }
 
         private fun toldApart(titles: List<String>, distinguish: (Int, String) -> String): List<String> {
             val shared = titles.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
             return titles.mapIndexed { index, title -> if (title in shared) distinguish(index, title) else title }
         }
-
-        private class Gathered(
-            val id: String?,
-            val label: String?,
-            val startedAt: Instant,
-            val total: Int,
-            val steps: List<CommentThread>,
-        )
     }
 }

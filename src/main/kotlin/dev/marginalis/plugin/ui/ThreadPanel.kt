@@ -874,16 +874,18 @@ class ThreadPanel(
 
     private fun messageTimeFormatter(): DateTimeFormatter = MarginalisSettings.getInstance().timeFormat.formatter()
 
-    /** Ordered steps use the stable total so they agree with the tool window's (n/total) as steps resolve. */
     private fun openStatus(): String {
-        val order = thread.order
-        if (order != null) {
-            val total = WalkthroughNavigator.stableTotal(project, thread) ?: return "open"
-            val title = StringUtil.escapeXmlEntities(WalkthroughNavigator.title(project, thread))
-            return "<html>open · <b>$title</b> ($order/$total)</html>"
-        }
+        if (thread.order != null) return stepStatus("open")
         val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
         return if (i != null && walk.size > 1) "open · comment ${i + 1}/${walk.size}" else "open"
+    }
+
+    /** Steps use the stable total so they agree with the tool window's (n/total) as steps resolve. */
+    private fun stepStatus(status: String): String {
+        val order = thread.order ?: return status
+        val title = StringUtil.escapeXmlEntities(WalkthroughNavigator.title(project, thread))
+        val position = WalkthroughNavigator.stableTotal(project, thread)?.let { " ($order/$it)" }.orEmpty()
+        return "<html>${StringUtil.escapeXmlEntities(status)} · <b>$title</b>$position</html>"
     }
 
     private fun refreshSendOptions() {
@@ -934,8 +936,8 @@ class ThreadPanel(
     private fun statusText(): String = when {
         isDraft() -> "new comment — unsent"
         thread.status is ThreadStatus.Open -> openStatus()
-        thread.status is ThreadStatus.Resolved -> "resolved by ${thread.resolvedBy?.displayName ?: "?"}"
-        else -> "orphaned (anchor deleted)"
+        thread.status is ThreadStatus.Resolved -> stepStatus("resolved by ${thread.resolvedBy?.displayName ?: "?"}")
+        else -> stepStatus("orphaned (anchor deleted)")
     }
 
     override fun addNotify() {

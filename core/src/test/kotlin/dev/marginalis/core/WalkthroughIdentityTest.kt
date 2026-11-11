@@ -20,7 +20,10 @@ class WalkthroughIdentityTest {
 
     private fun MutableList<CommentThread>.arrive(label: String?, vararg orders: Int): List<CommentThread> {
         val batch = WalkthroughBatch()
-        return orders.map { order -> step(order, batch.walkthroughFor(this, label, order), label).also(::add) }
+        return orders.map { order ->
+            val walkthroughId = batch.walkthroughFor(this, label, order)
+            step(order, walkthroughId, label).also(::add).also { batch.joined(label, order, walkthroughId) }
+        }
     }
 
     private fun walkthroughsOf(vararg steps: List<CommentThread>): List<Set<String?>> =
@@ -109,11 +112,30 @@ class WalkthroughIdentityTest {
     fun `one batch keeps each label's steps together and its labels apart`() {
         val threads = mutableListOf<CommentThread>()
         val batch = WalkthroughBatch()
-        val a1 = batch.walkthroughFor(threads, "A", 1)
-        val b1 = batch.walkthroughFor(threads, "B", 1)
+        val a1 = batch.walkthroughFor(threads, "A", 1).also { batch.joined("A", 1, it) }
+        val b1 = batch.walkthroughFor(threads, "B", 1).also { batch.joined("B", 1, it) }
         val a2 = batch.walkthroughFor(threads, "A", 2)
         assertEquals(a1, a2)
         assertNotEquals(a1, b1)
+    }
+
+    @Test
+    fun `a number repeated within one batch starts the next walkthrough, as separate calls would`() {
+        val threads = mutableListOf<CommentThread>()
+        val steps = threads.arrive("A", 1, 2, 1, 2)
+        val ids = steps.map { it.walkthroughId }
+        assertEquals(ids[0], ids[1])
+        assertEquals(ids[2], ids[3])
+        assertNotEquals(ids[0], ids[2])
+    }
+
+    @Test
+    fun `a batch step that was never created leaves later steps to join the open walkthrough`() {
+        val threads = mutableListOf<CommentThread>()
+        val open = threads.arrive("A", 1).single()
+        val batch = WalkthroughBatch()
+        batch.walkthroughFor(threads, "A", 1)
+        assertEquals(open.walkthroughId, batch.walkthroughFor(threads, "A", 2))
     }
 
     @Test

@@ -40,6 +40,19 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         assertTrue(section(title), section(title).contains("later"))
     }
 
+    fun testAFilteredWalkthroughKeepsTheTitleThatTellsItFromItsHiddenNamesake() {
+        sample()
+        agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "plain")
+        val asked = agent.addOnLine(5, "order" to 1, "walkthrough" to "tour", "intent" to "question", "body" to "asked")
+        val header = user.shownText(user.open(asked)).lines().single { it.startsWith("<html>open · ") }
+        val title = header.substringAfter("<b>").substringBefore("</b>")
+
+        window.filterBy("Questions")
+
+        assertEquals(listOf(title), sections().map { it.substringBeforeLast("  ") })
+        assertTrue(title, title.startsWith("tour · "))
+    }
+
     fun testAnEmptyMarginShowsNoRowsAndSaysSo() {
         assertEquals(0, window.tree.rowCount)
         assertEquals("No margin threads yet", window.emptyText())
