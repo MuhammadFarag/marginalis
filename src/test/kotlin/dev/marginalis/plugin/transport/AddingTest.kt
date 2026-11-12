@@ -363,6 +363,18 @@ class AddingTest : HttpContractTestCase() {
         assertFalse(walkthroughs[0] == walkthroughs[2])
     }
 
+    fun testABatchStepWhoseNumberTheJoinedWalkthroughAlreadyHasStartsTheNext() {
+        sample()
+        val open = agent.addOnLine(11, "order" to 1, "walkthrough" to "tour")
+        val done = agent.addOnLine(13, "order" to 3, "walkthrough" to "tour")
+        agent.post("comment_resolve", "thread_id" to done)
+
+        val (two, three) = batchOfSteps(2 to lineText(12), 3 to lineText(13)).map { it!! }
+
+        assertEquals(user.thread(open).walkthroughId, user.thread(two).walkthroughId)
+        assertFalse(user.thread(open).walkthroughId == user.thread(three).walkthroughId)
+    }
+
     fun testABatchStepThatFailsLeavesTheNextStepToJoinTheOpenWalkthrough() {
         sample()
         val open = agent.addOnLine(11, "order" to 1, "walkthrough" to "tour")

@@ -4,22 +4,6 @@ import java.util.UUID
 
 data class WalkPosition(val steps: List<CommentThread>, val index: Int?)
 
-class WalkthroughBatch {
-    private class Joined(val walkthroughId: String, val orders: MutableSet<Int>)
-
-    private val joined = mutableMapOf<String, Joined>()
-
-    fun walkthroughFor(threads: List<CommentThread>, label: String?, order: Int): String {
-        val current = joined[label.orEmpty()]?.takeIf { order !in it.orders }
-        return current?.walkthroughId ?: Walkthrough.forArrival(threads, label, order)
-    }
-
-    fun joined(label: String?, order: Int, walkthroughId: String) {
-        val current = joined[label.orEmpty()]?.takeIf { it.walkthroughId == walkthroughId }
-        if (current != null) current.orders += order else joined[label.orEmpty()] = Joined(walkthroughId, mutableSetOf(order))
-    }
-}
-
 object Walkthrough {
 
     val byStepNumber: Comparator<CommentThread> = compareBy({ it.order }, { it.createdAt })
