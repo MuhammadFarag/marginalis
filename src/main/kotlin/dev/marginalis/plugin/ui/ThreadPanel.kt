@@ -746,9 +746,15 @@ class ThreadPanel(
     }
 
     fun markRead() {
-        if (!mayMarkRead(true) || isDraft() || !ApplicationManager.getApplication().isActive) return
-        markRead(openMessages)
+        if (mayMarkReadOnClickingInto()) markRead(openMessages)
     }
+
+    fun markReadWhatWasMarkedUnread() {
+        if (mayMarkReadOnClickingInto()) markRead(openMessages.filter { it.markedUnreadByUser })
+    }
+
+    private fun mayMarkReadOnClickingInto(): Boolean =
+        mayMarkRead(true) && !isDraft() && ApplicationManager.getApplication().isActive
 
     private fun markRead(shown: List<Message>) {
         if (thread.markReadByUser(shown)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
