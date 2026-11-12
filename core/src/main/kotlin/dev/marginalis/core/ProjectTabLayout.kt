@@ -58,11 +58,11 @@ object ProjectTabLayout {
         val result = sorted.toMutableList()
         sorted.withIndex()
             .filter { (_, thread) -> thread.order != null }
-            .groupBy { (_, thread) -> thread.walkthrough ?: "" }
+            .groupBy { (_, thread) -> thread.walkthroughId }
             .values
             .forEach { steps ->
                 val slots = steps.map { it.index }
-                val inStepOrder = steps.map { it.value }.sortedWith(compareBy({ it.order }, { it.createdAt }))
+                val inStepOrder = steps.map { it.value }.sortedWith(Walkthrough.byStepNumber)
                 slots.zip(inStepOrder).forEach { (slot, step) -> result[slot] = step }
             }
         return result
