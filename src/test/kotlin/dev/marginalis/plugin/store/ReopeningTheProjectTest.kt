@@ -111,6 +111,20 @@ class ReopeningTheProjectTest : SavedProjectTestCase() {
         assertEquals(listOf(0, 0), listOf(fyi, question).map { storedThread(it).unreadByUserCount() })
     }
 
+    fun testAnUnreadMarkSurvivesReopening() {
+        openShop()
+        val fyi = agent.addOnLine(5, "body" to "for your information", "intent" to "fyi")
+        user.read(fyi)
+        waitForSave("read_by_user")
+        user.markUnread(fyi)
+        waitUntil("the unread mark is saved") { !Files.readString(shop.savedThreads).contains("read_by_user") }
+
+        reopen()
+
+        assertEquals("user", agent.summaryOf(fyi).string("awaiting"))
+        assertEquals(1, storedThread(fyi).unreadByUserCount())
+    }
+
     fun testTheLastRoundSurvivesReopening() {
         openShop()
         val id = agent.addOnLine(5)

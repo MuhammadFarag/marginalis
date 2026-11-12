@@ -3,10 +3,12 @@ package dev.marginalis.plugin.ui
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.util.text.StringUtil.unescapeXmlEntities
 import com.intellij.testFramework.PlatformTestUtil
 import dev.marginalis.core.Reference
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
+import dev.marginalis.plugin.testing.FilesThatWontStayOpen
 import dev.marginalis.plugin.testing.Relays
 import dev.marginalis.plugin.transport.HttpContractTestCase
 import java.awt.datatransfer.DataFlavor
@@ -157,6 +159,61 @@ class ThreadPanelToolbarTest : HttpContractTestCase() {
         user.press(user.panel(), "First Step")
         assertEquals(5, caretLine())
         assertTrue(shownIn(user.panel()).contains("Step one"))
+    }
+
+    fun testStepArrowsAcrossFilesFoldTheStepYouLeave() {
+        val steps = tour()
+        val panel = user.open(steps[1])
+        val sampleEditor = user.editor()
+
+        user.press(panel, "Next Step")
+
+        assertEquals("Other.kt", openFileName())
+        assertEquals(emptyList<ThreadPanel>(), user.panels(sampleEditor))
+    }
+
+    fun testNextStepIntoAFileTheIdeClosesKeepsTheCurrentStepOpen() {
+        val steps = tour()
+        FilesThatWontStayOpen(project, testRootDisposable).closeJustAfterOpening(other)
+        val panel = user.open(steps[1])
+        val sampleEditor = user.editor()
+
+        user.press(panel, "Next Step")
+
+        assertTrue(shownIn(user.panel(sampleEditor)).contains("Step two"))
+    }
+
+    fun testNextStepIntoAFileTheIdeClosesAtOnceKeepsTheCurrentStepOpen() {
+        val steps = tour()
+        FilesThatWontStayOpen(project, testRootDisposable).closeOnOpening(other)
+        val panel = user.open(steps[1])
+        val sampleEditor = user.editor()
+
+        user.press(panel, "Next Step")
+
+        assertTrue(shownIn(user.panel(sampleEditor)).contains("Step two"))
+    }
+
+    fun testAStepWhoseFileTheIdeClosesIsNamedWithItsFileInOneNotification() {
+        val steps = tour()
+        FilesThatWontStayOpen(project, testRootDisposable).closeJustAfterOpening(other)
+        val shown = user.notifications()
+
+        user.press(user.open(steps[1]), "Next Step")
+
+        assertEquals(
+            listOf("Couldn't show walkthrough step 3/3: the IDE closed src/Other.kt as it opened."),
+            shown.map { unescapeXmlEntities(it.content) },
+        )
+    }
+
+    fun testAFailedMoveLeavesTheUnshownStepUnread() {
+        val steps = tour()
+        FilesThatWontStayOpen(project, testRootDisposable).closeJustAfterOpening(other)
+
+        user.press(user.open(steps[1]), "Next Step")
+
+        assertEquals(1, user.thread(steps[2]).unreadByUserCount())
     }
 
     fun testStepArrowsOnAResolvedThreadStartTheWalkAtTheFirstOpenThread() {

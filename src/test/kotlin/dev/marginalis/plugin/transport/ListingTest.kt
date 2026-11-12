@@ -9,6 +9,21 @@ import java.time.Instant
 
 class ListingTest : HttpContractTestCase() {
 
+    fun testAnFyiMarkedUnreadAwaitsTheUserAgainWithoutChangingWhenItLastChanged() {
+        sample()
+        val fyi = agent.addOnLine(14, "intent" to "fyi", "body" to "Nice split")
+        user.read(fyi)
+        val readUpdatedAt = agent.summaryOf(fyi).string("updated_at")
+        assertNull(agent.summaryOf(fyi).string("awaiting"))
+        assertEquals(emptyList<String>(), agent.ids("awaiting" to "user"))
+
+        user.markUnread(fyi)
+
+        assertEquals("user", agent.summaryOf(fyi).string("awaiting"))
+        assertEquals(listOf(fyi), agent.ids("awaiting" to "user"))
+        assertEquals(readUpdatedAt, agent.summaryOf(fyi).string("updated_at"))
+    }
+
     fun testAThreadListsEveryDocumentedField() {
         sample()
         val id = agent.addOnLine(12, "body" to "Why `compute` here?")

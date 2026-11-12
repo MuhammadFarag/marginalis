@@ -9,17 +9,19 @@ History before 0.1.19 lives in git tags.
 
 ### Added
 
-- Mark a thread unread from its context menu in the tool window, so it
-  waits for you like a new message until you open it again. On a thread
-  with something new, the same entry marks it read, and with several
-  threads selected it acts on all of them.
+- Mark a thread unread from its menu in the tool window. It waits for
+  you like a new message until you return to it.
+- Mark a thread read from the same menu, without opening it.
+- Select several threads in the tool window to mark, resolve or delete
+  them together.
 
 ### Fixed
 
-- A walkthrough keeps its place when the next step's file won't open,
-  such as an OpenAPI spec whose Swagger preview fails to load. The step
-  you are on stays open, and a balloon names the step and the file it
-  could not show.
+- A walkthrough keeps its place when the next step's file will not
+  open, such as an OpenAPI spec whose preview fails to load. The step
+  you are on stays open.
+- When a thread's file cannot be shown, a message names the thread and
+  the reason. A file that is gone from the project is covered too.
 
 ## [0.2.9] - 2026-11-11
 

@@ -341,8 +341,12 @@ words, nothing else:
 - `fyi` — nothing is owed. Typical uses: praise ("this is the right
   boundary — keep it"), code you copied from elsewhere, context, a
   heads-up. If anything should be done or answered, it isn't an fyi. The
-  user owes it only a read; once read, it leaves `awaiting=user`. It
-  ends when the user resolves it — never you. It doesn't block an edit;
+  user owes it only a read; once read, it leaves `awaiting=user`. The
+  user can mark it unread again in the IDE, and it is back in
+  `awaiting=user` until they read it; that changes neither its
+  `updated_at` nor anything `comment_wait` wakes on, so you see it only
+  on your next listing. It ends when the user resolves it — never you.
+  It doesn't block an edit;
   once the user replies to it, it blocks the edit until you have
   answered that reply in-thread (landing whatever they asked for
   first), and it still stays open for the user to resolve. It never gates, so it takes no `severity` (a teaching
@@ -661,8 +665,10 @@ user spoke last or someone addressed you, and you owe the reply (a
 message addressed to another agent is theirs); `user` — an agent spoke
 last unaddressed, anyone addressed `user`, or only relays were said,
 and the user owes one. An fyi is the
-exception: the user owes it only a read, and an agent's further word on
-it owes only a read again — until the user replies; from then on whose
+exception: the user owes it only a read (one they can take back by
+marking it unread, which makes it `user` again until read), and an
+agent's further word on it owes only a read again — until the user
+replies; from then on whose
 turn it is follows the rule above, though it stays the user's to
 resolve. It composes with every other
 filter, and listing still marks seen: awaiting is about *answered*, not

@@ -36,12 +36,12 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.components.BorderLayoutPanel
 import dev.marginalis.core.Arrows
-import dev.marginalis.core.Author
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.Faces
 import dev.marginalis.core.Intent
 import dev.marginalis.core.Opened
 import dev.marginalis.core.PathTrie
+import dev.marginalis.core.ReadMark
 import dev.marginalis.core.Severity
 import dev.marginalis.core.StepMark
 import dev.marginalis.core.StepNumbers
@@ -465,8 +465,9 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         tree.addMouseListener(object : PopupHandler() {
             override fun invokePopup(comp: java.awt.Component, x: Int, y: Int) {
                 val path = tree.getPathForLocation(x, y) ?: return
-                if (!tree.isPathSelected(path)) tree.selectionPath = path
                 val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                val clickedASelectedThread = node.userObject is NodeData.ThreadNode && tree.isPathSelected(path)
+                if (!clickedASelectedThread) tree.selectionPath = path
                 val selectedThreads = selectedThreads()
                 val menu = if (selectedThreads.size > 1) severalThreadsMenu(selectedThreads) else buildContextMenu(node)
                 menu?.show(comp, x, y)
@@ -573,7 +574,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
             is NodeData.ThreadNode -> {
                 val thread = data.thread
                 menu.add(JMenuItem("Navigate").apply { addActionListener { navigateTo(thread) } })
-                readMarkItem(listOf(thread))?.let(menu::add)
+                markReadOrUnreadItem(listOf(thread))?.let(menu::add)
                 if (thread.status is ThreadStatus.Resolved) {
                     menu.add(JMenuItem("Reopen").apply {
                         addActionListener {
@@ -633,7 +634,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
 
     private fun severalThreadsMenu(threads: List<CommentThread>): JPopupMenu {
         val menu = JPopupMenu()
-        readMarkItem(threads)?.let(menu::add)
+        markReadOrUnreadItem(threads)?.let(menu::add)
         addResolveAndDeleteAll(menu, threads)
         return menu
     }
@@ -646,18 +647,15 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         menu.add(JMenuItem("Delete ${threads.size} Thread(s)…").apply { addActionListener { deleteThreads(threads) } })
     }
 
-    /** Mark as Read while anything in the selection is new, as in a mail client; null when nobody else wrote in it. */
-    private fun readMarkItem(threads: List<CommentThread>): JMenuItem? {
-        if (threads.all { thread -> thread.messages.all { it.author is Author.User } }) return null
+    private fun markReadOrUnreadItem(threads: List<CommentThread>): JMenuItem? {
+        val mark = ReadMark.of(threads) ?: return null
         val store = MarginalisStore.getInstance(project)
-        val markRead = threads.any { it.unreadByUserCount() > 0 }
-        return JMenuItem(if (markRead) "Mark as Read" else "Mark as Unread").apply {
-            addActionListener {
-                for (thread in threads) {
-                    val changed = if (markRead) thread.markReadByUser() else thread.markUnreadByUser()
-                    if (changed) store.threads.notifyChanged(thread)
-                }
-            }
+        val text = when (mark) {
+            ReadMark.READ -> "Mark as Read"
+            ReadMark.UNREAD -> "Mark as Unread"
+        }
+        return JMenuItem(text).apply {
+            addActionListener { threads.filter(mark::applyTo).forEach(store.threads::notifyChanged) }
         }
     }
 
@@ -712,11 +710,15 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
     private fun goTo(thread: CommentThread) {
         val target = Opened.MarginThread(thread.id)
         val selected = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
+        val selectedBefore = selected?.let(::keyPath)
         val node =
             if (thread.order == null) selected?.let { findUnder(sectionOf(it), target.keyAcrossRebuilds) }
             else nodeOf(target)
         if (node != null) show(node) else tree.clearSelection()
-        navigateTo(thread)
+        WalkthroughNavigator.navigateTo(project, thread, onNotShown = { problem ->
+            if (selectedBefore == null) tree.clearSelection() else restoreSelection(selectedBefore, keepInView = true)
+            WalkthroughNavigator.warn(project, problem)
+        })
     }
 
     private fun goAlong(arrows: Arrows, target: CommentThread?): OccurenceNavigator.OccurenceInfo? {
