@@ -129,6 +129,77 @@ class ProjectTabLayoutTest {
         assertEquals(listOf("a1", "a2", "b1", "b2"), keys(layout))
     }
 
+    private fun resolvedStep(id: String, number: Int, createdAt: Long, activeAt: Long) =
+        step(id, number, createdAt, activeAt).also {
+            it.resolve(user)
+            it.restoreUpdatedAt(Instant.ofEpochSecond(activeAt))
+        }
+
+    @Test
+    fun `oldest first, open steps take only open slots when an earlier step is resolved`() {
+        val stepThree = step("three", number = 3, createdAt = 1, activeAt = 1)
+        val other = project("other", createdAt = 2, activeAt = 2)
+        val stepOne = resolvedStep("one", number = 1, createdAt = 3, activeAt = 3)
+        val stepTwo = step("two", number = 2, createdAt = 4, activeAt = 4)
+
+        val layout = ProjectTabLayout.arrange(listOf(stepTwo, stepOne, other, stepThree))
+
+        assertEquals(listOf("two", "other", "three"), keys(layout))
+        assertEquals(listOf(stepOne), layout.resolved)
+    }
+
+    @Test
+    fun `by recent activity, open steps take only open slots when an earlier step is resolved`() {
+        val stepThree = step("three", number = 3, createdAt = 1, activeAt = 40)
+        val other = project("other", createdAt = 2, activeAt = 30)
+        val stepOne = resolvedStep("one", number = 1, createdAt = 3, activeAt = 20)
+        val stepTwo = step("two", number = 2, createdAt = 4, activeAt = 10)
+
+        val layout = ProjectTabLayout.arrange(listOf(stepTwo, stepOne, other, stepThree), order = byActivity)
+
+        assertEquals(listOf("two", "other", "three"), keys(layout))
+        assertEquals(listOf(stepOne), layout.resolved)
+    }
+
+    @Test
+    fun `oldest first, resolved steps take only resolved slots when an earlier step is still open`() {
+        val stepTwo = resolvedStep("two", number = 2, createdAt = 1, activeAt = 1)
+        val done = resolved("done", createdAt = 2, activeAt = 2)
+        val stepOne = step("one", number = 1, createdAt = 3, activeAt = 3)
+
+        val layout = ProjectTabLayout.arrange(listOf(stepOne, done, stepTwo))
+
+        assertEquals(listOf("one"), keys(layout))
+        assertEquals(listOf(stepTwo, done), layout.resolved)
+    }
+
+    @Test
+    fun `by recent activity, resolved steps take only resolved slots when an earlier step is still open`() {
+        val stepTwo = resolvedStep("two", number = 2, createdAt = 1, activeAt = 30)
+        val done = resolved("done", createdAt = 2, activeAt = 20)
+        val stepOne = step("one", number = 1, createdAt = 3, activeAt = 10)
+
+        val layout = ProjectTabLayout.arrange(listOf(stepOne, done, stepTwo), order = byActivity)
+
+        assertEquals(listOf("one"), keys(layout))
+        assertEquals(listOf(stepTwo, done), layout.resolved)
+    }
+
+    @Test
+    fun `a resolved step holding an unsent reply stays among the open steps, in step order`() {
+        val stepOne = step("one", number = 1, createdAt = 1, activeAt = 1)
+        val other = project("other", createdAt = 2, activeAt = 2)
+        val stepTwo = step("two", number = 2, createdAt = 3, activeAt = 3)
+        val previous = ProjectTabLayout.arrange(listOf(stepOne, other, stepTwo)).active
+
+        stepOne.resolve(user)
+
+        val layout = ProjectTabLayout.arrange(listOf(stepOne, other, stepTwo), previous, holdsDraft = { it == "one" })
+
+        assertEquals(listOf("one", "other", "two"), keys(layout))
+        assertEquals(emptyList(), layout.resolved)
+    }
+
     @Test
     fun `oldest first places a conversation at its oldest member and lists its members oldest first`() {
         val older = relayed("older", pr = 41, activeAt = 10)

@@ -42,8 +42,9 @@ object ProjectTabLayout {
         order: ProjectTabOrder = ProjectTabOrder.DEFAULT,
     ): Layout {
         val previouslyActive = previous.flatMapTo(HashSet()) { entry -> entry.threads.map { it.id } }
-        val (open, folded) = stepsInStepOrder(threads.filter { it.isProjectLevel }.sortedWith(order.comparator))
+        val (open, folded) = threads.filter { it.isProjectLevel }.sortedWith(order.comparator)
             .partition { it.status !is ThreadStatus.Resolved || (holdsDraft(it.id) && it.id in previouslyActive) }
+            .let { (open, folded) -> stepsInStepOrder(open) to stepsInStepOrder(folded) }
         val entries = if (groupRelayed) grouped(open) else open.map { Entry.Single(it) }
         val previousIndex = previous.withIndex().associate { (index, entry) -> entry.key to index }
         val (held, free) = entries.partition { entry -> entry.key in previousIndex && entry.threads.any { holdsDraft(it.id) } }
