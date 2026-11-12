@@ -22,8 +22,6 @@ object ViewHold {
     fun <K> viewTopKeeping(held: Held<K>, heldTop: Int, contentHeight: Int, viewHeight: Int): Int =
         (heldTop - held.offsetFromViewTop).coerceIn(0, (contentHeight - viewHeight).coerceAtLeast(0))
 
-    // Where new threads arrive at the bottom, the bottom is what the very top is to the other orders: a new
-    // thread arriving there comes into view. A card that only grew is not new, so reading keeps its place.
     fun <K> restsOnTheLast(cards: List<Span<K>>, viewTop: Int, viewHeight: Int): Boolean =
         cards.maxByOrNull { it.bottom }?.let { it.overlaps(viewTop, viewHeight) && it.bottom <= viewTop + viewHeight } == true
 

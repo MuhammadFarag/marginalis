@@ -54,7 +54,6 @@ object ProjectTabLayout {
         return Layout(active = active, resolved = folded)
     }
 
-    /** A walkthrough's steps keep the slots the order gave them, refilled in step order, so they read 1, 2, 3 in any order. */
     private fun stepsInStepOrder(sorted: List<CommentThread>): List<CommentThread> {
         val result = sorted.toMutableList()
         sorted.withIndex()
