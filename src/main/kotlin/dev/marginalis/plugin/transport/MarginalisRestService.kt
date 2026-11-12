@@ -44,7 +44,7 @@ import dev.marginalis.core.ThreadSummary
 import dev.marginalis.core.Turn
 import dev.marginalis.core.WaitTimeout
 import dev.marginalis.core.Wake
-import dev.marginalis.core.WalkthroughBatch
+import dev.marginalis.core.Walkthrough
 import dev.marginalis.core.getOrElse
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
@@ -202,7 +202,6 @@ class MarginalisRestService : RestService() {
             )
         val results = JsonArray()
         var created = 0
-        val walkthroughs = WalkthroughBatch()
         for (element in items) {
             if (!element.isJsonObject) {
                 results.add(
@@ -212,7 +211,7 @@ class MarginalisRestService : RestService() {
                 )
                 continue
             }
-            val outcome = addComment(withBatchDefaults(element.asJsonObject, json), walkthroughs)
+            val outcome = addComment(withBatchDefaults(element.asJsonObject, json))
             if (outcome.created) created++
             results.add(outcome.json)
         }
@@ -244,7 +243,7 @@ class MarginalisRestService : RestService() {
 
     // Returns an outcome instead of responding so the batch judges anchors by
     // exactly the same rules, rather than becoming a second contract.
-    private fun addComment(json: JsonObject, walkthroughs: WalkthroughBatch = WalkthroughBatch()): AddOutcome {
+    private fun addComment(json: JsonObject): AddOutcome {
         payloadError(json)?.let { return AddOutcome.refused(HttpResponseStatus.BAD_REQUEST, it) }
         val body = json.stringOrNull("body")
             ?: return AddOutcome.refused(
@@ -300,7 +299,7 @@ class MarginalisRestService : RestService() {
             val store = MarginalisStore.getInstance(project)
             relaying = relayed?.let { store.threads.relaying(it.key) }?.let { addedJson(it, store.syncLine(it)) }
             if (relaying != null) return@invokeAndWait
-            val walkthroughId = order?.let { walkthroughs.walkthroughFor(store.threads.all(), walkthroughLabel, it) }
+            val walkthroughId = order?.let { Walkthrough.forArrival(store.threads.all(), walkthroughLabel, it) }
             // Agents never create segments — the selection gesture is human.
             val created = if (wireLine == null || file == null || vFile == null) {
                 CommentThread(
@@ -333,7 +332,6 @@ class MarginalisRestService : RestService() {
             val message = Message(agentAuthor(json), body, to = to, relayed = relayed)
             created.addMessage(message)
             MarginalisStore.getInstance(project).threads.add(created)
-            if (order != null && walkthroughId != null) walkthroughs.joined(walkthroughLabel, order, walkthroughId)
             maybeNotify(project, created, message)
             thread = created
         }

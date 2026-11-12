@@ -19,11 +19,7 @@ class WalkthroughIdentityTest {
     private fun comment() = CommentThread("a.py", 1, "x", createdAt = Instant.ofEpochSecond(tick++))
 
     private fun MutableList<CommentThread>.arrive(label: String?, vararg orders: Int): List<CommentThread> {
-        val batch = WalkthroughBatch()
-        return orders.map { order ->
-            val walkthroughId = batch.walkthroughFor(this, label, order)
-            step(order, walkthroughId, label).also(::add).also { batch.joined(label, order, walkthroughId) }
-        }
+        return orders.map { order -> step(order, Walkthrough.forArrival(this, label, order), label).also(::add) }
     }
 
     private fun walkthroughsOf(vararg steps: List<CommentThread>): List<Set<String?>> =
@@ -111,12 +107,11 @@ class WalkthroughIdentityTest {
     @Test
     fun `one batch keeps each label's steps together and its labels apart`() {
         val threads = mutableListOf<CommentThread>()
-        val batch = WalkthroughBatch()
-        val a1 = batch.walkthroughFor(threads, "A", 1).also { batch.joined("A", 1, it) }
-        val b1 = batch.walkthroughFor(threads, "B", 1).also { batch.joined("B", 1, it) }
-        val a2 = batch.walkthroughFor(threads, "A", 2)
-        assertEquals(a1, a2)
-        assertNotEquals(a1, b1)
+        val (a1) = threads.arrive("A", 1)
+        val (b1) = threads.arrive("B", 1)
+        val (a2) = threads.arrive("A", 2)
+        assertEquals(a1.walkthroughId, a2.walkthroughId)
+        assertNotEquals(a1.walkthroughId, b1.walkthroughId)
     }
 
     @Test
@@ -130,12 +125,19 @@ class WalkthroughIdentityTest {
     }
 
     @Test
+    fun `a batch number already stored in the walkthrough it joined, even resolved, starts the next walkthrough`() {
+        val threads = mutableListOf(step(1, "w", "tour"), step(3, "w", "tour").also { it.resolve(user) })
+        val (two, three) = threads.arrive("tour", 2, 3)
+        assertEquals("w", two.walkthroughId)
+        assertNotEquals("w", three.walkthroughId)
+    }
+
+    @Test
     fun `a batch step that was never created leaves later steps to join the open walkthrough`() {
         val threads = mutableListOf<CommentThread>()
         val open = threads.arrive("A", 1).single()
-        val batch = WalkthroughBatch()
-        batch.walkthroughFor(threads, "A", 1)
-        assertEquals(open.walkthroughId, batch.walkthroughFor(threads, "A", 2))
+        Walkthrough.forArrival(threads, "A", 1)
+        assertEquals(open.walkthroughId, Walkthrough.forArrival(threads, "A", 2))
     }
 
     @Test
