@@ -163,7 +163,7 @@ class ProjectTabPanel(private val project: Project) : Disposable {
     }
 
     private val toolbar = ActionManager.getInstance()
-        .createActionToolbar("MarginalisProjectTab", DefaultActionGroup(AgentPresenceGroup(), SubmitRoundAction(), StopAgentsGroup(), ProjectTabSortMenu(::sortChanged)), true)
+        .createActionToolbar("MarginalisProjectTab", DefaultActionGroup(AgentPresenceGroup(), SubmitRoundAction(), StopAgentsGroup(), ProjectTabSortMenu()), true)
         .also {
             it.targetComponent = root
             it.component.isOpaque = false
@@ -239,7 +239,7 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         reading.request()
     }
 
-    private fun sortChanged() {
+    fun sortChanged() {
         holdStill.release()
         refresh(keepDraftsInPlace = false)
         reading.request()

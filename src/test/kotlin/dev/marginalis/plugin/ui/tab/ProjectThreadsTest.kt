@@ -101,6 +101,16 @@ class ProjectThreadsTest : MarginTabTestCase() {
         )
     }
 
+    fun testChoosingASortInOneHalfOfASplitReordersTheOtherHalfToo() {
+        agent.ask("Alpha question")
+        agent.ask("Bravo question")
+        tab.splitInTwo()
+
+        tab.inHalf(0) { tab.sortBy("Newest first") }
+
+        assertEquals(listOf("✉ Bravo question ● [expanded]", "✉ Alpha question ● [expanded]"), tab.inHalf(1) { shown() })
+    }
+
     fun testChoosingASortReordersAThreadHoldingAnUnsentReplyToo() {
         agent.ask("Alpha question")
         agent.ask("Bravo question")

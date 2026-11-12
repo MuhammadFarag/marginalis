@@ -20,6 +20,8 @@ class MarginEditor(private val project: Project, private val file: MarginFile) :
 
     fun applyPrefs() = content.applyPrefs()
 
+    fun sortChanged() = content.sortChanged()
+
     override fun selectNotify() {
         content.onShown(inFront = true)
         ProjectTabState.getInstance(project).takeRequest()?.let(::handle)

@@ -247,7 +247,24 @@ class MarginTab(private val project: Project, private val disposable: Disposable
         return result
     }
 
-    val editor: MarginEditor get() = editors.getAllEditors(file).filterIsInstance<MarginEditor>().single()
+    private var half: Int? = null
+
+    val editor: MarginEditor
+        get() = editors.getAllEditors(file).filterIsInstance<MarginEditor>().let { shown -> half?.let(shown::get) ?: shown.single() }
+
+    fun splitInTwo() {
+        editors.windows.single().split(SwingConstants.VERTICAL, true, file, false)
+        settle()
+    }
+
+    fun <T> inHalf(index: Int, look: () -> T): T {
+        half = index
+        try {
+            return look()
+        } finally {
+            half = null
+        }
+    }
 
     private val root: JComponent get() = editor.component
 
