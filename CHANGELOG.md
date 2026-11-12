@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-11-11
+
+Thanks to [@schrek1](https://github.com/schrek1) for the walkthrough layouts and the Margin tab sort in this release.
+
 ### Changed
 
 - Walkthroughs now stand apart from ordinary comments. The Open list
