@@ -11,13 +11,12 @@ class WalkthroughGroup(
     val title: String,
 )
 
-class ListedSection(val walkthroughs: List<WalkthroughGroup>, val comments: List<CommentThread>)
-
 class ThreadListing(
-    val guided: List<WalkthroughGroup>,
+    val walkthroughs: List<WalkthroughGroup>,
+    val resolvedWalkthroughs: List<WalkthroughGroup>,
     val open: List<CommentThread>,
-    val orphaned: ListedSection,
-    val resolved: ListedSection,
+    val orphaned: List<CommentThread>,
+    val resolved: List<CommentThread>,
 ) {
     companion object {
         fun of(
@@ -27,12 +26,16 @@ class ThreadListing(
         ): ThreadListing {
             val wholeWalkthroughs = walkthroughsIn(all + shown)
             val titles = titlesOf(wholeWalkthroughs, startTime)
-            val open = shown.filter { it.status is ThreadStatus.Open }
+            val (steps, comments) = shown.partition { it.order != null }
+            val (resolvedSteps, activeSteps) = steps.partition { step ->
+                wholeWalkthroughs.getValue(step.walkthroughId).all { it.status is ThreadStatus.Resolved }
+            }
             return ThreadListing(
-                guided = groupsOf(open.filter { it.order != null }, wholeWalkthroughs, titles),
-                open = open.filter { it.order == null },
-                orphaned = sectionOf(shown.filter { it.status is ThreadStatus.Orphaned }, wholeWalkthroughs, titles),
-                resolved = sectionOf(shown.filter { it.status is ThreadStatus.Resolved }, wholeWalkthroughs, titles),
+                walkthroughs = groupsOf(activeSteps, wholeWalkthroughs, titles),
+                resolvedWalkthroughs = groupsOf(resolvedSteps, wholeWalkthroughs, titles),
+                open = comments.filter { it.status is ThreadStatus.Open },
+                orphaned = comments.filter { it.status is ThreadStatus.Orphaned },
+                resolved = comments.filter { it.status is ThreadStatus.Resolved },
             )
         }
 
@@ -51,15 +54,6 @@ class ThreadListing(
                 "$plain · ${startTime(ordered[index].third)}"
             }.let { stamped -> toldApart(stamped) { index, title -> "$title (${stamped.take(index + 1).count { it == title }})" } }
             return ordered.mapIndexed { index, (id, _, _) -> id to titles[index] }.toMap()
-        }
-
-        private fun sectionOf(
-            threads: List<CommentThread>,
-            wholeWalkthroughs: Map<String?, List<CommentThread>>,
-            titles: Map<String?, String>,
-        ): ListedSection {
-            val (steps, comments) = threads.partition { it.order != null }
-            return ListedSection(groupsOf(steps, wholeWalkthroughs, titles), comments)
         }
 
         private fun groupsOf(
