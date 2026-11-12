@@ -338,8 +338,8 @@ class MarginalisConfigurable : Configurable {
                 row("List while the tab is in front:") {
                     comboBox(ListWhileInFront.entries, textListCellRenderer { it?.let(::labelOf) })
                         .comment(
-                            "Live keeps the latest activity on top. Hold still keeps everything in place " +
-                                "while you read, and new threads wait behind a pill.",
+                            "Live keeps the list in its sort order as threads change. " +
+                                "Hold still keeps everything in place while you read, and new threads wait behind a pill.",
                         )
                         .bindItem(
                             { settings.listWhileInFront },
