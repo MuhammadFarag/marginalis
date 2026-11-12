@@ -29,7 +29,7 @@ class ProjectTabSort : PersistentStateComponent<ProjectTabSort.State> {
     var order: ProjectTabOrder
         get() = ProjectTabOrder.fromStored(state.order)
         set(value) {
-            state.order = value.stored
+            state.order = value.name
         }
 
     companion object {
