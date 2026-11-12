@@ -23,12 +23,15 @@ object ViewHold {
         (heldTop - held.offsetFromViewTop).coerceIn(0, (contentHeight - viewHeight).coerceAtLeast(0))
 
     fun <K> restsOnTheLast(cards: List<Span<K>>, viewTop: Int, viewHeight: Int): Boolean =
-        cards.maxByOrNull { it.bottom }?.let { it.overlaps(viewTop, viewHeight) && it.bottom <= viewTop + viewHeight } == true
+        lastCard(cards)?.let { it.overlaps(viewTop, viewHeight) && it.bottom <= viewTop + viewHeight } == true
 
     fun <K> viewTopShowingANewLast(shownBefore: Set<K>, cards: List<Span<K>>, contentHeight: Int, viewHeight: Int): Int? {
-        val last = cards.maxByOrNull { it.bottom }?.takeIf { it.key !in shownBefore } ?: return null
+        val last = lastCard(cards)?.takeIf { it.key !in shownBefore } ?: return null
         return minOf(last.top, contentHeight - viewHeight).coerceAtLeast(0)
     }
+
+    private fun <K> lastCard(cards: List<Span<K>>): Span<K>? =
+        cards.filterNot { outer -> cards.any { it != outer && it.top >= outer.top && it.bottom <= outer.bottom } }.maxByOrNull { it.bottom }
 
     private fun <K> heldWhileWriting(writing: WritingIn<K>, inView: List<Span<K>>, viewTop: Int, viewHeight: Int): Span<K>? =
         writing.replyBox?.takeIf { it.overlaps(viewTop, viewHeight) } ?: inView.firstOrNull { it.key == writing.card }
