@@ -201,6 +201,17 @@ class ProjectTabLayoutTest {
     }
 
     @Test
+    fun `by recent activity, a reply to a later step lifts the walkthrough's slot, and step 1 shows there`() {
+        val stepOne = step("one", number = 1, createdAt = 1, activeAt = 5)
+        val stepTwo = step("two", number = 2, createdAt = 2, activeAt = 6)
+        val other = project("other", createdAt = 3, activeAt = 20)
+
+        stepTwo.addMessage(Message(user, "on step two"))
+
+        assertEquals(listOf("one", "other", "two"), keys(ProjectTabLayout.arrange(listOf(other, stepOne, stepTwo), order = byActivity)))
+    }
+
+    @Test
     fun `oldest first places a conversation at its oldest member and lists its members oldest first`() {
         val older = relayed("older", pr = 41, activeAt = 10)
         val middle = project("middle", createdAt = 20, activeAt = 20)
