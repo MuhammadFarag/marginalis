@@ -197,6 +197,20 @@ class ReadingTest : TabInFrontTestCase() {
         assertEquals(0, user.thread(id).unreadByUserCount())
     }
 
+    fun testNavigatingToAThreadMarkedUnreadReadsItInItsOpenEditorPanel() {
+        sample()
+        val id = agent.addOnLine(5, "body" to "Why this cap?")
+        user.open(id)
+        val window = user.openToolWindow()
+        window.rebuiltBy { window.chooseFromContextMenu("Why this cap?", "Mark as Unread") }
+        assertEquals(1, user.thread(id).unreadByUserCount())
+
+        window.chooseFromContextMenu("Why this cap?", "Navigate")
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        assertEquals(0, user.thread(id).unreadByUserCount())
+    }
+
     fun testTwoPanelsOnOneThreadBothKeepTheUnreadMark() {
         sample()
         val id = agent.addOnLine(5, "body" to "Why this cap?")
