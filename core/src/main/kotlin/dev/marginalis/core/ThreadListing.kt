@@ -27,9 +27,10 @@ class ThreadListing(
             val wholeWalkthroughs = walkthroughsIn(all + shown)
             val titles = titlesOf(wholeWalkthroughs, startTime)
             val (steps, comments) = shown.partition { it.order != null }
-            val (resolvedSteps, activeSteps) = steps.partition { step ->
-                wholeWalkthroughs.getValue(step.walkthroughId).all { it.status is ThreadStatus.Resolved }
-            }
+            val resolvedWalkthroughIds = wholeWalkthroughs
+                .filterValues { whole -> whole.all { it.status is ThreadStatus.Resolved } }
+                .keys
+            val (resolvedSteps, activeSteps) = steps.partition { it.walkthroughId in resolvedWalkthroughIds }
             return ThreadListing(
                 walkthroughs = groupsOf(activeSteps, wholeWalkthroughs, titles),
                 resolvedWalkthroughs = groupsOf(resolvedSteps, wholeWalkthroughs, titles),

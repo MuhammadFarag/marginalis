@@ -37,6 +37,17 @@ class ResolvingAWalkthroughTest : ToolWindowTestCase() {
         )
     }
 
+    fun testResolveWalkthroughWarnsWhenAnOrphanedStepItWillResolveIsABlocker() {
+        sample()
+        agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "fine")
+        agent.addOnLine(20, "order" to 2, "walkthrough" to "tour", "severity" to "blocker", "body" to "lost blocker")
+        eraseLine(20)
+
+        val asked = window.chooseFromContextMenu("tour", "Resolve Walkthrough", answer = MarginToolWindow.NO)
+
+        assertTrue(asked, asked.contains("1 of them are blockers"))
+    }
+
     fun testResolveWalkthroughWithOnlyOrphanedStepsLeftAsksNothing() {
         sample()
         val done = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
