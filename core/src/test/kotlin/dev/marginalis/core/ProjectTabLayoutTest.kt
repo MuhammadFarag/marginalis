@@ -312,6 +312,27 @@ class ProjectTabLayoutTest {
     }
 
     @Test
+    fun `re-sorting moves a thread holding an unsent reply to its new place and keeps a resolved one active`() {
+        val drafting = project("drafting", createdAt = 1, activeAt = 1)
+        val other = project("other", createdAt = 2, activeAt = 2)
+        val resolvedDrafting = project("resolved", createdAt = 3, activeAt = 3)
+        val threads = listOf(drafting, other, resolvedDrafting)
+        val previous = ProjectTabLayout.arrange(threads).active
+        resolvedDrafting.resolve(user)
+
+        val layout = ProjectTabLayout.arrange(
+            threads,
+            previous,
+            holdsDraft = { it == "drafting" || it == "resolved" },
+            order = ProjectTabOrder.NEWEST_FIRST,
+            keepDraftsInPlace = false,
+        )
+
+        assertEquals(listOf("resolved", "other", "drafting"), keys(layout))
+        assertEquals(emptyList(), layout.resolved)
+    }
+
+    @Test
     fun `a thread holding an unsent reply that gets resolved stays in the active list, not the fold`() {
         val drafting = project("drafting", createdAt = 1, activeAt = 20)
         val other = project("other", createdAt = 2, activeAt = 10)
