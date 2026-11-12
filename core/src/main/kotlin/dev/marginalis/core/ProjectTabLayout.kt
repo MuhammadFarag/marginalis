@@ -40,6 +40,7 @@ object ProjectTabLayout {
         holdsDraft: (String) -> Boolean = { false },
         groupRelayed: Boolean = true,
         order: ProjectTabOrder = ProjectTabOrder.DEFAULT,
+        keepDraftsInPlace: Boolean = true,
     ): Layout {
         val previouslyActive = previous.flatMapTo(HashSet()) { entry -> entry.threads.map { it.id } }
         val (open, folded) = threads.filter { it.isProjectLevel }.sortedWith(order.comparator)
@@ -47,7 +48,9 @@ object ProjectTabLayout {
             .let { (open, folded) -> open to stepsInStepOrder(folded) { it } }
         val entries = if (groupRelayed) grouped(open) else open.map { Entry.Single(it) }
         val previousIndex = previous.withIndex().associate { (index, entry) -> entry.key to index }
-        val (held, free) = entries.partition { entry -> entry.key in previousIndex && entry.threads.any { holdsDraft(it.id) } }
+        val (held, free) = entries.partition { entry ->
+            keepDraftsInPlace && entry.key in previousIndex && entry.threads.any { holdsDraft(it.id) }
+        }
         val active = free.toMutableList()
         held.map { previousIndex.getValue(it.key) to it }.sortedBy { it.first }
             .forEach { (index, entry) -> active.add(index.coerceAtMost(active.size), entry) }

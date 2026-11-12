@@ -241,7 +241,8 @@ class ProjectTabPanel(private val project: Project) : Disposable {
 
     private fun sortChanged() {
         holdStill.release()
-        applyPrefs()
+        refresh(keepDraftsInPlace = false)
+        reading.request()
     }
 
     override fun dispose() {
@@ -277,13 +278,13 @@ class ProjectTabPanel(private val project: Project) : Disposable {
         }
     }
 
-    private fun refresh() {
+    private fun refresh(keepDraftsInPlace: Boolean = true) {
         if (disposed) return
         val prefs = settings.projectTabPrefs
         val order = sort.order
         val people = settings.people
         val threads = store.threads.all()
-        val live = ProjectTabLayout.arrange(threads, shownEntries, ::holdsDraft, prefs.groupRelayed, order)
+        val live = ProjectTabLayout.arrange(threads, shownEntries, ::holdsDraft, prefs.groupRelayed, order, keepDraftsInPlace)
         val view = if (prefs.list == ListWhileInFront.HOLD_STILL) {
             holdStill.update(live, inFront, order.newOnTop)
         } else {

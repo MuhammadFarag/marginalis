@@ -101,6 +101,31 @@ class ProjectThreadsTest : MarginTabTestCase() {
         )
     }
 
+    fun testChoosingASortReordersAThreadHoldingAnUnsentReplyToo() {
+        agent.ask("Alpha question")
+        agent.ask("Bravo question")
+        agent.ask("Charlie question")
+        user.type(tab.panel("Alpha question"), "Half-written answer")
+
+        tab.sortBy("Newest first")
+
+        assertEquals(
+            listOf("✉ Charlie question ● [expanded]", "✉ Bravo question ● [expanded]", "✉ Alpha question ● [expanded]"),
+            shown(),
+        )
+    }
+
+    fun testAResolvedThreadHoldingAnUnsentReplyStaysInTheListWhenTheSortChanges() {
+        val alpha = agent.ask("Alpha question")
+        agent.ask("Bravo question")
+        user.type(tab.panel("Alpha question"), "Half-written answer")
+        agent.post("comment_resolve", "thread_id" to alpha)
+
+        tab.sortBy("Newest first")
+
+        assertEquals(listOf("✉ Bravo question ● [expanded]", "Alpha question ● [expanded]"), shown())
+    }
+
     fun testAResolvedThreadHoldingAnUnsentReplyStaysInTheListUntilTheReplyIsGone() {
         val alpha = agent.ask("Alpha question")
         user.type(tab.panel("Alpha question"), "Half-written answer")
