@@ -13,6 +13,15 @@ History before 0.1.19 lives in git tags.
   holds comments only, and each walkthrough keeps its steps together.
 - Resolved and orphaned steps sit under their walkthrough, so a finished
   walkthrough reads as one group you can look back on.
+- A walkthrough now reads in step order in the tool window, and each
+  step names its file. A new Walkthrough Layout menu in the tool
+  window's header switches to by folder or by file. Each project
+  remembers its choice.
+  - In step order, "Group Consecutive Steps by File" folds neighbouring
+    steps in one file under that file.
+- A walkthrough moves to Resolved as one group once every step is
+  resolved. Reopen any step and the walkthrough returns.
+- Right-click a walkthrough to resolve all of it in one step.
 - Previous and Next on a comment move between comments and pass steps
   by. A comment's header reads "comment 3/12".
 - You can tell a step from a comment at a glance. A step wears a

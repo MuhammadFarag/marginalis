@@ -10,6 +10,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.actionSystem.Presentation
+import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.project.Project
@@ -378,6 +379,37 @@ class MarginToolWindow(private val project: Project, private val disposable: Dis
         settle()
     }
 
+    fun walkthroughLayoutMenu(): List<String> = layoutMenuItems().map { item ->
+        if (item is Separator) SEPARATOR else presented(item).text
+    }
+
+    fun walkthroughLayouts(): Map<String, Boolean> = layoutChoices().associate { it.templatePresentation.text to it.isSelected(event(it)) }
+
+    fun layOutWalkthroughsBy(title: String) {
+        val choice = layoutChoices().single { it.templatePresentation.text == title }
+        choice.setSelected(event(choice), true)
+        settle()
+    }
+
+    fun groupsConsecutiveStepsByFile(): Boolean = groupingToggle().let { it.isSelected(event(it)) }
+
+    fun canGroupConsecutiveStepsByFile(): Boolean = presented(groupingToggle()).isEnabled
+
+    fun groupConsecutiveStepsByFile(on: Boolean) {
+        val toggle = groupingToggle()
+        check(presented(toggle).isEnabled) { "$GROUP_CONSECUTIVE_STEPS is greyed out" }
+        toggle.setSelected(event(toggle), on)
+        settle()
+    }
+
+    private fun layoutMenuItems(): List<AnAction> = (action(WALKTHROUGH_LAYOUT) as ActionGroup).getChildren(null).toList()
+
+    private fun layoutChoices(): List<ToggleAction> =
+        layoutMenuItems().filterIsInstance<ToggleAction>().filter { it.templatePresentation.text != GROUP_CONSECUTIVE_STEPS }
+
+    private fun groupingToggle(): ToggleAction =
+        layoutMenuItems().filterIsInstance<ToggleAction>().single { it.templatePresentation.text == GROUP_CONSECUTIVE_STEPS }
+
     fun emptyText(): String = tree.emptyText.text
 
     fun isProjectLive(): Boolean = projectLive().let { it.isSelected(event(it)) }
@@ -520,6 +552,9 @@ class MarginToolWindow(private val project: Project, private val disposable: Dis
 
     companion object {
         const val ID = "Marginalis"
+        const val GROUP_CONSECUTIVE_STEPS = "Group Consecutive Steps by File"
+        const val WALKTHROUGH_LAYOUT = "Walkthrough Layout"
+        const val SEPARATOR = "---"
         const val YES = Messages.YES
         const val NO = Messages.NO
 

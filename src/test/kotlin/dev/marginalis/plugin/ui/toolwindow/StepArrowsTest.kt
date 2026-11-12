@@ -29,7 +29,7 @@ class StepArrowsTest : ToolWindowTestCase() {
 
         window.press("Next Step")
 
-        assertEquals("✉ (2/18)  L20  Step 2", window.selected())
+        assertEquals("✉ (2/18)  OrderService.java L20  Step 2", window.selected())
         assertEquals("OrderService.java", openFile())
         assertEquals(20, caretLine())
         assertEquals("Step 2", shownThread())
@@ -57,17 +57,17 @@ class StepArrowsTest : ToolWindowTestCase() {
         interleaved()
 
         window.press("Last Step")
-        assertEquals("✉ (18/18)  L45  Step 18", window.selected())
+        assertEquals("✉ (18/18)  OrderController.java L45  Step 18", window.selected())
         assertEquals("OrderController.java", openFile())
         assertEquals(listOf("First Step", "Previous Step"), enabledArrows())
 
         window.press("Previous Step")
-        assertEquals("✉ (17/18)  L58  Step 17", window.selected())
+        assertEquals("✉ (17/18)  OrderServiceTest.java L58  Step 17", window.selected())
         assertEquals("OrderServiceTest.java", openFile())
         assertEquals(58, caretLine())
 
         window.press("First Step")
-        assertEquals("✉ (2/18)  L20  Step 2", window.selected())
+        assertEquals("✉ (2/18)  OrderService.java L20  Step 2", window.selected())
         assertEquals(listOf("Next Step", "Last Step"), enabledArrows())
     }
 
@@ -107,7 +107,7 @@ class StepArrowsTest : ToolWindowTestCase() {
         assertEquals(arrows, enabledArrows())
         window.press("Next Step")
 
-        assertEquals("✉ (5/18)  L22  Step 5", window.selected())
+        assertEquals("✉ (5/18)  LoyaltyDiscountPolicy.java L22  Step 5", window.selected())
         assertEquals("LoyaltyDiscountPolicy.java", openFile())
     }
 
@@ -128,13 +128,13 @@ class StepArrowsTest : ToolWindowTestCase() {
     }
 
     fun testFromTheFoldedResolvedSectionNextStepStartsTheFirstWalkthrough() {
-        interleaved()
+        agent.post("comment_resolve", "thread_id" to commentsBesideTheWalkthrough().first())
         window.click("Resolved")
         assertFalse(window.isExpanded("Resolved"))
 
         window.press("Next Step")
 
-        assertEquals("✉ (2/18)  L20  Step 2", window.selected())
+        assertEquals("✉ (2/18)  OrderService.java L20  Step 2", window.selected())
         assertFalse(window.isExpanded("Resolved"))
         assertEquals("OrderService.java", openFile())
         assertEquals(20, caretLine())
@@ -143,14 +143,12 @@ class StepArrowsTest : ToolWindowTestCase() {
     @DisplayOnly
     fun testOnAResolvedStepTheArrowsWalkTheOpenStepsOfItsWalkthroughFromItsNumber() {
         interleaved()
-        window.click("Resolved")
-        window.press("Expand Section")
-        window.click("(1/18)", under = "Resolved")
+        window.click("(1/18)")
 
         assertEquals(listOf("First Step", "Next Step", "Last Step"), enabledArrows())
         window.press("Next Step")
 
-        assertEquals("✉ (2/18)  L20  Step 2", window.selected())
+        assertEquals("✉ (2/18)  OrderService.java L20  Step 2", window.selected())
     }
 
     fun testAReplyMidWalkKeepsTheWalksPlace() {
@@ -158,37 +156,37 @@ class StepArrowsTest : ToolWindowTestCase() {
         window.press("Next Step")
         window.press("Next Step")
         window.press("Next Step")
-        assertEquals("✉ (4/18)  L8  Step 4", window.selected())
+        assertEquals("✉ (4/18)  LoyaltyDiscountPolicy.java L8  Step 4", window.selected())
 
         window.rebuiltBy { agent.reply(steps.getValue(9), "One more thing on step 9.") }
-        assertEquals("✉ (4/18)  L8  Step 4", window.selected())
+        assertEquals("✉ (4/18)  LoyaltyDiscountPolicy.java L8  Step 4", window.selected())
         window.press("Next Step")
 
-        assertEquals("✉ (5/18)  L22  Step 5", window.selected())
+        assertEquals("✉ (5/18)  LoyaltyDiscountPolicy.java L22  Step 5", window.selected())
         assertEquals("LoyaltyDiscountPolicy.java", openFile())
     }
 
     fun testResolvingTheSelectedStepSendsNextOnToTheStepAfterIt() {
         interleaved()
         repeat(4) { window.press("Next Step") }
-        assertEquals("✉ (5/18)  L22  Step 5", window.selected())
+        assertEquals("✉ (5/18)  LoyaltyDiscountPolicy.java L22  Step 5", window.selected())
 
         window.chooseFromContextMenu("(5/18)", "Resolve")
         window.press("Next Step")
 
-        assertEquals("✉ (6/18)  L41  Step 6", window.selected())
+        assertEquals("✉ (6/18)  OrderService.java L41  Step 6", window.selected())
     }
 
     fun testAReplyThatFiltersTheSelectedStepOutSendsNextOnToTheStepAfterIt() {
         val steps = interleaved()
         window.filterBy("Awaiting You")
         repeat(4) { window.press("Next Step") }
-        assertEquals("✉ (5/18)  L22  Step 5", window.selected())
+        assertEquals("✉ (5/18)  LoyaltyDiscountPolicy.java L22  Step 5", window.selected())
 
         window.rebuiltBy { user.reply(steps.getValue(5), "Looks right.") }
         window.press("Next Step")
 
-        assertEquals("✉ (6/18)  L41  Step 6", window.selected())
+        assertEquals("✉ (6/18)  OrderService.java L41  Step 6", window.selected())
     }
 
     fun testUnderAFilterTheArrowsStillVisitEveryOpenStepAndLeaveAHiddenOneUnselected() {
@@ -207,7 +205,7 @@ class StepArrowsTest : ToolWindowTestCase() {
         assertEquals(arrows, enabledArrows())
 
         window.press("Next Step")
-        assertEquals("✉ (4/18)  L8  Step 4", window.selected())
+        assertEquals("✉ (4/18)  LoyaltyDiscountPolicy.java L8  Step 4", window.selected())
 
         window.press("Previous Step")
         assertNull(window.selected())
@@ -222,7 +220,7 @@ class StepArrowsTest : ToolWindowTestCase() {
 
         window.press("Next Step")
 
-        assertEquals("✉ (4/18)  L8  Step 4", window.selected())
+        assertEquals("✉ (4/18)  LoyaltyDiscountPolicy.java L8  Step 4", window.selected())
     }
 
     fun testWithNoStepSelectedTheArrowsContinueFromAStepOpenedInTheGutter() {
@@ -231,7 +229,7 @@ class StepArrowsTest : ToolWindowTestCase() {
 
         window.press("Previous Step")
 
-        assertEquals("✉ (8/18)  L10  Step 8", window.selected())
+        assertEquals("✉ (8/18)  Order.java L10  Step 8", window.selected())
         assertEquals("Order.java", openFile())
     }
 
@@ -253,7 +251,7 @@ class StepArrowsTest : ToolWindowTestCase() {
 
         window.press("Next Step")
 
-        assertTrue(window.selected().toString(), window.selected()!!.endsWith("(3/3)  L9  Step three"))
+        assertTrue(window.selected().toString(), window.selected()!!.endsWith("(3/3)  Sample.kt L9  Step three"))
     }
 
     fun testWithNoStepSelectedTheArrowsContinueFromAProjectStepOpenedInTheMarginTab() {
@@ -265,7 +263,7 @@ class StepArrowsTest : ToolWindowTestCase() {
 
         window.press("Next Step")
 
-        assertTrue(window.selected().toString(), window.selected()!!.endsWith("(3/3)  L9  Step three"))
+        assertTrue(window.selected().toString(), window.selected()!!.endsWith("(3/3)  Sample.kt L9  Step three"))
     }
 
     @DisplayOnly
@@ -277,8 +275,7 @@ class StepArrowsTest : ToolWindowTestCase() {
         }
         agent.post("comment_add_batch", "items" to items).json.getAsJsonArray("results")
             .forEach { agent.post("comment_resolve", "thread_id" to it.asJsonObject["thread_id"].asString) }
-        window.click("Resolved")
-        window.press("Expand Section")
+        listOf("Resolved", "done").forEach { window.toggleFolding(it, under = "Resolved") }
         window.click("Done 1", under = "Resolved")
 
         assertEquals(emptyList<String>(), enabledArrows())
@@ -311,8 +308,8 @@ class StepArrowsTest : ToolWindowTestCase() {
         window.press("Last Step")
         val last = window.selected()
 
-        assertEquals("✉ (8/33)  L5  Step 8", first)
-        assertEquals("✉ (33/33)  L5  Step 33", last)
+        assertEquals("✉ (8/33)  CustomerSettingsProvider.java L5  Step 8", first)
+        assertEquals("✉ (33/33)  InvoiceSettingsConfigurationTest.java L5  Step 33", last)
         assertEquals("InvoiceSettingsConfigurationTest.java", openFile())
     }
 

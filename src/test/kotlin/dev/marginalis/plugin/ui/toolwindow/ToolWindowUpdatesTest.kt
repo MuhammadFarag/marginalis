@@ -147,30 +147,32 @@ class ToolWindowUpdatesTest : ToolWindowTestCase() {
 
     @DisplayOnly
     fun testARefreshKeepsTheResolvedSectionAsTheUserUnfoldedIt() {
-        val steps = interleaved()
-        agent.post("comment_resolve", "thread_id" to steps.getValue(8))
-        agent.post("comment_resolve", "thread_id" to steps.getValue(18))
+        sample()
+        sample("src/deeper/Other.kt")
+        val open = agent.addOnLine(12, "body" to "still open")
+        listOf(
+            agent.addOnLine(3, "body" to "first done"),
+            agent.addOnLine(9, "body" to "second done"),
+            agent.addOnLine(5, "body" to "deeper done", file = "src/deeper/Other.kt"),
+        ).forEach { agent.post("comment_resolve", "thread_id" to it) }
         window.toggleFolding("Resolved")
-        listOf("SHOP-77", "acme/backend", "shop-orders/src/main/java/com/acme/orders/api", "OrderController.java")
-            .forEach { window.toggleFolding(it, under = "Resolved") }
-        window.click("(1/18)", under = "Resolved")
-        window.toggleFolding("shop-common/src/main/java/com/acme/backend/common/order", under = "Resolved")
-        assertTrue(window.isExpanded("shop-common/src/main/java/com/acme/backend/common/order", under = "Resolved"))
+        listOf("src", "Sample.kt").forEach { window.toggleFolding(it, under = "Resolved") }
+        window.click("first done", under = "Resolved")
+        window.toggleFolding("deeper", under = "Resolved")
+        assertTrue(window.isExpanded("deeper", under = "Resolved"))
 
-        window.rebuiltBy { agent.reply(steps.getValue(9), "more") }
+        window.rebuiltBy { agent.reply(open, "more") }
 
-        assertEquals("(1/18)  L12  Step 1", window.selected())
+        assertEquals("L3  first done", window.selected())
         assertEquals(
             """
             Resolved  3
-              SHOP-77  3
-                acme/backend  3
-                  shop-orders/src/main/java/com/acme/orders/api  2
-                    OrderController.java
-                      (1/18)  L12  Step 1
-                      (18/18)  L45  Step 18
-                  shop-common/src/main/java/com/acme/backend/common/order  1
-                    Order.java
+              src  3
+                deeper  1
+                  Other.kt
+                Sample.kt
+                  L3  first done
+                  L9  second done
             """.trimIndent(),
             section("Resolved"),
         )

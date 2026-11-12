@@ -61,6 +61,7 @@ class FoldingTest : ToolWindowTestCase() {
     }
 
     fun testAFolderFoldedByHandStaysFoldedWhenAStepIsMarkedRead() {
+        window.layOutWalkthroughsBy("By Folder")
         sample("guide/Tour.kt")
         sample("lib/Other.kt")
         val step = agent.addOnLine(2, "order" to 1, "body" to "step one", file = "guide/Tour.kt")
@@ -318,7 +319,24 @@ class FoldingTest : ToolWindowTestCase() {
         assertEquals(listOf("Open  1"), window.rows())
     }
 
-    fun testCollapseOnAStepFoldsItsOwnWalkthroughSectionAndThenEverySection() {
+    fun testCollapseOnAStepInTheStepListFoldsItsOwnWalkthroughSectionAndThenEverySection() {
+        sample()
+        agent.addOnLine(3, "order" to 1, "walkthrough" to "SHOP-42", "body" to "first walk")
+        agent.addOnLine(6, "order" to 1, "walkthrough" to "r2", "body" to "second walk")
+        window.select("first walk")
+
+        assertEquals("Collapse Section", collapseText())
+        window.press("Collapse")
+        assertEquals("SHOP-42  1", window.selected())
+        assertEquals(listOf("SHOP-42  1", "r2  1", "✉ (1/1)  Sample.kt L6  second walk"), window.rows())
+
+        assertEquals("Collapse All Sections", collapseText())
+        window.press("Collapse")
+        assertEquals(listOf("SHOP-42  1", "r2  1"), window.rows())
+    }
+
+    fun testByFolderCollapseOnAStepFoldsItsFolderThenItsOwnWalkthroughSectionAndThenEverySection() {
+        window.layOutWalkthroughsBy("By Folder")
         sample()
         agent.addOnLine(3, "order" to 1, "walkthrough" to "SHOP-42", "body" to "first walk")
         agent.addOnLine(6, "order" to 1, "walkthrough" to "r2", "body" to "second walk")
@@ -334,41 +352,40 @@ class FoldingTest : ToolWindowTestCase() {
         assertEquals(listOf("SHOP-42  1", "r2  1"), window.rows())
     }
 
-    fun testAWalkthroughUnfoldedInResolvedKeepsItsFoldsAndSelectionApartFromTheCommentsBesideIt() {
+    fun testAResolvedWalkthroughsFoldsInsideResolvedAreKeptApartFromTheCommentsBesideIt() {
+        window.layOutWalkthroughsBy("By Folder")
         sample()
-        val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
-        val second = agent.addOnLine(6, "order" to 2, "walkthrough" to "tour", "body" to "two")
+        val steps = listOf(
+            agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one"),
+            agent.addOnLine(6, "order" to 2, "walkthrough" to "tour", "body" to "two"),
+        )
         val settled = agent.addOnLine(9, "body" to "settled")
-        agent.post("comment_resolve", "thread_id" to first)
-        agent.post("comment_resolve", "thread_id" to settled)
-        window.toggleFolding("Resolved")
-        window.toggleFolding("tour", under = "Resolved")
-        window.toggleFolding("src", under = "Resolved")
-        window.toggleFolding("Sample.kt", under = "Resolved")
+        val open = agent.addOnLine(12, "body" to "still open")
+        (steps + settled).forEach { agent.post("comment_resolve", "thread_id" to it) }
+        listOf("Resolved", "tour", "src", "Sample.kt").forEach { window.toggleFolding(it, under = "Resolved") }
         window.select("L3  one")
 
-        window.rebuiltBy { agent.reply(second, "more") }
+        window.rebuiltBy { agent.reply(open, "more") }
 
         assertEquals("(1/2)  L3  one", window.selected())
         assertEquals(
             """
-            Resolved  2
-              tour  1
-                src  1
+            Resolved  3
+              tour  2
+                src  2
                   Sample.kt
                     (1/2)  L3  one
+                    (2/2)  L6  two
               src  1
             """.trimIndent(),
             section("Resolved"),
         )
     }
 
-    fun testCollapseOnAWalkthroughInResolvedFoldsThatWalkthrough() {
+    fun testCollapseOnAResolvedWalkthroughFoldsThatWalkthrough() {
         sample()
-        val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
-        agent.post("comment_resolve", "thread_id" to first)
-        window.toggleFolding("Resolved")
-        window.toggleFolding("tour", under = "Resolved")
+        agent.post("comment_resolve", "thread_id" to agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one"))
+        listOf("Resolved", "tour").forEach { window.toggleFolding(it, under = "Resolved") }
         window.select("tour", under = "Resolved")
 
         assertEquals("Collapse Walkthrough", collapseText())
@@ -376,6 +393,19 @@ class FoldingTest : ToolWindowTestCase() {
 
         assertEquals(listOf("Resolved  1", "tour  1"), window.rows())
         assertEquals("Collapse Section", collapseText())
+    }
+
+    fun testAResolvedStepSelectedInItsWalkthroughStaysSelectedAcrossARefresh() {
+        sample()
+        val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
+        val second = agent.addOnLine(6, "order" to 2, "walkthrough" to "tour", "body" to "two")
+        agent.post("comment_resolve", "thread_id" to first)
+        window.select("L3  one")
+
+        window.rebuiltBy { agent.reply(second, "more") }
+
+        assertEquals("(1/2)  Sample.kt L3  one", window.selected())
+        assertEquals(listOf("tour  2", "(1/2)  Sample.kt L3  one"), window.selectedPath())
     }
 
     fun testCollapseAllSectionsFoldsTheOrphanedSectionToo() {

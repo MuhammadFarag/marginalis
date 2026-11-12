@@ -61,8 +61,11 @@ object Walkthrough {
     fun arrowsFrom(threads: List<CommentThread>, remembered: StepMark?): Arrows {
         val arrows = remembered?.let { arrowsOn(threads, it) } ?: Arrows.NONE
         if (arrows.walk.isNotEmpty()) return arrows
-        val firstGuided = ThreadListing.of(threads).guided.firstOrNull() ?: return Arrows.NONE
-        return Arrows.fromTheStart(firstGuided.steps)
+        val firstOpenWalk = ThreadListing.of(threads).walkthroughs
+            .map { walkthrough -> walkthrough.steps.filter { it.status is ThreadStatus.Open } }
+            .firstOrNull { it.isNotEmpty() }
+            ?: return Arrows.NONE
+        return Arrows.fromTheStart(firstOpenWalk)
     }
 
     fun forArrival(threads: List<CommentThread>, label: String?, order: Int): String =

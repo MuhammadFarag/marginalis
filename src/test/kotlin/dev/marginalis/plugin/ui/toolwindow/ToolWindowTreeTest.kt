@@ -58,19 +58,50 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         assertEquals("No margin threads yet", window.emptyText())
     }
 
-    // FixMe: Known issue - #51 a walkthrough's section is a folder tree ordered by each folder's smallest step, not the order the walkthrough is read
-    fun testAWalkthroughThatHopsBetweenFilesIsListedFolderByFolder() {
+    fun testAWalkthroughThatHopsBetweenFilesIsListedByStepNumberWithEachRowNamingItsFile() {
         interleaved()
 
         assertEquals(
             """
-            SHOP-77  17
-              acme/backend  17
-                shop-orders/src  13
-                  main  8
-                    java/com/acme/orders  7
-                      api  2
+            SHOP-77  18
+              (1/18)  OrderController.java L12  Step 1
+              ✉ (2/18)  OrderService.java L20  Step 2
+              ✉ (3/18)  OrderService.java L28  Step 3
+              ✉ (4/18)  LoyaltyDiscountPolicy.java L8  Step 4
+              ✉ (5/18)  LoyaltyDiscountPolicy.java L22  Step 5
+              ✉ (6/18)  OrderService.java L41  Step 6
+              ✉ (7/18)  OrderRepository.java L15  Step 7
+              ✉ (8/18)  Order.java L10  Step 8
+              ✉ (9/18)  OrderService.java L55  Step 9
+              ✉ (10/18)  OrderController.java L30  Step 10
+              ✉ (11/18)  add-loyalty-discount.sql L3  Step 11
+              ✉ (12/18)  OrderServiceTest.java L14  Step 12
+              ✉ (13/18)  OrderServiceTest.java L36  Step 13
+              ✉ (14/18)  LoyaltyDiscountPolicy.java L40  Step 14
+              ✉ (15/18)  LoyaltyDiscountPolicyTest.java L12  Step 15
+              ✉ (16/18)  LoyaltyDiscountPolicyTest.java L30  Step 16
+              ✉ (17/18)  OrderServiceTest.java L58  Step 17
+              ✉ (18/18)  OrderController.java L45  Step 18
+            """.trimIndent(),
+            section("SHOP-77"),
+        )
+    }
+
+    fun testByFolderAWalkthroughThatHopsBetweenFilesIsListedFolderByFolder() {
+        interleaved()
+
+        window.layOutWalkthroughsBy("By Folder")
+
+        assertEquals(
+            """
+            SHOP-77  18
+              acme/backend  18
+                shop-orders/src  14
+                  main  9
+                    java/com/acme/orders  8
+                      api  3
                         OrderController.java ✉2
+                          (1/18)  L12  Step 1
                           ✉ (10/18)  L30  Step 10
                           ✉ (18/18)  L45  Step 18
                       OrderService.java ✉4
@@ -111,7 +142,7 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         sample()
         agent.addOnLine(5, "body" to "loose")
 
-        assertEquals(listOf("SHOP-77  17", "Open  1", "Resolved  1"), sections())
+        assertEquals(listOf("SHOP-77  18", "Open  1"), sections())
         assertEquals(
             """
             Open  1
@@ -124,48 +155,37 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
     }
 
     fun testTheResolvedSectionStartsFolded() {
-        interleaved()
+        sample()
+        val done = agent.addOnLine(5, "body" to "done")
+        agent.post("comment_resolve", "thread_id" to done)
 
         assertEquals("Resolved  1", section("Resolved"))
         assertFalse(window.isExpanded("Resolved"))
 
         window.toggleFolding("Resolved")
+        window.toggleFolding("src", under = "Resolved")
+        window.toggleFolding("Sample.kt", under = "Resolved")
 
         assertEquals(
             """
             Resolved  1
-              SHOP-77  1
-            """.trimIndent(),
-            section("Resolved"),
-        )
-
-        window.toggleFolding("SHOP-77", under = "Resolved")
-        window.toggleFolding("acme/backend/shop-orders/src/main/java/com/acme/orders/api", under = "Resolved")
-        window.toggleFolding("OrderController.java", under = "Resolved")
-
-        assertEquals(
-            """
-            Resolved  1
-              SHOP-77  1
-                acme/backend/shop-orders/src/main/java/com/acme/orders/api  1
-                  OrderController.java
-                    (1/18)  L12  Step 1
+              src  1
+                Sample.kt
+                  L5  done
             """.trimIndent(),
             section("Resolved"),
         )
     }
 
-    fun testADeepWalkthroughCountsItsOpenStepsAndNumbersThemOutOfTheWholeWalk() {
+    fun testADeepWalkthroughListsEveryStepNumberedOutOfTheWholeWalk() {
         val steps = deep()
 
-        assertEquals(listOf("SHOP-42  24", "Resolved  9"), sections())
-        val guided = section("SHOP-42")
-        assertEquals("acme  24", guided.lines()[1].trim())
-        assertEquals("backend  23", guided.lines()[2].trim())
-        assertTrue(guided, guided.contains("(8/33)  L5  Step 8"))
-        assertTrue(guided, guided.contains("(33/33)  L5  Step 33"))
-        assertFalse(guided, guided.contains("(1/33)"))
-        assertEquals(24, Regex("""\((\d+)/33\)""").findAll(guided).count())
+        assertEquals(listOf("SHOP-42  33"), sections())
+        val walkthrough = section("SHOP-42").lines().drop(1).map { it.trim() }
+        assertEquals("(1/33)  Product.java L13  Step 1", walkthrough.first())
+        assertEquals("✉ (8/33)  CustomerSettingsProvider.java L5  Step 8", walkthrough[7])
+        assertEquals("✉ (33/33)  InvoiceSettingsConfigurationTest.java L5  Step 33", walkthrough.last())
+        assertEquals((1..33).toList(), walkthrough.map { Regex("""\((\d+)/33\)""").find(it)!!.groupValues[1].toInt() })
         assertEquals(33, steps.size)
     }
 
@@ -179,11 +199,10 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
 
         assertEquals(
             """
-            tour  2
-              src  2
-                Sample.kt ✉2
-                  ✉ (2/3)  L6  two
-                  ✉ (3/3)  L9  three
+            tour  3
+              (1/3)  Sample.kt L3  one
+              ✉ (2/3)  Sample.kt L6  two
+              ✉ (3/3)  Sample.kt L9  three
             """.trimIndent(),
             section("tour"),
         )
@@ -195,7 +214,7 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         agent.addOnLine(6, "order" to 2, "body" to "two")
 
         assertEquals(listOf("Walkthrough  2"), sections())
-        assertTrue(section("Walkthrough"), section("Walkthrough").contains("(1/2)  L3  one"))
+        assertTrue(section("Walkthrough"), section("Walkthrough").contains("(1/2)  Sample.kt L3  one"))
     }
 
     fun testTwoWalkthroughsEachGetASectionAndTheirStepsShowJustTheirNumber() {
@@ -205,8 +224,8 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         agent.addOnLine(9, "order" to 1, "walkthrough" to "r2", "body" to "second walk")
 
         assertEquals(listOf("SHOP-42  2", "r2  1"), sections())
-        assertTrue(section("SHOP-42"), section("SHOP-42").contains("(1/2)  L3  first walk, one"))
-        assertTrue(section("r2"), section("r2").contains("(1/1)  L9  second walk"))
+        assertTrue(section("SHOP-42"), section("SHOP-42").contains("(1/2)  Sample.kt L3  first walk, one"))
+        assertTrue(section("r2"), section("r2").contains("(1/1)  Sample.kt L9  second walk"))
     }
 
     fun testProjectFileAndLineThreadsEachSayWhereTheyAre() {
@@ -231,7 +250,25 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         )
     }
 
-    fun testProjectStepsOfAWalkthroughComeFirstInStepOrder() {
+    fun testProjectStepsOfAWalkthroughTakeTheirPlaceInStepOrder() {
+        sample()
+        agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "code")
+        agent.add("order" to 3, "walkthrough" to "tour", "body" to "wrap up")
+        agent.add("order" to 2, "walkthrough" to "tour", "body" to "the big picture")
+
+        assertEquals(
+            """
+            tour  3
+              ✉ (1/3)  Sample.kt L3  code
+              ✉ (2/3)  project  the big picture
+              ✉ (3/3)  project  wrap up
+            """.trimIndent(),
+            section("tour"),
+        )
+    }
+
+    fun testByFolderProjectStepsOfAWalkthroughComeFirstInStepOrder() {
+        window.layOutWalkthroughsBy("By Folder")
         sample()
         agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "code")
         agent.add("order" to 3, "walkthrough" to "tour", "body" to "wrap up")
@@ -360,37 +397,26 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         agent.addOnLine(9, "order" to 1, "walkthrough" to "r2", "body" to "labelled")
 
         assertEquals(listOf("Walkthrough  2", "r2  1"), sections())
-        assertTrue(section("Walkthrough  2"), section("Walkthrough  2").contains("(2/2)  L6  plain two"))
-        assertTrue(section("r2"), section("r2").contains("(1/1)  L9  labelled"))
+        assertTrue(section("Walkthrough  2"), section("Walkthrough  2").contains("(2/2)  Sample.kt L6  plain two"))
+        assertTrue(section("r2"), section("r2").contains("(1/1)  Sample.kt L9  labelled"))
     }
 
-    fun testAResolvedStepMovesUnderItsWalkthroughInResolvedAndReopeningReturnsItToItsSection() {
+    fun testAResolvedStepKeepsItsPlaceInItsWalkthroughAndReopeningItChangesOnlyItsLook() {
         sample()
         val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
         agent.addOnLine(6, "order" to 2, "walkthrough" to "tour", "body" to "two")
         agent.addOnLine(9, "body" to "loose")
         agent.post("comment_resolve", "thread_id" to first)
 
-        window.toggleFolding("Resolved")
-        window.toggleFolding("tour", under = "Resolved")
-        window.toggleFolding("src", under = "Resolved")
-        window.toggleFolding("Sample.kt", under = "Resolved")
-
         assertEquals(
             """
-            tour  1
-              src  1
-                Sample.kt ✉1
-                  ✉ (2/2)  L6  two
+            tour  2
+              (1/2)  Sample.kt L3  one
+              ✉ (2/2)  Sample.kt L6  two
             Open  1
               src  1
                 Sample.kt ✉1
                   ✉ L9  loose
-            Resolved  1
-              tour  1
-                src  1
-                  Sample.kt
-                    (1/2)  L3  one
             """.trimIndent(),
             window.outline(),
         )
@@ -398,10 +424,66 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         window.rebuiltBy { agent.post("comment_reopen", "thread_id" to first) }
 
         assertEquals(listOf("tour  2", "Open  1"), sections())
-        assertTrue(section("tour"), section("tour").contains("(1/2)  L3  one"))
+        assertEquals("✉ (1/2)  Sample.kt L3  one", section("tour").lines()[1].trim())
     }
 
-    fun testAnOrphanedStepShowsUnderItsWalkthroughAheadOfTheOrphanedComments() {
+    fun testAWalkthroughWhoseEveryStepIsResolvedIsListedWithTheResolvedThreads() {
+        everyStepResolvedBesideALooseComment()
+        listOf("Resolved", "tour").forEach { window.toggleFolding(it, under = "Resolved") }
+
+        assertEquals(listOf("Open  1", "Resolved  2"), sections())
+        assertEquals(
+            """
+            Resolved  2
+              tour  2
+                (1/2)  Sample.kt L3  one
+                (2/2)  Sample.kt L6  two
+            """.trimIndent(),
+            section("Resolved"),
+        )
+    }
+
+    fun testAResolvedWalkthroughComesBeforeTheResolvedCommentsBesideIt() {
+        everyStepResolvedBesideALooseComment()
+        agent.post("comment_resolve", "thread_id" to agent.addOnLine(12, "body" to "settled"))
+        listOf("Resolved", "tour", "src").forEach { window.toggleFolding(it, under = "Resolved") }
+
+        assertEquals(
+            """
+            Resolved  3
+              tour  2
+                (1/2)  Sample.kt L3  one
+                (2/2)  Sample.kt L6  two
+              src  1
+                Sample.kt
+            """.trimIndent(),
+            section("Resolved"),
+        )
+    }
+
+    fun testReopeningAStepOfAResolvedWalkthroughBringsTheWholeWalkthroughBack() {
+        val steps = everyStepResolvedBesideALooseComment()
+        window.outline()
+
+        window.rebuiltBy { agent.post("comment_reopen", "thread_id" to steps.last()) }
+
+        assertEquals(listOf("tour  2", "Open  1"), sections())
+        assertEquals(listOf("(1/2)  Sample.kt L3  one", "✉ (2/2)  Sample.kt L6  two"), section("tour").lines().drop(1).map { it.trim() })
+    }
+
+    fun testAWalkthroughWithResolvedAndOrphanedStepsButNothingOpenStaysActive() {
+        sample()
+        val first = agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
+        agent.addOnLine(20, "order" to 2, "walkthrough" to "tour", "body" to "lost step")
+        agent.post("comment_resolve", "thread_id" to first)
+        eraseLine(20)
+
+        assertEquals(listOf("tour  2"), sections())
+        assertTrue(window.isExpanded("tour"))
+        assertEquals(listOf("(1/2)  Sample.kt L3  one", "(2/2)  Sample.kt L20  lost step"), section("tour").lines().drop(1).map { it.trim() })
+    }
+
+    fun testAnOrphanedStepKeepsItsPlaceInItsWalkthroughAndOrphanedListsOnlyComments() {
         sample()
         agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
         agent.addOnLine(20, "order" to 2, "walkthrough" to "tour", "body" to "lost step")
@@ -411,18 +493,106 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
 
         assertEquals(
             """
-            Orphaned  2
-              tour  1
-                src  1
-                  Sample.kt
-                    (2/2)  L20  lost step
+            tour  2
+              ✉ (1/2)  Sample.kt L3  one
+              (2/2)  Sample.kt L20  lost step
+            Orphaned  1
               src  1
                 Sample.kt
                   L30  lost comment
             """.trimIndent(),
-            section("Orphaned"),
+            window.outline(),
         )
-        assertEquals(listOf("tour  1", "Orphaned  2"), sections())
+    }
+
+    fun testByFolderAnOrphanedStepKeepsItsPlaceInItsWalkthrough() {
+        orphanedSecondStep()
+
+        window.layOutWalkthroughsBy("By Folder")
+
+        assertEquals(
+            """
+            tour  2
+              src  2
+                Sample.kt ✉1
+                  ✉ (1/2)  L3  one
+                  (2/2)  L20  lost step
+            """.trimIndent(),
+            section("tour"),
+        )
+        assertEquals(listOf("tour  2"), sections())
+    }
+
+    fun testByFileAnOrphanedStepKeepsItsPlaceInItsWalkthrough() {
+        orphanedSecondStep()
+
+        window.layOutWalkthroughsBy("By File")
+
+        assertEquals(
+            """
+            tour  2
+              Sample.kt  steps 1–2 ✉1
+                ✉ (1/2)  L3  one
+                (2/2)  L20  lost step
+            """.trimIndent(),
+            section("tour"),
+        )
+        assertEquals(listOf("tour  2"), sections())
+    }
+
+    fun testByFolderAResolvedWalkthroughIsLaidOutByFolderInsideResolved() {
+        everyStepResolvedBesideALooseComment()
+
+        window.layOutWalkthroughsBy("By Folder")
+        listOf("Resolved", "tour", "src", "Sample.kt").forEach { window.toggleFolding(it, under = "Resolved") }
+
+        assertEquals(
+            """
+            Resolved  2
+              tour  2
+                src  2
+                  Sample.kt
+                    (1/2)  L3  one
+                    (2/2)  L6  two
+            """.trimIndent(),
+            section("Resolved"),
+        )
+    }
+
+    fun testByFileAResolvedWalkthroughIsLaidOutByFileInsideResolved() {
+        everyStepResolvedBesideALooseComment()
+
+        window.layOutWalkthroughsBy("By File")
+        listOf("Resolved", "tour", "Sample.kt").forEach { window.toggleFolding(it, under = "Resolved") }
+
+        assertEquals(
+            """
+            Resolved  2
+              tour  2
+                Sample.kt  steps 1–2
+                  (1/2)  L3  one
+                  (2/2)  L6  two
+            """.trimIndent(),
+            section("Resolved"),
+        )
+    }
+
+    private fun orphanedSecondStep() {
+        sample()
+        agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one")
+        agent.addOnLine(20, "order" to 2, "walkthrough" to "tour", "body" to "lost step")
+        eraseLine(20)
+    }
+
+    private fun everyStepResolvedBesideALooseComment(): List<String> {
+        sample()
+        val steps = listOf(
+            agent.addOnLine(3, "order" to 1, "walkthrough" to "tour", "body" to "one"),
+            agent.addOnLine(6, "order" to 2, "walkthrough" to "tour", "body" to "two"),
+        )
+        agent.addOnLine(9, "body" to "loose")
+        steps.forEach { agent.post("comment_resolve", "thread_id" to it) }
+        return steps
     }
 
     fun testTwoUnlabelledWalkthroughsAreTwoSectionsToldApartByWhenTheyStarted() {
@@ -450,8 +620,8 @@ class ToolWindowTreeTest : ToolWindowTestCase() {
         assertEquals(2, guided.size)
         assertTrue(guided.toString(), guided.all { it.startsWith("Walkthrough · ") })
         assertEquals(guided.toString(), 2, guided.map { it.substringBeforeLast("  ") }.toSet().size)
-        assertTrue(window.outline(), window.outline().contains("(2/2)  L6  first walk 2"))
-        assertTrue(window.outline(), window.outline().contains("(3/3)  L30  second walk 3"))
+        assertTrue(window.outline(), window.outline().contains("(2/2)  Sample.kt L6  first walk 2"))
+        assertTrue(window.outline(), window.outline().contains("(3/3)  Sample.kt L30  second walk 3"))
     }
 
     private fun today(hour: Int, minute: Int): Instant =
