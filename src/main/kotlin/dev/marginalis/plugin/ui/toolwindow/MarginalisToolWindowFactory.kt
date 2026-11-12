@@ -614,7 +614,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
             .filter { it.order != null && it.walkthroughId == walkthrough.walkthroughId && it.status !is ThreadStatus.Resolved }
         val open = unresolved.filter { it.status is ThreadStatus.Open }
         if (open.isNotEmpty()) {
-            val blockers = open.count { it.severity == Severity.BLOCKER }
+            val blockers = unresolved.count { it.severity == Severity.BLOCKER }
             val answer = Messages.showYesNoDialog(
                 project,
                 "Resolve the ${open.size} open step(s) of ${walkthrough.title}?${resolveBlockerWarning(blockers)} " +
@@ -728,7 +728,7 @@ internal class MarginalisToolWindowPanel(private val project: Project) :
         renderer.faces = Authors.faces
 
         val root = treeOf(allThreads.filter(filter.matches), allThreads)
-        forgetFoldsMissingFrom(root, treeOf(allThreads, allThreads))
+        forgetFoldsMissingFrom(root, if (filter == TreeFilter.ALL) root else treeOf(allThreads, allThreads))
         tree.model = DefaultTreeModel(root)
         restoreFolds(root)
         selection?.let { restoreSelection(it, keepInView = selectionInView) }
