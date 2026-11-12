@@ -201,6 +201,24 @@ class ProjectTabLayoutTest {
     }
 
     @Test
+    fun `a step holding an unsent reply keeps its walkthrough in step order when the others re-sort`() {
+        val stepOne = step("one", number = 1, createdAt = 1, activeAt = 40)
+        val other = project("other", createdAt = 2, activeAt = 30)
+        val stepTwo = step("two", number = 2, createdAt = 3, activeAt = 20)
+        val stepThree = step("three", number = 3, createdAt = 4, activeAt = 10)
+        val threads = listOf(stepOne, other, stepTwo, stepThree)
+        val previous = ProjectTabLayout.arrange(threads, order = byActivity).active
+
+        stepThree.restoreUpdatedAt(Instant.ofEpochSecond(100))
+        stepTwo.restoreUpdatedAt(Instant.ofEpochSecond(200))
+
+        val layout = ProjectTabLayout.arrange(threads, previous, holdsDraft = { it == "two" }, order = byActivity)
+
+        assertEquals(listOf("one", "other", "two", "three"), previous.map { it.key })
+        assertEquals(listOf("one", "two", "three", "other"), keys(layout))
+    }
+
+    @Test
     fun `by recent activity, a reply to a later step lifts the walkthrough's slot, and step 1 shows there`() {
         val stepOne = step("one", number = 1, createdAt = 1, activeAt = 5)
         val stepTwo = step("two", number = 2, createdAt = 2, activeAt = 6)
