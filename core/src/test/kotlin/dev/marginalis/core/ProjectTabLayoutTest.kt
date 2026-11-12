@@ -40,7 +40,14 @@ class ProjectTabLayoutTest {
             it.restoreUpdatedAt(Instant.ofEpochSecond(activeAt))
         }
 
-    private fun step(id: String, number: Int, createdAt: Long, activeAt: Long, walkthrough: String = "tour") =
+    private fun step(
+        id: String,
+        number: Int,
+        createdAt: Long,
+        activeAt: Long,
+        walkthrough: String = "tour",
+        walkthroughId: String = walkthrough,
+    ) =
         CommentThread(
             file = null,
             line = null,
@@ -49,6 +56,7 @@ class ProjectTabLayoutTest {
             createdAt = Instant.ofEpochSecond(createdAt),
             order = number,
             walkthrough = walkthrough,
+            walkthroughId = walkthroughId,
         ).also { it.restoreUpdatedAt(Instant.ofEpochSecond(activeAt)) }
 
     private fun keys(layout: ProjectTabLayout.Layout) = layout.active.map { it.key }
@@ -107,6 +115,18 @@ class ProjectTabLayoutTest {
         val layout = ProjectTabLayout.arrange(listOf(firstTourTwo, secondTourOne, firstTourOne, secondTourTwo))
 
         assertEquals(listOf("b1", "a1", "b2", "a2"), keys(layout))
+    }
+
+    @Test
+    fun `two walkthroughs with the same name each read in their own step order`() {
+        val firstTourOne = step("a1", number = 1, createdAt = 0, activeAt = 0, walkthroughId = "first")
+        val firstTourTwo = step("a2", number = 2, createdAt = 1, activeAt = 1, walkthroughId = "first")
+        val secondTourOne = step("b1", number = 1, createdAt = 2, activeAt = 2, walkthroughId = "second")
+        val secondTourTwo = step("b2", number = 2, createdAt = 3, activeAt = 3, walkthroughId = "second")
+
+        val layout = ProjectTabLayout.arrange(listOf(secondTourTwo, firstTourTwo, secondTourOne, firstTourOne))
+
+        assertEquals(listOf("a1", "a2", "b1", "b2"), keys(layout))
     }
 
     @Test
