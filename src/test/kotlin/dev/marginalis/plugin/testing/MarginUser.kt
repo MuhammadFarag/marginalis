@@ -2,6 +2,7 @@ package dev.marginalis.plugin.testing
 
 import com.intellij.ide.DataManager
 import com.intellij.ide.impl.HeadlessDataManager
+import com.intellij.notification.Notification
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
@@ -81,6 +82,8 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
 
     fun openMarginTab(): MarginTab = MarginTab(project, disposable).open()
 
+    fun notifications(): List<Notification> = ShownNotifications(project, disposable)
+
     fun changeLongThreadSettings(edit: LongThreadSettings.() -> Unit) = LongThreadSettings.change(edit)
 
     fun changeProjectTabSettings(edit: ProjectTabSettings.() -> Unit) {
@@ -102,6 +105,11 @@ class MarginUser(private val project: Project, private val disposable: Disposabl
     fun read(threadId: String) {
         open(threadId).markRead()
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
+
+    fun markUnread(threadId: String) {
+        val window = openToolWindow()
+        window.rebuiltBy { window.chooseFromContextMenu(thread(threadId).messages.first().body, "Mark as Unread") }
     }
 
     fun reply(threadId: String, body: String, to: String? = null) {

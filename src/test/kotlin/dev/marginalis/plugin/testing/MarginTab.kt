@@ -257,6 +257,12 @@ class MarginTab(private val project: Project, private val disposable: Disposable
         settle()
     }
 
+    fun splitTheFileInFront() {
+        val window = editors.currentWindow!!
+        window.split(SwingConstants.VERTICAL, true, window.selectedFile!!, true)
+        settle()
+    }
+
     fun <T> inHalf(index: Int, look: () -> T): T {
         half = index
         try {

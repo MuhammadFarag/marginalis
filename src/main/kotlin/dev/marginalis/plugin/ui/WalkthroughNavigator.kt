@@ -36,46 +36,61 @@ object WalkthroughNavigator {
     fun title(project: Project, thread: CommentThread): String =
         ThreadListing.titleOf(MarginalisStore.getInstance(project).threads.all(), thread, startTime())
 
-    /**
-     * @param leaving runs once the step is shown, e.g. to fold the step being left; when the IDE does not keep the
-     *   step's file open, a balloon names the step and its file instead
-     */
-    fun navigateTo(project: Project, thread: CommentThread, revealing: Message? = null, leaving: () -> Unit = {}) {
+    fun navigateTo(
+        project: Project,
+        thread: CommentThread,
+        revealing: Message? = null,
+        onShown: () -> Unit = {},
+        onNotShown: (problem: String) -> Unit = { warn(project, it) },
+    ) {
+        val lastStep = LastStep.getInstance(project)
         if (thread.file == null) {
-            LastStep.getInstance(project).landedOn(thread)
-            return ProjectTab.reveal(project, thread, revealing).also { leaving() }
+            lastStep.landedOn(thread)
+            ProjectTab.reveal(project, thread, revealing)
+            return onShown()
         }
-        val place = placeOf(project, thread) ?: return stepNotShown(project, thread)
+        val place = placeOf(project, thread) ?: return onNotShown(couldNotShow(project, thread, "${thread.file} is no longer in the project"))
         val editors = FileEditorManager.getInstance(project)
+        fun closedAsItOpened() = couldNotShow(project, thread, "the IDE closed ${thread.file} as it opened")
         // The step file's own editor: when its tab closes while opening, the selected one is still the previous file's.
-        val editor = editors.openTextEditor(place, true) ?: return stepNotShown(project, thread)
+        val editor = editors.openTextEditor(place, true)
+            ?: return onNotShown(
+                if (editors.isFileOpen(place.file)) couldNotShow(project, thread, "${thread.file} doesn't open in a text editor")
+                else closedAsItOpened(),
+            )
+        if (editor.isDisposed) return onNotShown(closedAsItOpened())
+        val stepBefore = lastStep.mark
         ThreadInlayManager.open(project, editor, thread, revealing)
         // A file whose preview editor fails to build (Swagger UI on an OpenAPI spec) opens and is closed right after.
         ApplicationManager.getApplication().invokeLater({
-            if (editor.isDisposed || !editors.isFileOpen(place.file)) stepNotShown(project, thread) else leaving()
+            if (editor.isDisposed || !editors.isFileOpen(place.file)) {
+                lastStep.returnTo(stepBefore)
+                onNotShown(closedAsItOpened())
+            } else {
+                onShown()
+            }
         }, project.disposed)
     }
 
-    /** @param leaving runs right before the move, so a panel it removes above the step does not shift the scrolled view */
-    fun navigateWithin(editor: Editor, project: Project, thread: CommentThread, leaving: () -> Unit = {}): Boolean {
+    fun navigateWithin(editor: Editor, project: Project, thread: CommentThread, beforeMoving: () -> Unit = {}): Boolean {
         if (editor.isDisposed) return false
         val place = placeOf(project, thread)?.takeIf { editor.shows(it.file) } ?: return false
-        leaving()
+        beforeMoving()
         place.navigateInRecordingHistory(editor)
         editor.contentComponent.requestFocusInWindow()
         ThreadInlayManager.open(project, editor, thread)
         return true
     }
 
-    private fun stepNotShown(project: Project, thread: CommentThread) {
-        val step = thread.order?.let { order -> stableTotal(project, thread)?.let { total -> "step $order/$total" } } ?: "this thread"
+    fun warn(project: Project, problem: String) {
         NotificationGroupManager.getInstance().getNotificationGroup("Marginalis")
-            .createNotification(
-                "Couldn't show $step: the IDE didn't keep <code>${StringUtil.escapeXmlEntities(thread.file.orEmpty())}</code> open, " +
-                    "so the walk stays where it was.",
-                NotificationType.WARNING,
-            )
+            .createNotification(StringUtil.escapeXmlEntities(problem), NotificationType.WARNING)
             .notify(project)
+    }
+
+    private fun couldNotShow(project: Project, thread: CommentThread, why: String): String {
+        val what = thread.order?.let { order -> "walkthrough step $order" + stableTotal(project, thread)?.let { "/$it" }.orEmpty() } ?: "the thread"
+        return "Couldn't show $what: $why."
     }
 
     private fun placeOf(project: Project, thread: CommentThread): OpenFileDescriptor? {

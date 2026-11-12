@@ -391,4 +391,15 @@ class WaitingTest : HttpContractTestCase() {
         assertEquals("live", reviewer.await(theirs)["reason"]!!.asString)
         assertEquals("timeout", agent.await(mine)["reason"]!!.asString)
     }
+
+    fun testMarkingAThreadUnreadWakesNoWaitingAgent() {
+        sample()
+        val fyi = agent.addOnLine(14, "intent" to "fyi", "body" to "Nice split")
+        user.read(fyi)
+        val waiting = agent.startWait("timeout" to 2)
+
+        user.markUnread(fyi)
+
+        assertEquals("timeout", agent.await(waiting)["reason"]!!.asString)
+    }
 }

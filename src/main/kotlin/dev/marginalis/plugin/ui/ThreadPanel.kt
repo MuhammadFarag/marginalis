@@ -225,10 +225,6 @@ class ThreadPanel(
     private var level = ThreadFolding.Level.DEFAULT
     private val keptOpen = mutableSetOf<String>()
     private val readWhileOpen = mutableSetOf<String>()
-    private val seenRead = thread.messages.filter { it.readByUser }.mapTo(mutableSetOf()) { it.id }
-
-    /** Marked unread elsewhere while shown here: only clicking into the thread, or opening it again, reads it. */
-    private val keptUnread = mutableSetOf<String>()
     private var foldedBy: FoldingPrefs? = null
     private var messagesRendered: Set<String>? = null
     private val openedHere = mutableSetOf<String>()
@@ -616,7 +612,7 @@ class ThreadPanel(
         override fun actionPerformed(e: AnActionEvent) {
             val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
             val destination = target(walk, i) ?: return
-            stayOrNavigateTo(destination, leaving = onClose)
+            stayOrNavigateTo(destination, closeThisPanel = onClose)
         }
     }
 
@@ -745,31 +741,17 @@ class ThreadPanel(
     }
 
     fun markReadIfSeen() {
-        keepWhatWasMarkedUnread()
         if (!mayMarkRead(false) || !isShowing || visibleRect.isEmpty || !ApplicationManager.getApplication().isActive) return
-        readHere(openMessages.filterNot { it.id in keptUnread })
+        markRead(openMessages.filterNot { it.markedUnreadByUser })
     }
 
     fun markRead() {
         if (!mayMarkRead(true) || isDraft() || !ApplicationManager.getApplication().isActive) return
-        keptUnread.clear()
-        readHere(openMessages)
+        markRead(openMessages)
     }
 
-    private fun readHere(shown: List<Message>) {
-        shown.mapTo(seenRead) { it.id }
+    private fun markRead(shown: List<Message>) {
         if (thread.markReadByUser(shown)) MarginalisStore.getInstance(project).threads.notifyChanged(thread)
-    }
-
-    private fun keepWhatWasMarkedUnread() {
-        for (message in thread.messages) {
-            if (message.readByUser) {
-                seenRead += message.id
-                keptUnread -= message.id
-            } else if (message.id in seenRead) {
-                keptUnread += message.id
-            }
-        }
     }
 
     private fun markReadIfSeenLater() {
@@ -791,10 +773,10 @@ class ThreadPanel(
         stayOrNavigateTo(wider)
     }
 
-    private fun stayOrNavigateTo(target: CommentThread, leaving: () -> Unit = {}) {
+    private fun stayOrNavigateTo(target: CommentThread, closeThisPanel: () -> Unit = {}) {
         val here = editor
-        if (here == null || !WalkthroughNavigator.navigateWithin(here, project, target, leaving)) {
-            WalkthroughNavigator.navigateTo(project, target, leaving = leaving)
+        if (here == null || !WalkthroughNavigator.navigateWithin(here, project, target, beforeMoving = closeThisPanel)) {
+            WalkthroughNavigator.navigateTo(project, target, onShown = closeThisPanel)
         }
     }
 
