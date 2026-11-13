@@ -197,7 +197,7 @@ object ReviewDiffSteps {
         fun tabInstead() {
             if (done) return
             awaitsAViewer = false
-            stopWaiting()
+            expiry.stop()
             ApplicationManager.getApplication().invokeLater({
                 finish()
                 if (!project.isDisposed && !walkthroughMovedOn()) WalkthroughNavigator.navigateTo(project, step, onShown = ::shown)

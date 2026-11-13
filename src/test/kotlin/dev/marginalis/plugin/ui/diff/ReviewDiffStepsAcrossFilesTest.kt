@@ -240,6 +240,38 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         assertFalse(ReviewDiffSteps.hasStepsUnderWay())
     }
 
+    fun testClosingTheReviewWhileATimedOutStepWaitsForItsTabOpensNoTab() {
+        reviewFilesAsking { review -> theReviewsFiles(review).showing { } }
+        walkthrough(CART to 5, ORDER to 20)
+        reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+        user.press(user.panel(shownDiff().editor), "Next Step")
+
+        ReviewDiffSteps.timeOutArrivalsInTests()
+        assertTrue(ReviewDiffSteps.hasStepsUnderWay())
+        closeTheReview()
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        assertFalse(editors.openFiles.any { fileOf(it) == ORDER })
+        assertFalse(ReviewDiffSteps.hasStepsUnderWay())
+    }
+
+    fun testClosingTheReviewWhileAStepItCannotShowWaitsForItsTabOpensNoTab() {
+        reviewFilesAsking { review -> theReviewsFiles(review).showing { } }
+        walkthrough(CART to 5, ORDER to 20)
+        reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+        user.press(user.panel(shownDiff().editor), "Next Step")
+
+        assertNull(ReviewDiffSteps.arrivingIn(reviewContext(), ORDER, canShowIt = false))
+        assertTrue(ReviewDiffSteps.hasStepsUnderWay())
+        closeTheReview()
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        assertFalse(editors.openFiles.any { fileOf(it) == ORDER })
+        assertFalse(ReviewDiffSteps.hasStepsUnderWay())
+    }
+
     fun testWhenTheReviewShowsAnotherFileDuringTheLoadTheWalkthroughStaysWhereItWas() {
         reviewFilesAsking { review ->
             val files = theReviewsFiles(review)
@@ -742,6 +774,12 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         waitFor("the review never showed $file") {
             review.shownFile() == file && shownDiffOrNull()?.takeIf { it.viewer !== viewerBefore }?.hasText() == true
         }
+    }
+
+    private fun closeTheReview() {
+        val tab = editors.allEditors.filterIsInstance<DiffEditorViewerFileEditor>().single()
+        editors.closeFile(tab.file)
+        assertTrue("the review is still open", tab.editorViewer.disposable.isDisposed)
     }
 
     private fun backToTheReview() {
