@@ -12,6 +12,7 @@ import com.intellij.diff.tools.util.side.OnesideTextDiffViewer
 import com.intellij.diff.tools.util.side.TwosideTextDiffViewer
 import com.intellij.diff.util.Side
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.markup.HighlighterLayer
@@ -29,10 +30,14 @@ import dev.marginalis.plugin.ui.CoalescedEdtRunner
 import dev.marginalis.plugin.ui.ThreadGutterIconRenderer
 import dev.marginalis.plugin.ui.ShownThreads
 import dev.marginalis.plugin.ui.ThreadInlayManager
+import java.util.WeakHashMap
 
 /**
  * Tags every diff editor about a project file with the threads it shows, and paints gutter icons where the
  * diff holds a revision's copy of the text, which the markers on the file's own document never reach.
+ *
+ * A diff builds a new viewer for a file it shows again, and a review does so on every refresh of its data; the new
+ * viewer keeps the caret and scroll but not our panels, so the threads open in the file's last viewer open again in it.
  */
 class ReviewDiffMarkers : DiffExtension() {
 
@@ -40,15 +45,22 @@ class ReviewDiffMarkers : DiffExtension() {
         val project = context.project ?: return
         val sides = ReviewSides.of(viewer) ?: return
         val path = sides.content.highlightFile?.let { ProjectPaths.of(project, it) } ?: return
-        DiffPainter(project, sides, path).install()
+        val openWhenShownAgain = openThreadsByFile.getOrPut(context) { mutableMapOf() }
+        val reopening = openWhenShownAgain.remove(path).orEmpty()
+        DiffPainter(project, sides, path, reopening) { openThreadIds ->
+            if (openThreadIds.isEmpty()) openWhenShownAgain.remove(path) else openWhenShownAgain[path] = openThreadIds
+        }.install()
     }
 
     companion object {
         private val live = mutableSetOf<DiffPainter>()
 
+        private val openThreadsByFile = WeakHashMap<DiffContext, MutableMap<String, List<String>>>()
+
         /** Strips our highlighters and listeners from open diffs before a dynamic unload. */
         fun disposeAll() {
             live.toList().forEach { it.uninstall() }
+            openThreadsByFile.clear()
         }
     }
 
@@ -82,6 +94,8 @@ class ReviewDiffMarkers : DiffExtension() {
         private val project: Project,
         private val sides: ReviewSides,
         private val path: String,
+        private var reopening: List<String>,
+        private val onClosing: (openThreadIds: List<String>) -> Unit,
     ) : DiffViewerListener() {
 
         private val store = MarginalisStore.getInstance(project)
@@ -90,6 +104,7 @@ class ReviewDiffMarkers : DiffExtension() {
         private val marked = mutableListOf<EditorEx>()
         private var observer: AutoCloseable? = null
         private var liveWatch: Disposable? = null
+        private var released = false
 
         fun install() {
             sides.viewer.addListener(this)
@@ -115,6 +130,7 @@ class ReviewDiffMarkers : DiffExtension() {
         }
 
         private fun release() {
+            released = true
             live -= this
             observer?.close()
             observer = null
@@ -137,11 +153,29 @@ class ReviewDiffMarkers : DiffExtension() {
             FileDocumentManager.getInstance().getFile(editor.document)?.let { ProjectPaths.of(project, it) } != null
 
         // A unified viewer rebuilds its document on every rediff, a side-by-side one has it only once the first diff lands.
-        override fun onAfterRediff() = paint()
+        override fun onAfterRediff() {
+            paint()
+            if (reopening.isNotEmpty()) reopenLater()
+        }
 
         // The viewer is iterating its listeners right now: removing ourselves here throws
         // ConcurrentModificationException and skips the listeners after us. The list dies with the viewer anyway.
-        override fun onDispose() = release()
+        override fun onDispose() {
+            val open = sides.editor?.takeIf { !it.isDisposed }?.let(ThreadInlayManager::openThreadIds).orEmpty()
+            onClosing((reopening + open).distinct())
+            release()
+        }
+
+        private fun reopenLater() {
+            val editor = sides.editor ?: return
+            ApplicationManager.getApplication().invokeLater({
+                val threadIds = reopening
+                reopening = emptyList()
+                threadIds.mapNotNull(store.threads::byId)
+                    .filter { it.status !is ThreadStatus.Resolved }
+                    .forEach { ThreadInlayManager.restore(project, editor, it) }
+            }, { released || editor.isDisposed })
+        }
 
         private fun paint() {
             val editor = sides.editor ?: return

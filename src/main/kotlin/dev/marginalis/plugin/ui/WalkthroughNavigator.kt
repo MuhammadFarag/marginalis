@@ -5,6 +5,8 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.LogicalPosition
+import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -74,9 +76,9 @@ object WalkthroughNavigator {
 
     fun navigateWithin(editor: Editor, project: Project, thread: CommentThread, beforeMoving: () -> Unit = {}): Boolean {
         if (editor.isDisposed) return false
-        val place = placeOf(project, thread)?.takeIf { editor.shows(it.file) } ?: return false
+        val move = moveWithin(editor, project, thread) ?: return false
         beforeMoving()
-        place.navigateInRecordingHistory(editor)
+        recordingHistory(project, move)
         editor.contentComponent.requestFocusInWindow()
         ThreadInlayManager.open(project, editor, thread)
         return true
@@ -100,12 +102,28 @@ object WalkthroughNavigator {
         return OpenFileDescriptor(project, file, line, 0)
     }
 
+    private fun moveWithin(editor: Editor, project: Project, thread: CommentThread): (() -> Unit)? {
+        val shown = editor.getUserData(ThreadInlayManager.SHOWN_THREADS)
+        if (shown != null) {
+            val shownLine = shown.takeIf { it.file == thread.file }?.lineOf(thread) ?: return null
+            val line = if (thread.isFileLevel) 0 else shownLine
+            return {
+                editor.caretModel.removeSecondaryCarets()
+                editor.selectionModel.removeSelection()
+                editor.caretModel.moveToLogicalPosition(LogicalPosition(line, 0))
+                editor.scrollingModel.scrollToCaret(ScrollType.CENTER)
+            }
+        }
+        val place = placeOf(project, thread)?.takeIf { editor.shows(it.file) } ?: return null
+        return { place.navigateIn(editor) }
+    }
+
     private fun Editor.shows(file: VirtualFile): Boolean = FileDocumentManager.getInstance().getFile(document) == file
 
-    private fun OpenFileDescriptor.navigateInRecordingHistory(editor: Editor) {
+    private fun recordingHistory(project: Project, move: () -> Unit) {
         CommandProcessor.getInstance().executeCommand(project, {
             IdeDocumentHistory.getInstance(project).includeCurrentCommandAsNavigation()
-            navigateIn(editor)
+            move()
         }, null, null)
     }
 }
