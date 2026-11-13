@@ -783,8 +783,9 @@ class ThreadPanel(
     private fun stayOrNavigateTo(target: CommentThread, closeThisPanel: () -> Unit = {}) {
         val here = editor
         val reviewIsLoadingAStep = here != null && ReviewDiffSteps.isLoadingAStepIn(project, here)
-        if (here != null && !reviewIsLoadingAStep && WalkthroughNavigator.navigateWithin(here, project, target, beforeMoving = closeThisPanel)) return
-        if (here != null && ReviewDiffSteps.switchTo(project, here, target, leaving = thread, onShown = closeThisPanel)) return
+        if (here != null && reviewIsLoadingAStep && ReviewDiffSteps.switchTo(project, here, target, leaving = thread, onShown = closeThisPanel)) return
+        if (here != null && WalkthroughNavigator.navigateWithin(here, project, target, beforeMoving = closeThisPanel)) return
+        if (here != null && !reviewIsLoadingAStep && ReviewDiffSteps.switchTo(project, here, target, leaving = thread, onShown = closeThisPanel)) return
         WalkthroughNavigator.navigateTo(project, target, onShown = closeThisPanel)
     }
 

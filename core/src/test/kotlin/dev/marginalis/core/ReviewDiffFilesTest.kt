@@ -47,4 +47,11 @@ class ReviewDiffFilesTest {
         assertEquals(2, ReviewDiffFiles.switchTarget("src/Order.kt", root, unnamed, shownIndex = 0))
         assertNull(ReviewDiffFiles.switchTarget("src/Invoice.kt", root, unnamed, shownIndex = 0))
     }
+
+    @Test
+    fun `the index of a step's file is found even when the diff already shows it`() {
+        assertEquals(0, ReviewDiffFiles.indexOf("src/Cart.kt", root, diff))
+        assertEquals(1, ReviewDiffFiles.indexOf("src/Order.kt", root, diff))
+        assertNull(ReviewDiffFiles.indexOf("src/Invoice.kt", root, diff))
+    }
 }

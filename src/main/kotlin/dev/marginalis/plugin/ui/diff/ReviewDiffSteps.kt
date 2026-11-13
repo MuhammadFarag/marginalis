@@ -39,9 +39,10 @@ object ReviewDiffSteps {
         underWay.isNotEmpty() && reviewShowing(project, editor)?.let { review -> underWay.any { it.context === review.context } } == true
 
     fun switchTo(project: Project, from: Editor, step: CommentThread, leaving: CommentThread, onShown: () -> Unit): Boolean {
-        if (!MarginalisSettings.getInstance().state.keepStepsInReviewAcrossFiles || step.order == null) return false
+        val wanted = MarginalisSettings.getInstance().state.keepStepsInReviewAcrossFiles && step.order != null
+        if (!wanted && underWay.isEmpty()) return false
         val review = reviewShowing(project, from) ?: return false
-        if (switchReview(project, review, from, step, leaving, onShown)) return true
+        if (wanted && switchReview(project, review, from, step, leaving, onShown)) return true
         underWay.filter { it.context === review.context }.forEach(ArrivingStep::finish)
         return false
     }
@@ -58,9 +59,16 @@ object ReviewDiffSteps {
         val root = project.guessProjectDir()?.takeIf { it.findFileByRelativePath(file) != null } ?: return false
         val fileLeft = from.getUserData(ThreadInlayManager.SHOWN_THREADS)?.file ?: return false
         if (review.javaClass.name != ReviewDiffFileList.PROCESSOR_CLASS_NAME) return false
+        val loading = underWay.firstOrNull { it.context === review.context }
+        if (loading?.file == file) {
+            loading.retarget(step, fileLeft, leaving.id, onShown)
+            return true
+        }
         val files = throughTheSeam(file) { reviewFilesOf(review) } ?: return false
         val (paths, shownIndex) = throughTheSeam(file) { files.absolutePaths to files.shownIndex } ?: return false
-        val index = ReviewDiffFiles.switchTarget(file, root.path, paths, shownIndex) ?: return false
+        val index = if (loading != null) ReviewDiffFiles.indexOf(file, root.path, paths)
+        else ReviewDiffFiles.switchTarget(file, root.path, paths, shownIndex)
+        if (index == null) return false
         val arriving = ArrivingStep(project, review.context, file, fileLeft, leaving.id, step, onShown)
         arriving.start(review.disposable)
         var shown = false
@@ -131,8 +139,8 @@ object ReviewDiffSteps {
         val file: String,
         val fileLeft: String,
         leavingId: String,
-        private val step: CommentThread,
-        private val onShown: () -> Unit,
+        private var step: CommentThread,
+        private var onShown: () -> Unit,
     ) {
         private var leftBehind = listOf(fileLeft to leavingId)
         var awaitsAViewer = true
@@ -150,6 +158,13 @@ object ReviewDiffSteps {
             walkthroughWasOn = LastStep.getInstance(project).mark
             reviewWatch = ReviewWatch().also { Disposer.register(review, it) }
             expiry.start()
+        }
+
+        internal fun retarget(step: CommentThread, fileLeft: String, leavingId: String, onShown: () -> Unit) {
+            this.step = step
+            this.onShown = onShown
+            leftBehind = leftBehind + (fileLeft to leavingId)
+            walkthroughWasOn = LastStep.getInstance(project).mark
         }
 
         internal fun claim() {
