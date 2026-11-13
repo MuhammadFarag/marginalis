@@ -18,6 +18,10 @@ History before 0.1.19 lives in git tags.
 - Threads you leave open in a diff, such as a pull or merge request
   review, stay open when the diff refreshes and open again when you come
   back to their file. Threads you closed or resolved stay closed.
+- Walkthrough steps can now stay in a pull or merge request review
+  when a step is in another file: the review moves to that file. This
+  is experimental and off by default. Turn it on in Settings › Tools ›
+  Marginalis.
 
 ### Changed
 

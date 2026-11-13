@@ -290,6 +290,11 @@ class MarginalisConfigurable : Configurable {
                     .bindSelected(state::walkthroughAutoAdvance)
             }
             row {
+                checkBox("Keep walkthrough steps in a pull or merge request review across files (experimental)")
+                    .comment("Relies on a part of the IDE that may change. If it stops working, steps open in the file's own tab.")
+                    .bindSelected(state::keepStepsInReviewAcrossFiles)
+            }
+            row {
                 checkBox("Notify when the agent posts elsewhere")
                     .comment(
                         "A balloon when an agent message lands in a file you don't have open in front " +

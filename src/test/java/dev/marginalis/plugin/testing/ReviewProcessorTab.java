@@ -24,8 +24,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 // Java because the platform's review diff processor, behind the GitHub and GitLab reviews, is Kotlin-internal.
 @SuppressWarnings("UnstableApiUsage")
@@ -37,6 +39,7 @@ public final class ReviewProcessorTab {
     private final Project project;
     private final List<ReviewedFile> files;
     private final boolean unified;
+    private final Set<String> unnamed = new HashSet<>();
     private MutableDiffRequestProcessor processor;
     private int shown = -1;
     private DiffRequest shownRequest;
@@ -65,6 +68,10 @@ public final class ReviewProcessorTab {
 
     public void switchTo(String path) {
         show(files.stream().map(ReviewedFile::path).toList().indexOf(path));
+    }
+
+    public void withoutAName(String path) {
+        unnamed.add(path);
     }
 
     public void refresh() {
@@ -131,7 +138,8 @@ public final class ReviewProcessorTab {
         }
 
         @Override
-        public @NotNull PresentableChange getChangePresentation(ReviewedFile file) {
+        public @Nullable PresentableChange getChangePresentation(ReviewedFile file) {
+            if (unnamed.contains(file.path())) return null;
             FilePath path = VcsUtil.getFilePath(projectFile(file.path()));
             return new PresentableChange() {
                 @Override
