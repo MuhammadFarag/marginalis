@@ -183,7 +183,7 @@ class ReviewDiffStepsTest : HttpContractTestCase() {
         )
         reviewOf(ReviewedFile(CART, text(localLines(CART)), text(localLines(CART).drop(2))), reviewed(ORDER), unified = true)
         val editor = shownDiff().editor
-        openStepInTheReview(shownDiff().iconRows().single { shownDiff().textOfRow(it) == localLines(CART)[4] })
+        openStepInTheReview(iconRowsOnceThereAre(2).single { shownDiff().textOfRow(it) == localLines(CART)[4] })
 
         user.press(user.panel(editor), "Next Step")
 
@@ -216,7 +216,7 @@ class ReviewDiffStepsTest : HttpContractTestCase() {
     fun testAStepOnALineTheReviewRemovedOpensWhereTheReviewShowsItsIcon() {
         walkthrough(CART to 5, CART to LINE_EVERY_FILE_SHARES)
         val review = reviewOf(reviewed(CART, removing = LINE_EVERY_FILE_SHARES), reviewed(ORDER))
-        val iconRows = shownDiff().iconRows()
+        val iconRows = iconRowsOnceThereAre(2)
         val stepTwoIcon = (iconRows - rowOf(5)).single()
         assertEquals("}", shownDiff().textOfRow(stepTwoIcon))
         openStepInTheReview(rowOf(5))
@@ -304,6 +304,11 @@ class ReviewDiffStepsTest : HttpContractTestCase() {
         val tab = editors.allEditors.filterIsInstance<DiffEditorViewerFileEditor>().single()
         editors.openFile(tab.file, true)
         waitFor("the review never came back to the front") { shownDiffOrNull()?.hasText() == true }
+    }
+
+    private fun iconRowsOnceThereAre(count: Int): List<Int> {
+        waitFor("the review never painted $count icons") { shownDiff().iconRows().size == count }
+        return shownDiff().iconRows()
     }
 
     private fun assertPanelRowsBecome(expected: List<Int>) {
