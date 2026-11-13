@@ -15,6 +15,9 @@ History before 0.1.19 lives in git tags.
   that is your move drops its ✉ in the tool window.
 - Select several threads in the tool window to mark, resolve or delete
   them together.
+- Threads you leave open in a diff, such as a pull or merge request
+  review, stay open when the diff refreshes and open again when you come
+  back to their file. Threads you closed or resolved stay closed.
 
 ### Changed
 
@@ -30,6 +33,9 @@ History before 0.1.19 lives in git tags.
 - A thread you have read but not answered stays yours. It remains in
   Awaiting You and in the Margin tab's "your move" count, its card
   keeps the ✉, and its file keeps the ✉ on its editor tab.
+- Walkthrough steps stay in the diff you are reading when the step is
+  in the file it shows. This includes a pull or merge request review
+  whose branch is not checked out.
 
 ### Fixed
 

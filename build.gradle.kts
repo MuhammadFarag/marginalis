@@ -67,6 +67,7 @@ dependencies {
         // as a real plugin dependency instead of bundling our own copy of an
         // IDE package, per the Marketplace verifier.
         bundledPlugin("org.intellij.plugins.markdown")
+        testBundledModules("intellij.platform.collaborationTools", "intellij.platform.vcs.impl")
         // Default: compile against the oldest supported target (the honest
         // floor; CI uses this). Environments that can't reach the JetBrains
         // CDN — like the tenant sandbox — set `marginalis.localIde` in their
