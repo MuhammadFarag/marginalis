@@ -125,6 +125,44 @@ class ReopeningTheProjectTest : SavedProjectTestCase() {
         assertEquals(1, storedThread(fyi).unreadByUserCount())
     }
 
+    fun testAnAnsweredAgreeStaysAnsweredAfterReopening() {
+        openShop()
+        val id = agent.addOnLine(5, "body" to "Shall I extract it?")
+        user.agree(id)
+        agent.post("comment_agent_state", "thread_id" to id, "state" to "working")
+        waitForSave("agent_state")
+
+        reopen()
+
+        assertEquals("working", agent.summaryOf(id).string("agent_state"))
+        assertNull(agent.summaryOf(id).string("awaiting"))
+    }
+
+    fun testAnAcknowledgedAgreeStaysAcknowledgedAfterReopening() {
+        openShop()
+        val id = agent.addOnLine(5, "body" to "Shall I extract it?")
+        user.agree(id)
+        agent.post("comment_agent_state", "thread_id" to id, "state" to "acknowledged")
+        waitForSave("acknowledged")
+
+        reopen()
+
+        assertEquals("acknowledged", agent.summaryOf(id).string("agent_state"))
+        assertNull(agent.summaryOf(id).string("awaiting"))
+    }
+
+    fun testAnUnansweredAgreeStillAwaitsTheAgentAfterReopening() {
+        openShop()
+        val id = agent.addOnLine(5, "body" to "Shall I extract it?")
+        user.agree(id)
+        waitForSave("agrees")
+
+        reopen()
+
+        assertEquals("agent", agent.summaryOf(id).string("awaiting"))
+        assertNull(agent.summaryOf(id).string("agent_state"))
+    }
+
     fun testTheLastRoundSurvivesReopening() {
         openShop()
         val id = agent.addOnLine(5)

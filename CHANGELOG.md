@@ -11,21 +11,25 @@ History before 0.1.19 lives in git tags.
 
 - Mark a thread unread from its menu in the tool window. It waits for
   you like a new message until you return to it.
-- Mark a thread read from the same menu, without opening it.
+- Mark a thread read from the same menu, without opening it. A thread
+  that is your move drops its ✉ in the tool window.
 - Select several threads in the tool window to mark, resolve or delete
   them together.
 
 ### Changed
 
-- Agreeing with an agent no longer leaves the thread on the agent's
-  move. The thread shows 👍 until the agent says what it does with it:
-  ⏳ while it works on the agreed change, or no sign at all when there
-  is nothing left to do and the thread is yours to resolve.
-- The ✉ envelope now shows only while a thread has a message you have
-  not read. Once you read a reply, its envelope goes away in the
-  Marginalis tool window, on its stripe button and in the Margin tab,
-  so ✉ points at what is new. A thread you read but did not answer
-  stays in "Awaiting You" and keeps its badge on the file's editor tab.
+- Agreeing with an agent now shows 👍 on the thread, not ✈. An agreed
+  thread no longer looks like it waits on a reply.
+- The agent tells you what it does with your Agree: ⏳ while it works
+  on the change, or no sign once the thread is yours to resolve.
+- Agreed threads stay out of the agent's-move counts and the Awaiting
+  Agent filter.
+- In the tool window and the Margin tab's title, ✉ now marks only
+  threads with something you have not read, so it points at what is
+  new.
+- A thread you have read but not answered stays yours. It remains in
+  Awaiting You and in the Margin tab's "your move" count, its card
+  keeps the ✉, and its file keeps the ✉ on its editor tab.
 
 ### Fixed
 

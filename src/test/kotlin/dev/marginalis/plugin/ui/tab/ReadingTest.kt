@@ -89,6 +89,45 @@ class ReadingTest : TabInFrontTestCase() {
         assertEquals("✉ 1", tab.title())
     }
 
+    fun testACardYouHaveReadKeepsItsEnvelopeWhileItIsYourMoveButTheTitleShowsNone() {
+        val id = agent.ask("Which release name?")
+
+        tab.openFileInFront(sample())
+        tab.bringToFront()
+
+        assertEquals(0, user.thread(id).unreadByUserCount())
+        assertEquals(listOf("✉ Which release name? [expanded]"), shown())
+        assertEquals("1 open · 1 your move · 0 agent's move", tab.counts())
+        assertEquals("Margin", tab.title())
+    }
+
+    fun testAThreadMarkedUnreadShowsItsEnvelopeOnTheCardAndInTheTitle() {
+        val id = agent.ask("Which release name?")
+        tab.openFileInFront(sample())
+        tab.bringToFront()
+        assertEquals(0, user.thread(id).unreadByUserCount())
+        val window = user.openToolWindow()
+
+        window.rebuiltBy { window.chooseFromContextMenu("Which release name?", "Mark as Unread") }
+
+        assertEquals(listOf("✉ Which release name? ● [expanded]"), shown())
+        assertEquals("✉ 1", tab.title())
+    }
+
+    fun testWhenOnlyClickingCountsAQuestionKeepsItsEnvelopeOnceClickedWhileTheTitleLetsGo() {
+        user.changeProjectTabSettings { whatCountsAsRead("Only when you click into the thread") }
+
+        agent.ask("Which release name?")
+        assertEquals(listOf("✉ Which release name? ● [expanded]"), shown())
+        assertEquals("✉ 1", tab.title())
+
+        tab.click("Which release name?")
+        tab.click("Which release name?")
+
+        assertEquals(listOf("✉ Which release name? [expanded]"), shown())
+        assertEquals("Margin", tab.title())
+    }
+
     fun testWhenOnlyClickingCountsAnOpenThreadStaysUnreadUntilYouClickIntoIt() {
         user.changeProjectTabSettings { whatCountsAsRead("Only when you click into the thread") }
 
@@ -125,7 +164,7 @@ class ReadingTest : TabInFrontTestCase() {
 
         tab.click("Which release name?")
 
-        assertEquals(listOf("Which release name? [expanded]"), shown())
+        assertEquals(listOf("✉ Which release name? [expanded]"), shown())
         assertEquals("1 open · 1 your move · 0 agent's move", tab.counts())
     }
 
