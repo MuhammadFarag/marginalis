@@ -402,4 +402,29 @@ class WaitingTest : HttpContractTestCase() {
 
         assertEquals("timeout", agent.await(waiting)["reason"]!!.asString)
     }
+
+    fun testARoundListsAnUnansweredAgreeButNotAnAnsweredOne() {
+        sample()
+        val answered = agent.addOnLine(5, "body" to "Shall I extract it?")
+        val unanswered = agent.addOnLine(9, "body" to "Shall I inline it?")
+        user.agree(answered)
+        user.agree(unanswered)
+        agent.post("comment_agent_state", "thread_id" to answered, "state" to "working")
+        val waiting = agent.startWait()
+
+        user.submitRound()
+
+        assertEquals(listOf(unanswered), agent.await(waiting).json.getAsJsonArray("awaiting").map { it.asJsonObject.id })
+    }
+
+    fun testAnsweringAnAgreeWakesNobody() {
+        sample()
+        val id = agent.addOnLine(5, "body" to "Shall I extract it?")
+        user.agree(id)
+        val waiting = reviewer.startWait("timeout" to 2)
+
+        agent.post("comment_agent_state", "thread_id" to id, "state" to "working")
+
+        assertEquals("timeout", reviewer.await(waiting)["reason"]!!.asString)
+    }
 }

@@ -418,6 +418,12 @@ class SettingsPageTest : HttpContractTestCase() {
         assertFalse(settings.state.groupRelayedConversation)
     }
 
+    fun testWhatCountsAsReadSaysWhereAReadThreadDropsItsEnvelope() {
+        val page = page()
+
+        assertTrue(page.comments().any { "A thread you've read drops its ✉ in the tool window, its stripe icon and the tab title, and an FYI asks nothing more." in it })
+    }
+
     fun testTheLongThreadChoicesOpenWithTheirDefaults() {
         val page = page()
 

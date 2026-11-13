@@ -1,22 +1,9 @@
 package dev.marginalis.core
 
 object TurnSignal {
-    /**
-     * The turn a thread's glyph shows: an Agree the agent has not answered yet is approval, shown as 👍, not ✈;
-     * your move only while the thread holds a message you have not read.
-     */
-    fun of(thread: CommentThread): Turn? =
-        thread.turn()?.takeUnless { thread.awaitsAgreementAnswer || (it == Turn.USER_OWES && thread.unreadByUserCount() == 0) }
+    fun spoken(turn: Turn): String = ThreadSignal.forTurn(turn).spoken
 
-    fun spoken(turn: Turn): String = when (turn) {
-        Turn.USER_OWES -> "your move"
-        Turn.AGENT_OWES -> "agent's move"
-    }
-
-    fun glyph(turn: Turn): String = when (turn) {
-        Turn.USER_OWES -> "✉"
-        Turn.AGENT_OWES -> "✈"
-    }
+    fun glyph(turn: Turn): String = ThreadSignal.forTurn(turn).glyph
 
     fun glyphs(tally: TurnTally): String = shown(tally, ::glyph, " · ")
 
@@ -30,9 +17,10 @@ object TurnSignal {
 
 data class TurnTally(val user: Int, val agent: Int) {
     companion object {
-        fun of(threads: List<CommentThread>): TurnTally = tally(threads.mapNotNull { it.turn() })
+        fun owed(threads: List<CommentThread>): TurnTally = tally(threads.mapNotNull { it.owedTurn() })
 
-        fun signalled(threads: List<CommentThread>): TurnTally = tally(threads.mapNotNull(TurnSignal::of))
+        fun signalled(threads: List<CommentThread>): TurnTally =
+            tally(threads.mapNotNull { ThreadSignal.of(it)?.turn })
 
         private fun tally(turns: List<Turn>): TurnTally =
             TurnTally(user = turns.count { it == Turn.USER_OWES }, agent = turns.count { it == Turn.AGENT_OWES })
