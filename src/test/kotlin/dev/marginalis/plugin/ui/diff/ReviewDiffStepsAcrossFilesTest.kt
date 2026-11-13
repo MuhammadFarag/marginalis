@@ -426,8 +426,45 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         assertFalse(ReviewDiffSteps.hasStepsUnderWay())
     }
 
-    fun testASecondNextDuringTheLoadToAStepInTheFileLeftBringsTheReviewBackToIt() {
-        val slow = slowReview()
+    fun testNextTwiceOnTheSameStepDuringTheLoadLandsItOnceInTheReview() = nextTwiceOnTheSameStep(lagging = false)
+
+    fun testNextTwiceOnTheSameStepDuringTheLoadLandsItOnceInTheReviewWhileTheReviewStillReportsTheFileLeft() =
+        nextTwiceOnTheSameStep(lagging = true)
+
+    fun testASecondNextDuringTheLoadToAStepInTheFileLeftBringsTheReviewBackToIt() = secondNextToTheFileLeft(lagging = false)
+
+    fun testASecondNextDuringTheLoadToAStepInTheFileLeftBringsTheReviewBackToItWhileTheReviewStillReportsTheFileLeft() =
+        secondNextToTheFileLeft(lagging = true)
+
+    fun testASecondNextDuringTheLoadToAStepInAThirdFileTakesTheReviewThere() = secondNextToAThirdFile(lagging = false)
+
+    fun testASecondNextDuringTheLoadToAStepInAThirdFileTakesTheReviewThereWhileTheReviewStillReportsTheFileLeft() =
+        secondNextToAThirdFile(lagging = true)
+
+    fun testNextThenPreviousDuringTheLoadLeavesTheReviewOnTheStepAskedForLast() = nextThenPrevious(lagging = false)
+
+    fun testNextThenPreviousDuringTheLoadLeavesTheReviewOnTheStepAskedForLastWhileTheReviewStillReportsTheFileLeft() =
+        nextThenPrevious(lagging = true)
+
+    private fun nextTwiceOnTheSameStep(lagging: Boolean) {
+        val slow = slowReview(lagging)
+        val ids = walkthrough(CART to 5, ORDER to 20)
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+        user.press(user.panel(shownDiff().editor), "Next Step")
+
+        user.press(user.panel(shownDiff().editor), "Next Step")
+        slow.land()
+
+        assertStepOpensInTheReview(review, ORDER, rowOf(20))
+        assertEquals(1, slow.shows)
+        assertFalse(editors.openFiles.any { fileOf(it) == ORDER })
+        assertEquals(ids[1], LastStep.getInstance(project).mark?.threadId)
+        assertFalse(ReviewDiffSteps.hasStepsUnderWay())
+    }
+
+    private fun secondNextToTheFileLeft(lagging: Boolean) {
+        val slow = slowReview(lagging)
         val ids = walkthrough(CART to 5, ORDER to 20, CART to 25, CART to 28)
         val review = reviewOf(reviewed(CART), reviewed(ORDER))
         openStepInTheReview(rowOf(5))
@@ -438,12 +475,13 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         slow.land()
 
         assertStepOpensInTheReview(review, CART, rowOf(28))
+        assertFalse(editors.openFiles.any { fileOf(it) == CART })
         assertEquals(ids[3], LastStep.getInstance(project).mark?.threadId)
         assertFalse(ReviewDiffSteps.hasStepsUnderWay())
     }
 
-    fun testASecondNextDuringTheLoadToAStepInAThirdFileTakesTheReviewThere() {
-        val slow = slowReview()
+    private fun secondNextToAThirdFile(lagging: Boolean) {
+        val slow = slowReview(lagging)
         val ids = walkthrough(CART to 5, ORDER to 20, CART to 25, INVOICE to 4)
         val review = reviewOf(reviewed(CART), reviewed(ORDER), reviewed(INVOICE))
         openStepInTheReview(rowOf(5))
@@ -458,8 +496,67 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         assertFalse(ReviewDiffSteps.hasStepsUnderWay())
     }
 
+    private fun nextThenPrevious(lagging: Boolean) {
+        val slow = slowReview(lagging)
+        val ids = walkthrough(CART to 5, CART to 12, ORDER to 20)
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(12))
+        user.press(user.panel(shownDiff().editor), "Next Step")
+
+        user.press(user.panel(shownDiff().editor), "Previous Step")
+        slow.land()
+
+        assertStepOpensInTheReview(review, CART, rowOf(5))
+        assertFalse(editors.openFiles.any { fileOf(it) == CART })
+        assertEquals(ids[0], LastStep.getInstance(project).mark?.threadId)
+        assertFalse(ReviewDiffSteps.hasStepsUnderWay())
+    }
+
+    fun testAPlainCommentsNextInTheSameFileDuringALoadStaysInTheReviewAndAbandonsTheLoad() {
+        val slow = slowReview(lagging = true)
+        val ids = walkthrough(CART to 5, ORDER to 20)
+        agent.add("file" to CART, "line" to 12, "anchor_text" to localLines(CART)[11], "body" to "First comment")
+        agent.add("file" to CART, "line" to 25, "anchor_text" to localLines(CART)[24], "body" to "Second comment")
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+        openStepInTheReview(rowOf(12))
+        user.press(user.panels(shownDiff().editor).first(), "Next Step")
+
+        user.press(user.panels(shownDiff().editor).last(), "Next Comment")
+
+        assertTrue("the review left the front: ${editors.selectedEditor}", editors.selectedEditor is DiffEditorViewerFileEditor)
+        assertTrue(panelRows().toString(), rowOf(25) in panelRows())
+        assertFalse(editors.openFiles.any { fileOf(it) == CART })
+        assertFalse(ReviewDiffSteps.hasStepsUnderWay())
+        slow.land()
+        waitFor("the review never showed $ORDER") { review.shownFile() == ORDER && shownDiffOrNull()?.hasText() == true }
+        assertPanelRowsBecome(emptyList())
+        assertEquals(ids[0], LastStep.getInstance(project).mark?.threadId)
+    }
+
+    fun testSwitchingTheSettingOffDuringALoadKeepsTheNextStepInTheFileOnScreenAndAbandonsTheLoad() {
+        val slow = slowReview(lagging = true)
+        val ids = walkthrough(CART to 5, ORDER to 20, CART to 25, CART to 28)
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+        openStepInTheReview(rowOf(25))
+        user.press(user.panels(shownDiff().editor).first(), "Next Step")
+        MarginalisSettings.getInstance().state.keepStepsInReviewAcrossFiles = false
+
+        user.press(user.panels(shownDiff().editor).last(), "Next Step")
+
+        assertTrue("the review left the front: ${editors.selectedEditor}", editors.selectedEditor is DiffEditorViewerFileEditor)
+        assertTrue(panelRows().toString(), rowOf(28) in panelRows())
+        assertEquals(ids[3], LastStep.getInstance(project).mark?.threadId)
+        assertFalse(ReviewDiffSteps.hasStepsUnderWay())
+        slow.land()
+        waitFor("the review never showed $ORDER") { review.shownFile() == ORDER && shownDiffOrNull()?.hasText() == true }
+        assertPanelRowsBecome(emptyList())
+        assertEquals(ids[3], LastStep.getInstance(project).mark?.threadId)
+    }
+
     fun testASecondStepThatCannotBeShownDuringTheLoadStillCancelsTheFirst() {
-        val slow = slowReview()
+        val slow = slowReview(lagging = false)
         myFixture.addFileToProject(GONE, text(localLines(GONE)))
         val ids = walkthrough(CART to 5, ORDER to 20, CART to 25, GONE to 4)
         val review = reviewOf(reviewed(CART), reviewed(ORDER))
@@ -474,21 +571,6 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         waitFor("the review never showed $ORDER") { review.shownFile() == ORDER && shownDiffOrNull()?.hasText() == true }
         assertPanelRowsBecome(emptyList())
         assertEquals(ids[2], LastStep.getInstance(project).mark?.threadId)
-        assertFalse(ReviewDiffSteps.hasStepsUnderWay())
-    }
-
-    fun testNextThenPreviousDuringTheLoadLeavesTheReviewOnTheStepAskedForLast() {
-        val slow = slowReview()
-        val ids = walkthrough(CART to 5, CART to 12, ORDER to 20)
-        val review = reviewOf(reviewed(CART), reviewed(ORDER))
-        openStepInTheReview(rowOf(12))
-        user.press(user.panel(shownDiff().editor), "Next Step")
-
-        user.press(user.panel(shownDiff().editor), "Previous Step")
-        slow.land()
-
-        assertStepOpensInTheReview(review, CART, rowOf(5))
-        assertEquals(ids[0], LastStep.getInstance(project).mark?.threadId)
         assertFalse(ReviewDiffSteps.hasStepsUnderWay())
     }
 
@@ -566,16 +648,19 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
 
     private fun theReviewsFiles(review: DiffEditorViewer): ReviewFiles = checkNotNull(ReviewDiffFileList.of(review))
 
-    private inner class SlowReview {
+    private inner class SlowReview(private val lagging: Boolean) {
         private var real: ReviewFiles? = null
         private var asked: Int? = null
+        var shows = 0
+            private set
 
         fun filesOf(review: DiffEditorViewer): ReviewFiles {
             val files = theReviewsFiles(review).also { real = it }
             return object : ReviewFiles {
                 override val absolutePaths = files.absolutePaths
-                override val shownIndex = asked ?: files.shownIndex
+                override val shownIndex = if (lagging) files.shownIndex else asked ?: files.shownIndex
                 override fun show(index: Int) {
+                    shows++
                     asked = index
                 }
             }
@@ -586,7 +671,7 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         }
     }
 
-    private fun slowReview(): SlowReview = SlowReview().also { slow -> reviewFilesAsking(slow::filesOf) }
+    private fun slowReview(lagging: Boolean): SlowReview = SlowReview(lagging).also { slow -> reviewFilesAsking(slow::filesOf) }
 
     private fun ReviewFiles.showing(showing: (Int) -> Unit): ReviewFiles {
         val listed = this
