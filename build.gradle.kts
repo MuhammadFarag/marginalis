@@ -38,6 +38,8 @@ sourceSets {
 }
 
 val ideStarterVersion = "262.9437.185"
+// The latest released IntelliJ IDEA (gradle.properties): the Plugin Verifier's second IDE.
+val latestIde: String = providers.gradleProperty("marginalis.latestIde").get()
 
 dependencies {
     // The domain core: model, lifecycle, anchoring policy, persistence codec.
@@ -78,6 +80,10 @@ dependencies {
         }
         testFramework(TestFrameworkType.Platform)
         testFramework(TestFrameworkType.Starter, version = ideStarterVersion, configurationName = "uiTestImplementation")
+        // Pinned: undeclared, each is "latest", looked up in JetBrains' repository on every run, so a hiccup there fails
+        // `verify` and the verdict depends on the day. A newer one is a deliberate bump (docs/upgrades.md).
+        pluginVerifier("1.411")
+        zipSigner("0.1.43")
     }
 }
 
@@ -152,6 +158,8 @@ intellijPlatform {
         )
         ides {
             recommended()
+            // The unified distribution: a headless verification needs no licence.
+            create(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdea, latestIde)
         }
     }
 }
@@ -225,6 +233,10 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     compilerOptions.jvmTarget = JvmTarget.JVM_21
+    // The plugin runs on the IDE's own Kotlin stdlib, on the floor (2025.2) a 2.2 one: code built for 2.3 crashes every
+    // resume of a plugin coroutine there (debug metadata 2 vs 1), and newer stdlib calls would fail at runtime.
+    compilerOptions.apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
+    compilerOptions.languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
 }
 
 pitest {

@@ -1,0 +1,57 @@
+# Notices a new IntelliJ IDEA release: the Plugin Verifier checks the floor and the latest released IntelliJ IDEA
+# (`marginalis.latestIde` in gradle.properties), so once JetBrains releases a newer one, an issue says so, with the
+# line that moves the Plugin Verifier to it (docs/upgrades.md).
+name: Latest IDE
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+# The runner image is pinned: a move of `ubuntu-latest` to a new Ubuntu is then made on purpose.
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare with JetBrains' latest IntelliJ IDEA release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(sed -n 's/^marginalis\.latestIde=//p' gradle.properties | tr -d '\r')
+          [ -n "$current" ] || { echo "marginalis.latestIde not found in gradle.properties"; exit 1; }
+          # The newest by version, not by date: a bugfix of an older line is often published after a newer release.
+          latest=$(gh api 'repos/JetBrains/intellij-community/releases?per_page=100' \
+            --jq '.[] | select((.draft or .prerelease) | not) | .tag_name | select(test("^idea/[0-9]+([.][0-9]+)+$")) | ltrimstr("idea/")' \
+            | sort -V | tail -1)
+          [ -n "$latest" ] || { echo "found no IntelliJ IDEA release on GitHub; has the release list changed?"; exit 1; }
+          echo "the build checks IntelliJ IDEA $current; the latest release is $latest"
+          if [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)" = "$current" ]; then
+            echo "up to date"
+            exit 0
+          fi
+          title="IntelliJ IDEA $latest is out: the Plugin Verifier's latest IDE moves to it"
+          cat > body.md <<EOF
+          **Why:** CI verifies the plugin on the floor and on the latest released IntelliJ IDEA. The build checks $current; JetBrains has released $latest.
+
+          **Expected:** in \`gradle.properties\`:
+
+          \`\`\`
+          marginalis.latestIde=$latest
+          \`\`\`
+
+          Then the \`verify\` job proves it (docs/upgrades.md).
+
+          _Opened by the weekly \`latest-ide.yml\`, which keeps this issue current until the move lands._
+          EOF
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'in:title "latest IDE moves to it"' \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue edit "$open" --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md
+          fi
