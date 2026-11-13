@@ -232,6 +232,7 @@ class ReviewDiff(
     fun tooltipAt(row: Int): String = icons().single { it.first == row }.second.tooltipText
 
     fun clickIcon(row: Int) {
+        PlatformTestUtil.waitWithEventsDispatching("the diff never painted an icon on row $row", { icons().any { it.first == row } }, 10)
         val click = icons().single { it.first == row }.second.clickAction
         click.actionPerformed(TestActionEvent.createTestEvent(click, editorContext()))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
