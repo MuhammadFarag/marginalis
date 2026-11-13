@@ -247,5 +247,6 @@ JDK 21+, no other setup:
 `core/` is pure Kotlin: the model, thread lifecycle, anchoring policy,
 and persistence codec. The plugin module is adapters around it:
 `transport/`, `store/`, `ui/`, `settings/`, `actions/`, `avatars/`.
-CI verifies against the declared 2025.2 floor with the Plugin Verifier.
+CI runs the Plugin Verifier against the declared 2025.2 floor and the
+newest released IntelliJ IDEA.
 Releases are tags (`v*`).

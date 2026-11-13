@@ -1,4 +1,6 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.models.ProductRelease
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -134,8 +136,8 @@ intellijPlatform {
     }
 
     pluginVerification {
-        // CI runs this against JetBrains' recommended IDE set for our
-        // since-build range — the proof behind the declared 2025.2+ support.
+        // CI runs this against the 2025.2 floor and the newest released
+        // IntelliJ IDEA — the proof behind the declared 2025.2+ support.
         // Fail on real problems; deprecated/experimental/internal *usages*
         // are reported but advisory (and NOT_DYNAMIC is a known, accepted
         // limitation for now).
@@ -151,7 +153,13 @@ intellijPlatform {
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.SCHEDULED_FOR_REMOVAL_API_USAGES,
         )
         ides {
+            // recommended() follows the compile platform's product type: on IC 2025.2
+            // it finds only Community releases, and the Gradle plugin accepts none past 2025.2.
             recommended()
+            latest {
+                types = listOf(IntelliJPlatformType.IntellijIdea)
+                channels = listOf(ProductRelease.Channel.RELEASE)
+            }
         }
     }
 }

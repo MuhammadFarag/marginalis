@@ -17,13 +17,15 @@ is the shipped record and decision log.
   set; `koverHtmlReport` and `pitest` give coverage and mutation
   reports.
 - CI (`.github/workflows/`) is the honest environment: compiles against
-  the real `ideaIC-2025.2` floor and runs the Plugin Verifier
-  (`recommended()` IDE set). Local builds may compile against a newer
-  local IDE via the `marginalis.localIde` property, so floor violations
-  surface in CI, not locally. CI also fails when an endpoint in the
-  transport's routing is missing from the served guide's API table, and
-  when the committed IDE layout index (`.github/ide-layout-index/`) no
-  longer matches; the step's comment in `ci.yml` says how to refresh it.
+  the real `ideaIC-2025.2` floor and runs the Plugin Verifier against
+  that floor and the newest released IntelliJ IDEA (resolved from
+  JetBrains' release feed on each run). Local builds may compile against
+  a newer local IDE via the `marginalis.localIde` property, so floor
+  violations surface in CI, not locally. CI also fails when an endpoint
+  in the transport's routing is missing from the served guide's API
+  table, and when the committed IDE layout index
+  (`.github/ide-layout-index/`) no longer matches; the step's comment in
+  `ci.yml` says how to refresh it.
 - Releases: stamp `[Unreleased]` in `CHANGELOG.md` as the new version,
   bump `version` in `build.gradle.kts`, commit, push, tag `v*` → CI
   builds, signs, publishes to the Marketplace stable channel and creates
