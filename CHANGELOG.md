@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-11-13
+
+Thanks to [@schrek1](https://github.com/schrek1) for the unread marks, the Agree signals and the review diff work in this release.
+
 ### Added
 
 - Mark a thread unread from its menu in the tool window. It waits for
