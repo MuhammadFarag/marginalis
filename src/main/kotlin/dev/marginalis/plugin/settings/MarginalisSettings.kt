@@ -57,6 +57,8 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
         var keepFirstMessageOpen: Boolean = false
 
         var askForSummaryLine: Boolean = true
+
+        var keepStepsInReviewAcrossFiles: Boolean = false
     }
 
     @Tag("person")

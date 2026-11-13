@@ -47,7 +47,8 @@ class ReviewDiffMarkers : DiffExtension() {
         val path = sides.content.highlightFile?.let { ProjectPaths.of(project, it) } ?: return
         val openWhenShownAgain = openThreadsByFile.getOrPut(context) { mutableMapOf() }
         val reopening = openWhenShownAgain.remove(path).orEmpty()
-        DiffPainter(project, sides, path, reopening) { openThreadIds ->
+        val arriving = ReviewDiffSteps.arrivingIn(context, path, canShowIt = sides.editor != null)
+        DiffPainter(project, sides, path, reopening, arriving) { openThreadIds ->
             if (openThreadIds.isEmpty()) openWhenShownAgain.remove(path) else openWhenShownAgain[path] = openThreadIds
         }.install()
     }
@@ -61,6 +62,11 @@ class ReviewDiffMarkers : DiffExtension() {
         fun disposeAll() {
             live.toList().forEach { it.uninstall() }
             openThreadsByFile.clear()
+            ReviewDiffSteps.disposeAll()
+        }
+
+        fun forgetOpen(context: DiffContext, path: String, threadId: String) {
+            openThreadsByFile[context]?.computeIfPresent(path) { _, threadIds -> (threadIds - threadId).ifEmpty { null } }
         }
     }
 
@@ -95,6 +101,7 @@ class ReviewDiffMarkers : DiffExtension() {
         private val sides: ReviewSides,
         private val path: String,
         private var reopening: List<String>,
+        private var arriving: ReviewDiffSteps.ArrivingStep?,
         private val onClosing: (openThreadIds: List<String>) -> Unit,
     ) : DiffViewerListener() {
 
@@ -155,7 +162,7 @@ class ReviewDiffMarkers : DiffExtension() {
         // A unified viewer rebuilds its document on every rediff, a side-by-side one has it only once the first diff lands.
         override fun onAfterRediff() {
             paint()
-            if (reopening.isNotEmpty()) reopenLater()
+            if (reopening.isNotEmpty() || arriving != null) reopenLater()
         }
 
         // The viewer is iterating its listeners right now: removing ourselves here throws
@@ -163,17 +170,23 @@ class ReviewDiffMarkers : DiffExtension() {
         override fun onDispose() {
             val open = sides.editor?.takeIf { !it.isDisposed }?.let(ThreadInlayManager::openThreadIds).orEmpty()
             onClosing((reopening + open).distinct())
+            arriving?.stillArriving()
+            arriving = null
             release()
         }
 
         private fun reopenLater() {
             val editor = sides.editor ?: return
             ApplicationManager.getApplication().invokeLater({
-                val threadIds = reopening
+                val threadIds = reopening - arriving?.threadsLeftBehind().orEmpty().toSet()
                 reopening = emptyList()
                 threadIds.mapNotNull(store.threads::byId)
                     .filter { it.status !is ThreadStatus.Resolved }
                     .forEach { ThreadInlayManager.restore(project, editor, it) }
+                arriving?.let { step ->
+                    arriving = null
+                    step.landIn(editor)
+                }
             }, { released || editor.isDisposed })
         }
 

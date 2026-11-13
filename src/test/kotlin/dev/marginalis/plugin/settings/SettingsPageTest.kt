@@ -68,6 +68,7 @@ class SettingsPageTest : HttpContractTestCase() {
         assertEquals("ada-l", page.text("GitHub login:"))
         assertTrue(page.isTicked("Show GitHub avatars when no picture is set"))
         assertTrue(page.isTicked("Jump to the next thread after resolving"))
+        assertFalse(page.isTicked(STEPS_ACROSS_REVIEW_FILES))
         assertTrue(page.isTicked("Notify when the agent posts elsewhere"))
         assertEquals("Auto (system)", page.chosen(TimeFormat.AUTO))
         assertFalse(page.isModified)
@@ -361,6 +362,20 @@ class SettingsPageTest : HttpContractTestCase() {
         assertEquals(25, user.editor().caretModel.logicalPosition.line + 1)
     }
 
+    fun testThePageOffersKeepingStepsInAReviewAcrossFilesAsAnExperimentAndSavesTheChoice() {
+        val page = page()
+
+        page.tick(STEPS_ACROSS_REVIEW_FILES, true)
+        assertTrue(page.isModified)
+        page.apply()
+
+        assertTrue(settings.state.keepStepsInReviewAcrossFiles)
+        assertTrue(page.comments().toString(), page.comments().any { it.startsWith("Relies on a part of the IDE that may change.") })
+        page.tick(STEPS_ACROSS_REVIEW_FILES, false)
+        page.apply()
+        assertFalse(settings.state.keepStepsInReviewAcrossFiles)
+    }
+
     fun testTheClockChoiceReachesEveryByline() {
         val id = agent.addOnLine(5)
         val page = page()
@@ -489,5 +504,6 @@ class SettingsPageTest : HttpContractTestCase() {
     private companion object {
         const val ALWAYS_FIRST = "Always show the first message"
         const val ASK_FOR_SUMMARY = "Ask agents to open each reply with a one-line summary"
+        const val STEPS_ACROSS_REVIEW_FILES = "Keep walkthrough steps in a pull or merge request review across files (experimental)"
     }
 }

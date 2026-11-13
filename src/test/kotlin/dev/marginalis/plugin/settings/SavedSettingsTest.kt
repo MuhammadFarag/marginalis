@@ -35,6 +35,7 @@ class SavedSettingsTest : MarginalisTestCase() {
             longThreadFolding = LongThreadFolding.FOLD_LONG_READ_MESSAGES
             state.keepFirstMessageOpen = true
             state.askForSummaryLine = false
+            state.keepStepsInReviewAcrossFiles = true
         }
 
         val after = loaded(saved(before))
@@ -44,6 +45,7 @@ class SavedSettingsTest : MarginalisTestCase() {
         assertEquals(before.projectTabPrefs, after.projectTabPrefs)
         assertEquals(FoldingPrefs(LongThreadFolding.FOLD_LONG_READ_MESSAGES, keepFirstOpen = true), after.foldingPrefs)
         assertFalse(after.state.askForSummaryLine)
+        assertTrue(after.state.keepStepsInReviewAcrossFiles)
         assertEquals(saved(before), saved(after))
     }
 
@@ -145,5 +147,11 @@ class SavedSettingsTest : MarginalisTestCase() {
 
         assertEquals(FoldingPrefs(LongThreadFolding.FOLD_EVERY_READ_MESSAGE, keepFirstOpen = false), older.foldingPrefs)
         assertTrue(older.state.askForSummaryLine)
+    }
+
+    fun testStepsLeaveAReviewForAnotherFilesTabUnlessTheExperimentWasSwitchedOn() {
+        assertFalse(loaded("<State />").state.keepStepsInReviewAcrossFiles)
+        assertFalse(loaded("<State><option name=\"keepStepsInReviewAcrossFiles\" value=\"sometimes\" /></State>").state.keepStepsInReviewAcrossFiles)
+        assertTrue(loaded("<State><option name=\"keepStepsInReviewAcrossFiles\" value=\"true\" /></State>").state.keepStepsInReviewAcrossFiles)
     }
 }

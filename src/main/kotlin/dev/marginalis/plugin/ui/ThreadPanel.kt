@@ -69,6 +69,7 @@ import dev.marginalis.plugin.avatars.AvatarsListener
 import dev.marginalis.plugin.settings.MarginalisSettings
 import dev.marginalis.plugin.store.Authors
 import dev.marginalis.plugin.store.MarginalisStore
+import dev.marginalis.plugin.ui.diff.ReviewDiffSteps
 import dev.marginalis.plugin.ui.toolwindow.MarginalisToolWindow
 import java.awt.BorderLayout
 import java.awt.Color
@@ -781,9 +782,10 @@ class ThreadPanel(
 
     private fun stayOrNavigateTo(target: CommentThread, closeThisPanel: () -> Unit = {}) {
         val here = editor
-        if (here == null || !WalkthroughNavigator.navigateWithin(here, project, target, beforeMoving = closeThisPanel)) {
-            WalkthroughNavigator.navigateTo(project, target, onShown = closeThisPanel)
-        }
+        val reviewIsLoadingAStep = here != null && ReviewDiffSteps.isLoadingAStepIn(project, here)
+        if (here != null && !reviewIsLoadingAStep && WalkthroughNavigator.navigateWithin(here, project, target, beforeMoving = closeThisPanel)) return
+        if (here != null && ReviewDiffSteps.switchTo(project, here, target, leaving = thread, onShown = closeThisPanel)) return
+        WalkthroughNavigator.navigateTo(project, target, onShown = closeThisPanel)
     }
 
     private fun pickAddressee(atOffset: Int) {
