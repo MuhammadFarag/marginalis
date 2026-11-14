@@ -7,6 +7,10 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-11-14
+
+Thanks to [@schrek1](https://github.com/schrek1) for the Margin tab choice, the plain-text fallback and the keep-open stepping in this release.
+
 ### Added
 
 - Choose when the Margin tab shows. Keep it open as before, or show it
