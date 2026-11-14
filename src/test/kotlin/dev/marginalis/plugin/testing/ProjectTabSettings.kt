@@ -2,6 +2,7 @@ package dev.marginalis.plugin.testing
 
 import com.intellij.util.ui.UIUtil
 import dev.marginalis.core.ListWhileInFront
+import dev.marginalis.core.MarginTabShows
 import dev.marginalis.core.ReadWhen
 import dev.marginalis.plugin.settings.MarginalisConfigurable
 import dev.marginalis.plugin.settings.MarginalisSettings
@@ -49,6 +50,7 @@ class ProjectTabSettings(private val page: JComponent) {
 
         fun restoreDefaults() {
             val settings = MarginalisSettings.getInstance()
+            settings.marginTabShows = MarginTabShows.ALWAYS
             settings.listWhileInFront = ListWhileInFront.LIVE
             settings.readWhen = ReadWhen.EXPANDED_IN_FRONT
             settings.state.expandOnYourMove = true

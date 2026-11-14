@@ -15,6 +15,13 @@ class ProjectTabState {
 
     fun takeRequest(): TabRequest? = pending.getAndSet(null)
 
+    var reveals = 0
+        private set
+
+    fun countReveal() {
+        reveals++
+    }
+
     var draft: CommentThread? = null
         private set
 

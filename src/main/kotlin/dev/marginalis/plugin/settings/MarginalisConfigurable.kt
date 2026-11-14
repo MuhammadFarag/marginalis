@@ -33,6 +33,7 @@ import dev.marginalis.core.Faces
 import dev.marginalis.core.Intent
 import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.LongThreadFolding
+import dev.marginalis.core.MarginTabShows
 import dev.marginalis.core.Mark
 import dev.marginalis.core.MarkSubject
 import dev.marginalis.core.People
@@ -340,6 +341,14 @@ class MarginalisConfigurable : Configurable {
                 }
             }
             group("Project Tab") {
+                row("Margin tab:") {
+                    comboBox(MarginTabShows.entries, textListCellRenderer { it?.let(::labelOf) })
+                        .comment("When it shows only with something in it, an agent's new project thread opens it behind your file. A tab you pin always stays.")
+                        .bindItem(
+                            { settings.marginTabShows },
+                            { settings.marginTabShows = it ?: MarginTabShows.ALWAYS },
+                        )
+                }
                 row("List while the tab is in front:") {
                     comboBox(ListWhileInFront.entries, textListCellRenderer { it?.let(::labelOf) })
                         .comment(
@@ -482,6 +491,11 @@ class MarginalisConfigurable : Configurable {
         fun labelOf(kind: People.Kind): String = when (kind) {
             People.Kind.PERSON -> "Person"
             People.Kind.AGENT -> "Agent"
+        }
+
+        fun labelOf(shows: MarginTabShows): String = when (shows) {
+            MarginTabShows.ALWAYS -> "Keep the Margin tab open"
+            MarginTabShows.WITH_SOMETHING_IN_IT -> "Show it when there's something in it"
         }
 
         fun labelOf(list: ListWhileInFront): String = when (list) {

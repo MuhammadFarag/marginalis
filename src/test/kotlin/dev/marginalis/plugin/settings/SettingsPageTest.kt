@@ -7,6 +7,7 @@ import dev.marginalis.core.CommentThread
 import dev.marginalis.core.FoldingPrefs
 import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.LongThreadFolding
+import dev.marginalis.core.MarginTabShows
 import dev.marginalis.core.Message
 import dev.marginalis.core.Mark
 import dev.marginalis.core.MarkSubject
@@ -431,6 +432,17 @@ class SettingsPageTest : HttpContractTestCase() {
         assertEquals(ReadWhen.CLICKED_INTO, settings.readWhen)
         assertFalse(settings.state.expandOnYourMove)
         assertFalse(settings.state.groupRelayedConversation)
+    }
+
+    fun testTheMarginTabStaysOpenUntilYouChooseToShowItWithSomethingInIt() {
+        val page = page()
+        assertEquals(listOf("Keep the Margin tab open", "Show it when there's something in it"), page.options(MarginTabShows.ALWAYS))
+        assertEquals("Keep the Margin tab open", page.chosen(MarginTabShows.ALWAYS))
+
+        page.choose(MarginTabShows.ALWAYS, "Show it when there's something in it")
+        page.apply()
+
+        assertEquals(MarginTabShows.WITH_SOMETHING_IN_IT, settings.marginTabShows)
     }
 
     fun testWhatCountsAsReadSaysWhereAReadThreadDropsItsEnvelope() {
