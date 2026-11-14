@@ -153,6 +153,19 @@ class PlainTextFallbackTest : HttpContractTestCase() {
         assertFalse(TextOnlyEditorProvider().accept(project, fileAt(spec)))
     }
 
+    fun testThePlainTextMarkStaysWhileTheFileIsOpenInAnotherSplit() {
+        val step = specStep()
+        navigateTo(step)
+        tab.splitTheFileInFront()
+        tab.settle()
+
+        tab.editors.currentWindow!!.closeFile(fileAt(spec))
+        tab.settle()
+
+        assertTrue(tab.editors.isFileOpen(fileAt(spec)))
+        assertTrue(TextOnlyEditorProvider().accept(project, fileAt(spec)))
+    }
+
     fun testABinaryFileIsNeverRetriedAsPlainText() {
         myFixture.addFileToProject(binary, "\u0000\u0001\u0002")
         val step = agent.add("file" to binary, "order" to 1, "walkthrough" to "tour", "body" to "The logo")
