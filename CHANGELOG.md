@@ -14,6 +14,12 @@ History before 0.1.19 lives in git tags.
   tab, and the tab comes back behind your file when an agent starts a
   project thread. A tab you pin always stays. Set it under Project Tab
   in Settings › Tools › Marginalis.
+- Choose what happens to the thread you leave when you step with Next,
+  Previous, First or Last: fold it, so the code reads clean behind you,
+  or keep it open, so every step you passed stays in view. This works in
+  the editor and in pull or merge request reviews. Set it under *When
+  stepping to another step* in Settings › Tools › Marginalis. Folding
+  stays the default.
 
 ### Changed
 

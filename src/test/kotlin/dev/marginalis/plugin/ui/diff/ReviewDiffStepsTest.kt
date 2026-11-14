@@ -14,6 +14,7 @@ import dev.marginalis.plugin.testing.MarginTab
 import dev.marginalis.plugin.testing.ReviewDiff
 import dev.marginalis.plugin.testing.ReviewProcessorTab
 import dev.marginalis.plugin.testing.ReviewProcessorTab.ReviewedFile
+import dev.marginalis.plugin.testing.SteppingChoice
 import dev.marginalis.plugin.transport.HttpContractTestCase
 import dev.marginalis.plugin.ui.LastStep
 
@@ -112,6 +113,34 @@ class ReviewDiffStepsTest : HttpContractTestCase() {
         refreshed(review)
 
         assertPanelRowsBecome(listOf(rowOf(20)))
+    }
+
+    fun testStepsYouLeaveInTheSameFileStayOpenWhenChosenAndWhenTheReviewRefreshes() {
+        SteppingChoice.keepTheStepYouLeaveOpen(testRootDisposable)
+        walkthrough(CART to 5, CART to 20)
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+        user.press(user.panel(shownDiff().editor), "Next Step")
+        assertPanelRowsBecome(listOf(rowOf(5), rowOf(20)))
+        assertEquals(rowOf(20), shownDiff().editor.caretModel.logicalPosition.line + 1)
+
+        refreshed(review)
+
+        assertPanelRowsBecome(listOf(rowOf(5), rowOf(20)))
+    }
+
+    fun testAStepInAnotherFileOpensInItsTabAndTheStepYouLeaveStaysOpenInTheReviewWhenChosen() {
+        SteppingChoice.keepTheStepYouLeaveOpen(testRootDisposable)
+        walkthrough(CART to 5, ORDER to 20)
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+
+        user.press(user.panel(shownDiff().editor), "Next Step")
+
+        assertStepOpensInItsFileTab(ORDER, line = 20)
+        backToTheReview()
+        assertEquals(CART, review.shownFile())
+        assertPanelRowsBecome(listOf(rowOf(5)))
     }
 
     fun testAStepYouClosedStaysClosedWhenTheReviewRefreshes() {

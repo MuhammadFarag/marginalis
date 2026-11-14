@@ -31,6 +31,7 @@ import com.intellij.util.ui.UIUtil
 import dev.marginalis.core.Face
 import dev.marginalis.core.Faces
 import dev.marginalis.core.Intent
+import dev.marginalis.core.LeavingAStep
 import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.LongThreadFolding
 import dev.marginalis.core.MarginTabShows
@@ -290,6 +291,14 @@ class MarginalisConfigurable : Configurable {
                     .comment("Resolving a step opens the next step of its walkthrough; resolving a comment opens the next open comment.")
                     .bindSelected(state::walkthroughAutoAdvance)
             }
+            row("When stepping to another step:") {
+                comboBox(LeavingAStep.entries, textListCellRenderer { it?.let(::labelOf) })
+                    .comment("A thread's Next, Previous, First and Last arrows, in a file's editor and in a review. Resolving a thread always folds it.")
+                    .bindItem(
+                        { settings.leavingAStep },
+                        { settings.leavingAStep = it ?: LeavingAStep.FOLD },
+                    )
+            }
             row {
                 checkBox("Keep walkthrough steps in a pull or merge request review across files (experimental)")
                     .comment("Relies on a part of the IDE that may change. If it stops working, steps open in the file's own tab.")
@@ -491,6 +500,11 @@ class MarginalisConfigurable : Configurable {
         fun labelOf(kind: People.Kind): String = when (kind) {
             People.Kind.PERSON -> "Person"
             People.Kind.AGENT -> "Agent"
+        }
+
+        fun labelOf(leaving: LeavingAStep): String = when (leaving) {
+            LeavingAStep.FOLD -> "Fold the step you leave"
+            LeavingAStep.KEEP_OPEN -> "Keep it open"
         }
 
         fun labelOf(shows: MarginTabShows): String = when (shows) {

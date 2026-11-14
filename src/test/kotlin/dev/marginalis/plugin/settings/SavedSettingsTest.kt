@@ -3,6 +3,7 @@ package dev.marginalis.plugin.settings
 import com.intellij.openapi.util.JDOMUtil
 import com.intellij.util.xmlb.XmlSerializer
 import dev.marginalis.core.FoldingPrefs
+import dev.marginalis.core.LeavingAStep
 import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.LongThreadFolding
 import dev.marginalis.core.MarginTabShows
@@ -31,6 +32,7 @@ class SavedSettingsTest : MarginalisTestCase() {
             state.userPicture = "me.png"
             state.showGithubAvatars = false
             state.walkthroughAutoAdvance = false
+            leavingAStep = LeavingAStep.KEEP_OPEN
             state.notifyOnAgentReply = false
             state.expandOnYourMove = false
             state.groupRelayedConversation = false
@@ -44,6 +46,7 @@ class SavedSettingsTest : MarginalisTestCase() {
 
         assertEquals(before.rows, after.rows)
         assertEquals(TimeFormat.TWELVE_HOUR, after.timeFormat)
+        assertEquals(LeavingAStep.KEEP_OPEN, after.leavingAStep)
         assertEquals(before.projectTabPrefs, after.projectTabPrefs)
         assertEquals(MarginTabShows.WITH_SOMETHING_IN_IT, after.marginTabShows)
         assertEquals(FoldingPrefs(LongThreadFolding.FOLD_LONG_READ_MESSAGES, keepFirstOpen = true), after.foldingPrefs)
@@ -118,6 +121,7 @@ class SavedSettingsTest : MarginalisTestCase() {
               <option name="projectTabReadWhen" value="never" />
               <option name="longThreadFolding" value="unfolded" />
               <option name="marginTabShows" value="sometimes" />
+              <option name="leavingAStep" value="hide" />
             </State>
             """.trimIndent(),
         )
@@ -127,6 +131,7 @@ class SavedSettingsTest : MarginalisTestCase() {
         assertEquals(ReadWhen.EXPANDED_IN_FRONT, settings.readWhen)
         assertEquals(LongThreadFolding.FOLD_EVERY_READ_MESSAGE, settings.longThreadFolding)
         assertEquals(MarginTabShows.ALWAYS, settings.marginTabShows)
+        assertEquals(LeavingAStep.FOLD, settings.leavingAStep)
     }
 
     fun testFreshSettingsAllowNavigationNotifyAndAdvance() {
@@ -138,6 +143,7 @@ class SavedSettingsTest : MarginalisTestCase() {
         assertTrue(fresh.state.showGithubAvatars)
         assertEquals(TimeFormat.AUTO, fresh.timeFormat)
         assertEquals(MarginTabShows.ALWAYS, fresh.marginTabShows)
+        assertEquals(LeavingAStep.FOLD, fresh.leavingAStep)
         assertEquals(emptyList<People.Row>(), fresh.rows)
     }
 
