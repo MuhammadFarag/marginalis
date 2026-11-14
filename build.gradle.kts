@@ -2,6 +2,7 @@ import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.models.ProductRelease
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
     // Kotlin 2.3.x: first line with official Gradle 9 support (we run Gradle 9.1
@@ -238,6 +239,11 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     compilerOptions.jvmTarget = JvmTarget.JVM_21
+    // The plugin runs on the IDE's own Kotlin stdlib, which is 2.2 on the
+    // 2025.2 floor: code compiled for a newer one crashes there when a
+    // coroutine resumes, and newer stdlib calls fail at runtime.
+    compilerOptions.apiVersion = KotlinVersion.KOTLIN_2_2
+    compilerOptions.languageVersion = KotlinVersion.KOTLIN_2_2
 }
 
 pitest {
