@@ -52,6 +52,7 @@ import dev.marginalis.core.FoldingPrefs
 import dev.marginalis.core.Identities
 import dev.marginalis.core.Identity
 import dev.marginalis.core.Intent
+import dev.marginalis.core.LeavingAStep
 import dev.marginalis.core.LiveThread
 import dev.marginalis.core.Mark
 import dev.marginalis.core.Message
@@ -613,7 +614,10 @@ class ThreadPanel(
         override fun actionPerformed(e: AnActionEvent) {
             val (walk, i) = WalkthroughNavigator.walkFrom(project, thread)
             val destination = target(walk, i) ?: return
-            stayOrNavigateTo(destination, closeThisPanel = onClose)
+            when (MarginalisSettings.getInstance().leavingAStep) {
+                LeavingAStep.FOLD -> stayOrNavigateTo(destination, closeThisPanel = onClose)
+                LeavingAStep.KEEP_OPEN -> stayOrNavigateTo(destination, leaving = null)
+            }
         }
     }
 
@@ -780,12 +784,12 @@ class ThreadPanel(
         stayOrNavigateTo(wider)
     }
 
-    private fun stayOrNavigateTo(target: CommentThread, closeThisPanel: () -> Unit = {}) {
+    private fun stayOrNavigateTo(target: CommentThread, closeThisPanel: () -> Unit = {}, leaving: CommentThread? = thread) {
         val here = editor
         val reviewIsLoadingAStep = here != null && ReviewDiffSteps.isLoadingAStepIn(project, here)
-        if (here != null && reviewIsLoadingAStep && ReviewDiffSteps.switchTo(project, here, target, leaving = thread, onShown = closeThisPanel)) return
+        if (here != null && reviewIsLoadingAStep && ReviewDiffSteps.switchTo(project, here, target, leaving, onShown = closeThisPanel)) return
         if (here != null && WalkthroughNavigator.navigateWithin(here, project, target, beforeMoving = closeThisPanel)) return
-        if (here != null && !reviewIsLoadingAStep && ReviewDiffSteps.switchTo(project, here, target, leaving = thread, onShown = closeThisPanel)) return
+        if (here != null && !reviewIsLoadingAStep && ReviewDiffSteps.switchTo(project, here, target, leaving, onShown = closeThisPanel)) return
         WalkthroughNavigator.navigateTo(project, target, onShown = closeThisPanel)
     }
 

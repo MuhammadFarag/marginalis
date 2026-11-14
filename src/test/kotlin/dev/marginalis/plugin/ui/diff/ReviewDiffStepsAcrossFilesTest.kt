@@ -27,6 +27,7 @@ import dev.marginalis.plugin.testing.ReviewDiff
 import dev.marginalis.plugin.testing.ReviewDiffs
 import dev.marginalis.plugin.testing.ReviewProcessorTab
 import dev.marginalis.plugin.testing.ReviewProcessorTab.ReviewedFile
+import dev.marginalis.plugin.testing.SteppingChoice
 import dev.marginalis.plugin.transport.HttpContractTestCase
 import dev.marginalis.plugin.ui.LastStep
 import dev.marginalis.plugin.ui.WalkthroughNavigator
@@ -647,6 +648,42 @@ class ReviewDiffStepsAcrossFilesTest : HttpContractTestCase() {
         user.press(user.panel(shownDiff().editor), "Next Step")
 
         assertStepOpensInTheReview(review, CART, rowOf(25))
+    }
+
+    fun testStepsYouLeaveStayOpenInTheReviewWhenChosen() {
+        SteppingChoice.keepTheStepYouLeaveOpen(testRootDisposable)
+        walkthrough(CART to 5, ORDER to 8, CART to 20)
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+
+        user.press(user.panel(shownDiff().editor), "Next Step")
+        waitFor("the review never switched to $ORDER") { review.shownFile() == ORDER && panelRows() == listOf(rowOf(8)) }
+        user.press(user.panel(shownDiff().editor), "Next Step")
+
+        waitFor("the review never came back to $CART with both steps open: ${review.shownFile()} ${panelRows()}") {
+            review.shownFile() == CART && panelRows() == listOf(rowOf(5), rowOf(20))
+        }
+        assertEquals("the caret moves to the step's row", rowOf(20), shownDiff().editor.caretModel.logicalPosition.line + 1)
+        shown(review, ORDER)
+        assertPanelRowsBecome(listOf(rowOf(8)))
+    }
+
+    fun testASecondNextDuringTheLoadLeavesBothStepsOpenInTheFileLeftWhenChosen() {
+        SteppingChoice.keepTheStepYouLeaveOpen(testRootDisposable)
+        val slow = slowReview(lagging = false)
+        val ids = walkthrough(CART to 5, ORDER to 20, CART to 25, ORDER to 28)
+        val review = reviewOf(reviewed(CART), reviewed(ORDER))
+        openStepInTheReview(rowOf(5))
+        openStepInTheReview(rowOf(25))
+        user.press(user.panels(shownDiff().editor).first(), "Next Step")
+
+        user.press(user.panels(shownDiff().editor).last(), "Next Step")
+        slow.land()
+
+        assertStepOpensInTheReview(review, ORDER, rowOf(28))
+        assertEquals(ids[3], LastStep.getInstance(project).mark?.threadId)
+        shown(review, CART)
+        assertPanelRowsBecome(listOf(rowOf(5), rowOf(25)))
     }
 
     fun testUpdatingThePluginWhileTheReviewLoadsTheStepsFileLeavesTheStepUnopened() {

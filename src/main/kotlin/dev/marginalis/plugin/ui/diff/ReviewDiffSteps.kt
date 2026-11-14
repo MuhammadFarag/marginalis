@@ -38,7 +38,7 @@ object ReviewDiffSteps {
     fun isLoadingAStepIn(project: Project, editor: Editor): Boolean =
         underWay.isNotEmpty() && reviewShowing(project, editor)?.let { review -> underWay.any { it.context === review.context } } == true
 
-    fun switchTo(project: Project, from: Editor, step: CommentThread, leaving: CommentThread, onShown: () -> Unit): Boolean {
+    fun switchTo(project: Project, from: Editor, step: CommentThread, leaving: CommentThread?, onShown: () -> Unit): Boolean {
         val wanted = MarginalisSettings.getInstance().state.keepStepsInReviewAcrossFiles && step.order != null
         if (!wanted && underWay.isEmpty()) return false
         val review = reviewShowing(project, from) ?: return false
@@ -52,7 +52,7 @@ object ReviewDiffSteps {
         review: DiffEditorViewer,
         from: Editor,
         step: CommentThread,
-        leaving: CommentThread,
+        leaving: CommentThread?,
         onShown: () -> Unit,
     ): Boolean {
         val file = step.file ?: return false
@@ -61,7 +61,7 @@ object ReviewDiffSteps {
         if (review.javaClass.name != ReviewDiffFileList.PROCESSOR_CLASS_NAME) return false
         val loading = underWay.firstOrNull { it.context === review.context }
         if (loading?.file == file) {
-            loading.retarget(step, fileLeft, leaving.id, onShown)
+            loading.retarget(step, fileLeft, leaving?.id, onShown)
             return true
         }
         val files = throughTheSeam(file) { reviewFilesOf(review) } ?: return false
@@ -69,7 +69,7 @@ object ReviewDiffSteps {
         val index = if (loading != null) ReviewDiffFiles.indexOf(file, root.path, paths)
         else ReviewDiffFiles.switchTarget(file, root.path, paths, shownIndex)
         if (index == null) return false
-        val arriving = ArrivingStep(project, review.context, file, fileLeft, leaving.id, step, onShown)
+        val arriving = ArrivingStep(project, review.context, file, fileLeft, leaving?.id, step, onShown)
         arriving.start(review.disposable)
         var shown = false
         try {
@@ -138,11 +138,11 @@ object ReviewDiffSteps {
         val context: DiffContext,
         val file: String,
         val fileLeft: String,
-        leavingId: String,
+        leavingId: String?,
         private var step: CommentThread,
         private var onShown: () -> Unit,
     ) {
-        private var leftBehind = listOf(fileLeft to leavingId)
+        private var leftBehind = listOfNotNull(leavingId?.let { fileLeft to it })
         var awaitsAViewer = true
             private set
         private var done = false
@@ -160,10 +160,10 @@ object ReviewDiffSteps {
             expiry.start()
         }
 
-        internal fun retarget(step: CommentThread, fileLeft: String, leavingId: String, onShown: () -> Unit) {
+        internal fun retarget(step: CommentThread, fileLeft: String, leavingId: String?, onShown: () -> Unit) {
             this.step = step
             this.onShown = onShown
-            leftBehind = leftBehind + (fileLeft to leavingId)
+            leftBehind = leftBehind + listOfNotNull(leavingId?.let { fileLeft to it })
             walkthroughWasOn = LastStep.getInstance(project).mark
         }
 

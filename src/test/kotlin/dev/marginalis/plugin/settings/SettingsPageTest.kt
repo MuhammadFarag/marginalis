@@ -5,6 +5,7 @@ import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.util.xmlb.XmlSerializerUtil
 import dev.marginalis.core.CommentThread
 import dev.marginalis.core.FoldingPrefs
+import dev.marginalis.core.LeavingAStep
 import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.LongThreadFolding
 import dev.marginalis.core.MarginTabShows
@@ -375,6 +376,21 @@ class SettingsPageTest : HttpContractTestCase() {
         page.tick(STEPS_ACROSS_REVIEW_FILES, false)
         page.apply()
         assertFalse(settings.state.keepStepsInReviewAcrossFiles)
+    }
+
+    fun testTheSteppingChoiceDecidesWhetherTheStepYouLeaveFolds() {
+        val first = agent.addOnLine(5, "order" to 1, "walkthrough" to "tour", "body" to "Step one")
+        agent.addOnLine(15, "order" to 2, "walkthrough" to "tour", "body" to "Step two")
+        val page = page()
+        assertEquals(listOf("Fold the step you leave", "Keep it open"), page.options(LeavingAStep.FOLD))
+        assertEquals("Fold the step you leave", page.chosen(LeavingAStep.FOLD))
+
+        page.choose(LeavingAStep.FOLD, "Keep it open")
+        page.apply()
+        user.press(user.open(first), "Next Step")
+
+        assertEquals(LeavingAStep.KEEP_OPEN, settings.leavingAStep)
+        assertEquals(2, user.panels().size)
     }
 
     fun testTheClockChoiceReachesEveryByline() {
