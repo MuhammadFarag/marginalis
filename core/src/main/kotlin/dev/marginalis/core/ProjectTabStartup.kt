@@ -23,6 +23,6 @@ object ProjectTabStartup {
         else -> Outcome.LEAVE
     }
 
-    internal fun hasOpenProjectThread(threads: List<CommentThread>): Boolean =
+    fun hasOpenProjectThread(threads: List<CommentThread>): Boolean =
         threads.any { it.isProjectLevel && it.status is ThreadStatus.Open }
 }

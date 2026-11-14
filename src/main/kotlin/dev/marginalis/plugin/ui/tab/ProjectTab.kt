@@ -113,9 +113,9 @@ object ProjectTab {
         val state = ProjectTabState.getInstance(project)
         val revealsBefore = state.reveals
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed && state.reveals == revealsBefore && openTabs(project).isEmpty()) {
-                openBehindSelection(project, pin = false)
-            }
+            if (project.isDisposed || state.reveals != revealsBefore || openTabs(project).isNotEmpty()) return@invokeLater
+            val threads = MarginalisStore.getInstance(project).threads.all()
+            if (ProjectTabStartup.hasOpenProjectThread(threads)) openBehindSelection(project, pin = false)
         }
     }
 

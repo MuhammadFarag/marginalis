@@ -169,6 +169,21 @@ class WhenTheTabShowsTest : MarginTabTestCase() {
         assertFalse(tab.isOpen)
     }
 
+    fun testWithSomethingInItAProjectThreadResolvedBeforeTheTabOpensLeavesTheTabClosed() {
+        showTheTabWithSomethingInIt()
+        sample()
+        val thread = agent.ask("Which release name?")
+        tab.settle()
+        agent.post("comment_resolve", "thread_id" to thread)
+        tab.close()
+        tab.openFileInFront(SAMPLE)
+
+        ProjectTab.showNewProjectThreadLater(project)
+        tab.settle()
+
+        assertFalse(tab.isOpen)
+    }
+
     fun testWithSomethingInItATabYouRevealedAndClosedBeforeTheAgentsThreadOpensItStaysClosed() {
         showTheTabWithSomethingInIt()
         sample()

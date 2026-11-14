@@ -59,7 +59,9 @@ class TextOnlyFiles(project: Project) : Disposable {
         project.messageBus.connect(this).subscribe(
             FileEditorManagerListener.FILE_EDITOR_MANAGER,
             object : FileEditorManagerListener {
-                override fun fileClosed(source: FileEditorManager, file: VirtualFile) = forget(file)
+                override fun fileClosed(source: FileEditorManager, file: VirtualFile) {
+                    if (!source.isFileOpen(file)) forget(file)
+                }
             },
         )
     }
