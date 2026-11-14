@@ -89,6 +89,8 @@
                   topic="com.intellij.ide.ui.LafManagerListener"/>
         <listener class="dev.marginalis.plugin.ui.tab.MarginFile$ProjectClosed"
                   topic="com.intellij.openapi.project.ProjectCloseListener"/>
+        <listener class="dev.marginalis.plugin.ui.tab.ProjectTab$ClosedWhenEmpty"
+                  topic="com.intellij.openapi.project.ProjectCloseListener"/>
     </applicationListeners>
 
     <projectListeners>

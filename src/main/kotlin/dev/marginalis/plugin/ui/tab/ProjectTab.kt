@@ -1,13 +1,22 @@
 package dev.marginalis.plugin.ui.tab
 
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.fileEditor.impl.EditorHistoryManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectCloseListener
 import com.intellij.openapi.project.ProjectManager
 import dev.marginalis.core.CommentThread
+import dev.marginalis.core.MarginTabShows
 import dev.marginalis.core.Message
+import dev.marginalis.core.ProjectTabClosing
+import dev.marginalis.core.ProjectTabStartup
+import dev.marginalis.core.ProjectTabStartup.Outcome
+import dev.marginalis.core.ProjectTabStartup.TabState
+import dev.marginalis.plugin.settings.MarginalisSettings
+import dev.marginalis.plugin.store.MarginalisStore
 
 object ProjectTab {
 
@@ -63,22 +72,62 @@ object ProjectTab {
 
     fun openOnStartup(project: Project) {
         val properties = PropertiesComponent.getInstance(project)
-        val reopen = properties.getBoolean(REOPEN_AFTER_RELOAD)
-        val pinned = properties.getBoolean(PINNED_BEFORE_RELOAD)
+        val beforeReload = when {
+            !properties.getBoolean(REOPEN_AFTER_RELOAD) -> TabState.CLOSED
+            properties.getBoolean(PINNED_BEFORE_RELOAD) -> TabState.PINNED
+            else -> TabState.OPEN
+        }
+        val outcome = ProjectTabStartup.outcome(
+            shows = MarginalisSettings.getInstance().marginTabShows,
+            threads = MarginalisStore.getInstance(project).threads.all(),
+            firstOpen = !properties.getBoolean(INTRODUCED),
+            beforeReload = beforeReload,
+            restored = shownState(project),
+        )
         properties.unsetValue(REOPEN_AFTER_RELOAD)
         properties.unsetValue(PINNED_BEFORE_RELOAD)
-        val firstRun = !properties.getBoolean(INTRODUCED)
         properties.setValue(INTRODUCED, true)
-        if (reopen || firstRun) openBehindSelection(project, pin = pinned || firstRun)
+        when (outcome) {
+            Outcome.OPEN -> openBehindSelection(project, pin = false)
+            Outcome.OPEN_PINNED -> openBehindSelection(project, pin = true)
+            Outcome.CLOSE -> openTabs(project).forEach(FileEditorManager.getInstance(project)::closeFile)
+            Outcome.LEAVE -> {}
+        }
+    }
+
+    fun closeIfEmptyWhenTheProjectCloses(project: Project) {
+        val closes = ProjectTabClosing.closesTheTab(
+            shows = MarginalisSettings.getInstance().marginTabShows,
+            threads = MarginalisStore.getInstance(project).threads.all(),
+            shown = shownState(project),
+        )
+        if (closes) openTabs(project).forEach(FileEditorManager.getInstance(project)::closeFile)
+    }
+
+    class ClosedWhenEmpty : ProjectCloseListener {
+        override fun projectClosingBeforeSave(project: Project) = closeIfEmptyWhenTheProjectCloses(project)
+    }
+
+    fun showNewProjectThreadLater(project: Project) {
+        if (MarginalisSettings.getInstance().marginTabShows != MarginTabShows.WITH_SOMETHING_IN_IT) return
+        val state = ProjectTabState.getInstance(project)
+        val revealsBefore = state.reveals
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed && state.reveals == revealsBefore && openTabs(project).isEmpty()) {
+                openBehindSelection(project, pin = false)
+            }
+        }
     }
 
     private fun openBehindSelection(project: Project, pin: Boolean) {
         val editors = FileEditorManager.getInstance(project)
+        val state = ProjectTabState.getInstance(project)
         val selected = editors.selectedFiles.firstOrNull()
+        val revealsBefore = state.reveals
         val tab = MarginFile.of(project)
         editors.openFile(tab, false, true)
         if (pin) pin(project, tab)
-        selected?.let { editors.openFile(it, false, true) }
+        if (state.reveals == revealsBefore) selected?.let { editors.openFile(it, false, true) }
     }
 
     private fun openTabs(project: Project): List<MarginFile> =
@@ -89,6 +138,12 @@ object ProjectTab {
         return FileEditorManagerEx.getInstanceEx(project).windows.any { window -> tabs.any { window.getComposite(it)?.isPinned == true } }
     }
 
+    private fun shownState(project: Project): TabState = when {
+        openTabs(project).isEmpty() -> TabState.CLOSED
+        isPinned(project) -> TabState.PINNED
+        else -> TabState.OPEN
+    }
+
     private fun pin(project: Project, tab: MarginFile) =
         FileEditorManagerEx.getInstanceEx(project).windows
             .filter { it.isFileOpen(tab) }
@@ -96,6 +151,7 @@ object ProjectTab {
 
     private fun deliver(project: Project, request: TabRequest) {
         val state = ProjectTabState.getInstance(project)
+        state.countReveal()
         state.request(request)
         val shown = FileEditorManager.getInstance(project).openFile(MarginFile.of(project), true, true).filterIsInstance<MarginEditor>()
         val pending = state.takeRequest() ?: return

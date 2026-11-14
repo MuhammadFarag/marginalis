@@ -7,6 +7,14 @@ History before 0.1.19 lives in git tags.
 
 ## [Unreleased]
 
+### Added
+
+- Choose when the Margin tab shows. Keep it open as before, or show it
+  only when there's something in it: a project opens without an empty
+  tab, and the tab comes back behind your file when an agent starts a
+  project thread. A tab you pin always stays. Set it under Project Tab
+  in Settings › Tools › Marginalis.
+
 ## [0.2.10] - 2026-11-13
 
 Thanks to [@schrek1](https://github.com/schrek1) for the unread marks, the Agree signals and the review diff work in this release.

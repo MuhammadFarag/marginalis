@@ -11,6 +11,7 @@ import com.intellij.util.xmlb.annotations.XCollection
 import dev.marginalis.core.FoldingPrefs
 import dev.marginalis.core.ListWhileInFront
 import dev.marginalis.core.LongThreadFolding
+import dev.marginalis.core.MarginTabShows
 import dev.marginalis.core.People
 import dev.marginalis.core.ProjectTabPrefs
 import dev.marginalis.core.ReadWhen
@@ -43,6 +44,8 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
         var notifyOnAgentReply: Boolean = true
 
         var liveByDefault: Boolean = false
+
+        var marginTabShows: String = MarginTabShows.ALWAYS.stored
 
         var projectTabList: String = ListWhileInFront.LIVE.stored
 
@@ -113,6 +116,12 @@ class MarginalisSettings : PersistentStateComponent<MarginalisSettings.State> {
         get() = TimeFormat.fromStored(state.timeFormat)
         set(value) {
             state.timeFormat = value.stored
+        }
+
+    var marginTabShows: MarginTabShows
+        get() = MarginTabShows.fromStored(state.marginTabShows)
+        set(value) {
+            state.marginTabShows = value.stored
         }
 
     var listWhileInFront: ListWhileInFront

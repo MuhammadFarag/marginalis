@@ -443,3 +443,14 @@ declined, captured from real use.
   today. If a future release enables it, CI and Marketplace
   verification fail on the seam, and the cross-file switch comes out
   while the rest stays.
+- **The Margin tab stays a home base by default** (2026-11-13, #110,
+  #123): the "exists even when empty" decision from #37 stands as the
+  default. A setting offers the opposite as an opt-in: the tab shows
+  only with an open project thread, an empty unpinned tab closes when
+  the project closes so the IDE has nothing to restore, and an agent's
+  new project thread opens a closed tab behind the file you read. A tab
+  the user pinned always stays. Rejected: hiding the tab's address so
+  the platform skips restoring it, because the same lookup serves pinned
+  tabs and editor history all session; and closing a late-restored tab
+  on a timer, because the platform gives no signal that its restore is
+  over.

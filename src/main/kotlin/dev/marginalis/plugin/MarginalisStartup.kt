@@ -38,10 +38,6 @@ class MarginalisStartup : ProjectActivity {
                 if (!project.isDisposed) refreshAllIcons(project, store)
             }
         }
-        ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) ProjectTab.openOnStartup(project)
-        }
-
         val loaded = MarginalisPersistence.load(project)
         store.handBack.restore(loaded.handedBackAt)
         store.threads.restoreDeletedRelays(loaded.deletedRelays)
@@ -60,6 +56,9 @@ class MarginalisStartup : ProjectActivity {
                 // One notification after the silent bulk load refreshes every UI surface.
                 persisted.lastOrNull()?.let { store.threads.notifyChanged(it) }
             }
+        }
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) ProjectTab.openOnStartup(project)
         }
     }
 
