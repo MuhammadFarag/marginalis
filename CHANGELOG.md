@@ -15,6 +15,14 @@ History before 0.1.19 lives in git tags.
   project thread. A tab you pin always stays. Set it under Project Tab
   in Settings › Tools › Marginalis.
 
+### Changed
+
+- When you go to a thread whose file will not open, such as an OpenAPI
+  spec whose preview fails to load, the file now opens as plain text,
+  so you still see the thread and a walkthrough goes on. Only when
+  plain text fails too do you get a message, and a walkthrough stays
+  on your step.
+
 ## [0.2.10] - 2026-11-13
 
 Thanks to [@schrek1](https://github.com/schrek1) for the unread marks, the Agree signals and the review diff work in this release.

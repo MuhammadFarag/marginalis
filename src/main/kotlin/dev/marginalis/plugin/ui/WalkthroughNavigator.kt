@@ -44,6 +44,15 @@ object WalkthroughNavigator {
         revealing: Message? = null,
         onShown: () -> Unit = {},
         onNotShown: (problem: String) -> Unit = { warn(project, it) },
+    ) = navigateTo(project, thread, revealing, onShown, onNotShown, asText = false)
+
+    private fun navigateTo(
+        project: Project,
+        thread: CommentThread,
+        revealing: Message?,
+        onShown: () -> Unit,
+        onNotShown: (problem: String) -> Unit,
+        asText: Boolean,
     ) {
         val lastStep = LastStep.getInstance(project)
         if (thread.file == null) {
@@ -53,21 +62,31 @@ object WalkthroughNavigator {
         }
         val place = placeOf(project, thread) ?: return onNotShown(couldNotShow(project, thread, "${thread.file} is no longer in the project"))
         val editors = FileEditorManager.getInstance(project)
-        fun closedAsItOpened() = couldNotShow(project, thread, "the IDE closed ${thread.file} as it opened")
+        fun closedAsItOpened(mayRetry: Boolean = true) {
+            if (asText) TextOnlyEditorProvider.forget(project, place.file)
+            if (!mayRetry || asText || !TextOnlyEditorProvider.canShowAsText(project, place.file)) {
+                return onNotShown(couldNotShow(project, thread, "the IDE closed ${thread.file} as it opened"))
+            }
+            TextOnlyEditorProvider.closeToReopenAsText(project, place.file)
+            navigateTo(project, thread, revealing, onShown, onNotShown, asText = true)
+        }
         // The step file's own editor: when its tab closes while opening, the selected one is still the previous file's.
         val editor = editors.openTextEditor(place, true)
-            ?: return onNotShown(
-                if (editors.isFileOpen(place.file)) couldNotShow(project, thread, "${thread.file} doesn't open in a text editor")
-                else closedAsItOpened(),
-            )
-        if (editor.isDisposed) return onNotShown(closedAsItOpened())
+            ?: return if (editors.isFileOpen(place.file)) {
+                onNotShown(couldNotShow(project, thread, "${thread.file} doesn't open in a text editor"))
+            } else {
+                closedAsItOpened()
+            }
+        if (editor.isDisposed) return closedAsItOpened()
         val stepBefore = lastStep.mark
         ThreadInlayManager.open(project, editor, thread, revealing)
+        val landing = lastStep.landings
         // A file whose preview editor fails to build (Swagger UI on an OpenAPI spec) opens and is closed right after.
         ApplicationManager.getApplication().invokeLater({
             if (editor.isDisposed || !editors.isFileOpen(place.file)) {
-                lastStep.returnTo(stepBefore)
-                onNotShown(closedAsItOpened())
+                val movedOn = lastStep.landings != landing
+                if (!movedOn) lastStep.returnTo(stepBefore)
+                closedAsItOpened(mayRetry = !movedOn)
             } else {
                 onShown()
             }

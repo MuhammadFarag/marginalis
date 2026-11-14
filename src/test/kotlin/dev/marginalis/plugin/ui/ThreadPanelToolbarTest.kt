@@ -188,10 +188,12 @@ class ThreadPanelToolbarTest : HttpContractTestCase() {
         FilesThatWontStayOpen(project, testRootDisposable).closeOnOpening(other)
         val panel = user.open(steps[1])
         val sampleEditor = user.editor()
+        val shown = user.notifications()
 
         user.press(panel, "Next Step")
 
         assertTrue(shownIn(user.panel(sampleEditor)).contains("Step two"))
+        assertEquals(1, shown.size)
     }
 
     fun testAStepWhoseFileTheIdeClosesIsNamedWithItsFileInOneNotification() {
@@ -205,6 +207,15 @@ class ThreadPanelToolbarTest : HttpContractTestCase() {
             listOf("Couldn't show walkthrough step 3/3: the IDE closed src/Other.kt as it opened."),
             shown.map { unescapeXmlEntities(it.content) },
         )
+    }
+
+    fun testAStepWhoseFileClosesEvenAsPlainTextLeavesTheWalkthroughOnTheStepYouWereOn() {
+        val steps = tour()
+        FilesThatWontStayOpen(project, testRootDisposable).closeJustAfterOpening(other)
+
+        user.press(user.open(steps[1]), "Next Step")
+
+        assertEquals(steps[1], LastStep.getInstance(project).mark?.threadId)
     }
 
     fun testAFailedMoveLeavesTheUnshownStepUnread() {
